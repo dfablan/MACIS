@@ -30,6 +30,13 @@
 #include "macis/gf/lanczos.hpp"
 #include "macis/hamiltonian_generator.hpp"
 #include "macis/sd_operations.hpp"
+
+
+#include <sparsexx/matrix_types/dense_conversions.hpp>
+
+
+#include <macis/wavefunction_io.hpp>
+
 #if __has_include(<boost/sort/pdqsort/pdqsort.hpp>)
 #define MACIS_USE_BOOST_SORT
 #include <boost/sort/pdqsort/pdqsort.hpp>
@@ -50,8 +57,15 @@ struct GFSettings {
   std::vector<bool> is_up_comp = std::vector<bool>(0);
   int nLanIts = 1000;
   bool writeGF = false;
+  bool writeGF_singlef = true;
   bool print = false;
   bool saveGFmats = false;
+  int nws = 1001;
+  double wmin = -8;
+  double wmax = 8;
+  double eta = 0.1;
+  double beta = 1;
+  bool imag_freq = false;
 };
 
 /**
@@ -465,6 +479,9 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
               const std::vector<std::complex<double>> &ws,
               const std::vector<int> &GF_orbs, const std::vector<int> &todelete,
               const bool is_part);
+void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
+              const std::vector<std::complex<double>> &ws,
+              const std::vector<int> &GF_orbs, const std::vector<int> &todelete);
 
 /**
  * @brief Routine to run Green's function calculation at zero temperature from
@@ -506,7 +523,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                const std::vector<std::bitset<nbits>> &base_dets,
                const double energ, const bool is_part,
                const std::vector<std::complex<double>> &ws,
-               const std::vector<double> &occs, const GFSettings &settings) {
+               const std::vector<double> &occs, const GFSettings &settings, std::vector<int> &todelete) {
   using Clock = std::chrono::high_resolution_clock;
   // READ INPUT
   const size_t trunc_size = settings.trunc_size;
@@ -561,6 +578,15 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   size_t nterms = gf_dets.size();
   std::cout << "---> FINAL ADD BASIS HAS " << nterms << " ELEMENTS"
             << std::endl;
+  
+  //DEBUGGING GREEN FUNCTION CODE
+  // std::vector<double> X(gf_dets.size(), 1.);
+  // std::cout << "WRITING GF BASIS TO FILE" << std::endl;
+  // if(is_part)
+  //   macis::write_wavefunction("gf_dets_part.dat", 2 , gf_dets, X);
+  // else
+  //   macis::write_wavefunction("gf_dets_hole.dat", 2 , gf_dets, X);
+
 
   loop1 = time(NULL);
   loop1C = Clock::now();
@@ -575,13 +601,28 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                           .count()) /
                    1000
             << std::endl;
+  
+  // // DEBUGGING: PRINT HAMILTONIAN
+  // std::vector<double> H_dense(hamil.m() * hamil.m());
+  // sparsexx::convert_to_dense(hamil, H_dense.data(), hamil.m());
+
+  // std::cout << " \n " << std::endl;
+  // std::cout << "GF hamil Matrix \n " << std::endl;
+  // for(auto i = 0; i < hamil.m(); ++i) {
+  //   for(auto j = 0; j < hamil.n(); ++j)
+  //     std::cout << std::setw(5) << H_dense[i + j * hamil.m()];
+  //   std::cout << std::endl;
+  // }
+  // std::cout << " \n " << std::endl;
+
+
   // NOW, PERFORM THE BAND LANCZOS ON THE TRUNCATED SPACE
   // WE ALREADY BUILT THE HAMILTONIANS
 
   if(nterms < nLanIts) nLanIts = nterms;
 
   // PREPARE THE WAVEFUNCTIONS FOR THE BAND LANCZOS
-  std::vector<int> todelete;
+  // std::vector<int> todelete;
   std::vector<double> wfns;
   int nvecs;
   std::tie(wfns, nvecs) = BuildWfn4Lanczos<nbits, index_t>(
@@ -590,7 +631,6 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   // //ACTUALLY COMPUTE THE GF!
   time_t GF_loop1 = time(NULL);
   auto GF_loop1C = Clock::now();
-
   if(use_bandLan) {
     BandResolvent(hamil, wfns, ws, GF, nLanIts, energ, is_part, nvecs, nterms,
                   print, saveGFmats);
@@ -649,5 +689,37 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 
   if(writeGF) write_GF(GF, ws, GF_orbs_comp, todelete, is_part);
 }
+
+/**
+ * @brief Routine to sum two Green function matrices.
+
+*/
+const std::vector<std::vector<std::complex<double>>> sum_GFs( const std::vector<std::vector<std::complex<double>>> &GF1,
+                                                              const std::vector<std::vector<std::complex<double>>> &GF2,
+                                                              const std::vector<std::complex<double> > &ws, 
+                                                              const std::vector<int> &GF_orbs, const std::vector<int> &todelete) 
+                                                            {
+  using dbl = std::numeric_limits<double>;
+  size_t nfreqs = ws.size();
+  int GFmat_size = GF_orbs.size()-todelete.size();
+  
+  std::vector<std::vector<std::complex<double>>> GF(
+      nfreqs, std::vector<std::complex<double>>(
+      GFmat_size*GFmat_size, std::complex<double>(0., 0.)));
+  
+  if(GF_orbs.size() > 1) {
+    for(int iii = 0; iii < nfreqs; iii++) {
+      for(int jjj = 0; jjj < GFmat_size; jjj++) {
+        for(int lll = 0; lll < GFmat_size; lll++)
+          GF[iii][jjj * GFmat_size + lll] = GF1[iii][jjj * GFmat_size + lll] + GF2[iii][jjj * GFmat_size + lll];
+      }
+    }
+  } else {
+      for(int iii = 0; iii < nfreqs; iii++)
+            GF[iii][0] = GF1[iii][0] + GF2[iii][0];  
+  }
+  return GF ; 
+}
+
 
 }  // namespace macis

@@ -1,0 +1,280 @@
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_8ee40/fast
+/usr/bin/make  -f CMakeFiles/cmTC_8ee40.dir/build.make CMakeFiles/cmTC_8ee40.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8ee40.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_8ee40.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_8ee40
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8ee40.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_8ee40.dir/func_check.c.o -o cmTC_8ee40  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_ca47e/fast
+/usr/bin/make  -f CMakeFiles/cmTC_ca47e.dir/build.make CMakeFiles/cmTC_ca47e.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ca47e.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_ca47e.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_ca47e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ca47e.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_ca47e.dir/func_check.c.o -o cmTC_ca47e  /usr/lib/x86_64-linux-gnu/libblas.so 
+/usr/bin/ld: CMakeFiles/cmTC_ca47e.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `dpstrf_'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_ca47e.dir/build.make:100: cmTC_ca47e] Error 1
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+make: *** [Makefile:127: cmTC_ca47e/fast] Error 2
+
+FUNCTION CHECK: LAPACK_LOWER_NO_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_714c5/fast
+/usr/bin/make  -f CMakeFiles/cmTC_714c5.dir/build.make CMakeFiles/cmTC_714c5.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_714c5.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_714c5.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_714c5
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_714c5.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_714c5.dir/func_check.c.o -o cmTC_714c5  /usr/lib/x86_64-linux-gnu/libblas.so 
+/usr/bin/ld: CMakeFiles/cmTC_714c5.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `dpstrf_'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_714c5.dir/build.make:100: cmTC_714c5] Error 1
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+make: *** [Makefile:127: cmTC_714c5/fast] Error 2
+
+FUNCTION CHECK: LAPACK_UPPER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_482c3/fast
+/usr/bin/make  -f CMakeFiles/cmTC_482c3.dir/build.make CMakeFiles/cmTC_482c3.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_482c3.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=DPSTRF_   -o CMakeFiles/cmTC_482c3.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_482c3
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_482c3.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_482c3.dir/func_check.c.o -o cmTC_482c3  /usr/lib/x86_64-linux-gnu/libblas.so 
+/usr/bin/ld: CMakeFiles/cmTC_482c3.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `DPSTRF_'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_482c3.dir/build.make:100: cmTC_482c3] Error 1
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+make: *** [Makefile:127: cmTC_482c3/fast] Error 2
+
+FUNCTION CHECK: LAPACK_UPPER_NO_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_db1d3/fast
+/usr/bin/make  -f CMakeFiles/cmTC_db1d3.dir/build.make CMakeFiles/cmTC_db1d3.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_db1d3.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=DPSTRF_   -o CMakeFiles/cmTC_db1d3.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_db1d3
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_db1d3.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_db1d3.dir/func_check.c.o -o cmTC_db1d3  /usr/lib/x86_64-linux-gnu/libblas.so 
+/usr/bin/ld: CMakeFiles/cmTC_db1d3.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `DPSTRF_'
+collect2: error: ld returned 1 exit status
+make[1]: *** [CMakeFiles/cmTC_db1d3.dir/build.make:100: cmTC_db1d3] Error 1
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+make: *** [Makefile:127: cmTC_db1d3/fast] Error 2
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_5dc3e/fast
+/usr/bin/make  -f CMakeFiles/cmTC_5dc3e.dir/build.make CMakeFiles/cmTC_5dc3e.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_5dc3e.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_5dc3e.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_5dc3e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5dc3e.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_5dc3e.dir/func_check.c.o -o cmTC_5dc3e  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_27bd5/fast
+/usr/bin/make  -f CMakeFiles/cmTC_27bd5.dir/build.make CMakeFiles/cmTC_27bd5.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_27bd5.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_27bd5.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_27bd5
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_27bd5.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_27bd5.dir/func_check.c.o -o cmTC_27bd5  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_ee64c/fast
+/usr/bin/make  -f CMakeFiles/cmTC_ee64c.dir/build.make CMakeFiles/cmTC_ee64c.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ee64c.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_ee64c.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_ee64c
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ee64c.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_ee64c.dir/func_check.c.o -o cmTC_ee64c  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_8c010/fast
+/usr/bin/make  -f CMakeFiles/cmTC_8c010.dir/build.make CMakeFiles/cmTC_8c010.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_8c010.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_8c010.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_8c010
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8c010.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_8c010.dir/func_check.c.o -o cmTC_8c010  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_00c30/fast
+/usr/bin/make  -f CMakeFiles/cmTC_00c30.dir/build.make CMakeFiles/cmTC_00c30.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_00c30.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_00c30.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_00c30
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_00c30.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_00c30.dir/func_check.c.o -o cmTC_00c30  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_fcc8e/fast
+/usr/bin/make  -f CMakeFiles/cmTC_fcc8e.dir/build.make CMakeFiles/cmTC_fcc8e.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_fcc8e.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_fcc8e.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_fcc8e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_fcc8e.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_fcc8e.dir/func_check.c.o -o cmTC_fcc8e  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_a5c60/fast
+/usr/bin/make  -f CMakeFiles/cmTC_a5c60.dir/build.make CMakeFiles/cmTC_a5c60.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_a5c60.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_a5c60.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_a5c60
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_a5c60.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_a5c60.dir/func_check.c.o -o cmTC_a5c60  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_58598/fast
+/usr/bin/make  -f CMakeFiles/cmTC_58598.dir/build.make CMakeFiles/cmTC_58598.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_58598.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_58598.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_58598
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_58598.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_58598.dir/func_check.c.o -o cmTC_58598  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_478f1/fast
+/usr/bin/make  -f CMakeFiles/cmTC_478f1.dir/build.make CMakeFiles/cmTC_478f1.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_478f1.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_478f1.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_478f1
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_478f1.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_478f1.dir/func_check.c.o -o cmTC_478f1  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_ad90f/fast
+/usr/bin/make  -f CMakeFiles/cmTC_ad90f.dir/build.make CMakeFiles/cmTC_ad90f.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_ad90f.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_ad90f.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_ad90f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ad90f.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_ad90f.dir/func_check.c.o -o cmTC_ad90f  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_74d64/fast
+/usr/bin/make  -f CMakeFiles/cmTC_74d64.dir/build.make CMakeFiles/cmTC_74d64.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_74d64.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_74d64.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_74d64
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_74d64.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_74d64.dir/func_check.c.o -o cmTC_74d64  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_83a7e/fast
+/usr/bin/make  -f CMakeFiles/cmTC_83a7e.dir/build.make CMakeFiles/cmTC_83a7e.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_83a7e.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_83a7e.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_83a7e
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_83a7e.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_83a7e.dir/func_check.c.o -o cmTC_83a7e  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_16f05/fast
+/usr/bin/make  -f CMakeFiles/cmTC_16f05.dir/build.make CMakeFiles/cmTC_16f05.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_16f05.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_16f05.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_16f05
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_16f05.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_16f05.dir/func_check.c.o -o cmTC_16f05  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_fa82f/fast
+/usr/bin/make  -f CMakeFiles/cmTC_fa82f.dir/build.make CMakeFiles/cmTC_fa82f.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_fa82f.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_fa82f.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_fa82f
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_fa82f.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_fa82f.dir/func_check.c.o -o cmTC_fa82f  /usr/lib/x86_64-linux-gnu/liblapack.so /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /usr/local/bin/cmake -E env VERBOSE=1 /usr/bin/make -f Makefile cmTC_45672/fast
+/usr/bin/make  -f CMakeFiles/cmTC_45672.dir/build.make CMakeFiles/cmTC_45672.dir/build
+make[1]: Entering directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+Building C object CMakeFiles/cmTC_45672.dir/func_check.c.o
+/usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_45672.dir/func_check.c.o -c /home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/linalg-cmake-modules-src/util/func_check.c
+Linking C executable cmTC_45672
+/usr/local/bin/cmake -E cmake_link_script CMakeFiles/cmTC_45672.dir/link.txt --verbose=1
+/usr/bin/cc CMakeFiles/cmTC_45672.dir/func_check.c.o -o cmTC_45672  /usr/lib/x86_64-linux-gnu/libblas.so 
+make[1]: Leaving directory '/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/src/lobpcgxx/CMakeFiles/CMakeTmp'
+

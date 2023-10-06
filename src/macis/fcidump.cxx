@@ -181,6 +181,32 @@ void read_fcidump_2body(std::string fname, double* V, size_t LDV) {
       fname, KokkosEx::submdspan(V_map, sl, sl, sl, Kokkos::full_extent));
 }
 
+bool is_2body_diagonal(std::string fname) {
+  auto norb = read_fcidump_norb(fname);
+  bool all_diag = true;
+
+  std::ifstream file(fname);
+  std::string line;
+  while(std::getline(file, line)) {
+    auto tokens = split(line, " ");
+    if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
+
+    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto lc = line_classification(p, q, r, s);
+    if(lc == LineClassification::TwoBody) {
+      p--;
+      q--;
+      r--;
+      s--;
+      if(p != q || r != s) {
+        all_diag = false;
+        break;
+      }
+    }
+  }
+  return all_diag;
+}
+
 void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
                    const double* V, size_t LDV, double E_core) {
   auto logger = spdlog::basic_logger_mt("fcidump", fname);
@@ -192,13 +218,15 @@ void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
     for(size_t j = 0; j < norb; ++j)
       for(size_t k = 0; k < norb; ++k)
         for(size_t l = 0; l < norb; ++l) {
-          logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
+            if( std::abs(V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV] )> 1E-8)
+                logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
                        V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
         }
 
   // Write one body
   for(size_t i = 0; i < norb; ++i)
     for(size_t j = 0; j < norb; ++j) {
+            if( std::abs(T[i + j * LDT ] )> 1E-8)
       logger->info(fmt_string, i + 1, j + 1, 0, 0, T[i + j * LDT]);
     }
 

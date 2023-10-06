@@ -36,6 +36,7 @@ auto asci_iter(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol,
       X_local MACIS_MPI_CODE(, comm));
 
+  // std::cout << "E=" << E << std::endl;
 #ifdef MACIS_ENABLE_MPI
   auto world_size = comm_size(comm);
   auto world_rank = comm_rank(comm);
@@ -63,6 +64,8 @@ auto asci_iter(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 #else
   X = std::move(X_local);  // Serial
 #endif
+
+  if(wfn.size() > 1) reorder_ci_on_coeff(wfn, X);
 
   return std::make_tuple(E, wfn, X);
 }

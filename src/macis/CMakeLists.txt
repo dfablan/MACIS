@@ -18,6 +18,9 @@ add_library( macis
   gf/eigsolver.cxx
   gf/bandlan.cxx
   gf/gf.cxx
+  model/hubbard.cxx
+  dopping/call_solver.cpp
+  dopping/fix_mu.cpp
 )
 
 target_include_directories( macis PUBLIC 
@@ -62,6 +65,10 @@ target_link_libraries(macis PUBLIC spdlog::spdlog)
 # MDSPAN
 include(macis-mdspan)
 target_link_libraries(macis PUBLIC mdspan)
+
+# GSL
+find_package(GSL REQUIRED)
+target_link_libraries(macis PUBLIC GSL::gsl GSL::gslcblas)
 
 #find_package( Ceres REQUIRED )
 #target_link_libraries( macis PUBLIC Ceres::ceres )

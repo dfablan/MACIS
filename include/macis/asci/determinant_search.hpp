@@ -17,6 +17,7 @@
 #include <macis/asci/determinant_sort.hpp>
 #include <macis/sd_operations.hpp>
 #include <macis/types.hpp>
+#include <macis/wavefunction_io.hpp>
 #include <macis/util/dist_quickselect.hpp>
 #include <macis/util/memory.hpp>
 #include <macis/util/mpi.hpp>
@@ -403,6 +404,8 @@ std::vector<wfn_t<N>> asci_search(
   using clock_type = std::chrono::high_resolution_clock;
   using duration_type = std::chrono::duration<double>;
 
+  std::cout << "ASCI Search has been called \n";
+
   // MPI Info
 #ifdef MACIS_ENABLE_MPI
   auto world_rank = comm_rank(comm);
@@ -506,6 +509,18 @@ std::vector<wfn_t<N>> asci_search(
 #endif
     logger->info("  * ASCI will search over {} unique determinants", npairs);
 
+  std::vector<double> scores(asci_pairs.size());
+  std::transform(asci_pairs.begin(), asci_pairs.end(), scores.begin(),
+                     [](const auto& p) { return std::abs(p.rv); });
+  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
+  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
+                 [](auto x) { return x.state; });
+
+  //  ############################################################# 
+   macis::write_wavefunction("D_SD.dat", norb,new_dets, scores);
+  //  ############################################################# 
+
+
     float pairs_dur = duration_type(pairs_en - pairs_st).count();
     float bit_sort_dur = duration_type(bit_sort_en - bit_sort_st).count();
 
@@ -539,12 +554,13 @@ std::vector<wfn_t<N>> asci_search(
   // and keep only the duplicate with positive coefficient.
   keep_only_largest_copy_asci_pairs(asci_pairs);
 
-  asci_pairs.erase(std::partition(asci_pairs.begin(), asci_pairs.end(),
-                                  [](const auto& p) { return p.rv < 0.0; }),
-                   asci_pairs.end());
+  // asci_pairs.erase(std::partition(asci_pairs.begin(), asci_pairs.end(),
+  //                                 [](const auto& p) { return p.rv < 0.0; }),
+  //                  asci_pairs.end());
 
   // Only do top-K on (ndets_max - ncdets) b/c CDETS will be added later
-  const size_t top_k_elements = ndets_max - ncdets;
+  // const size_t top_k_elements = ndets_max - ncdets;
+  const size_t top_k_elements = ndets_max; 
 
   auto keep_large_en = clock_type::now();
   duration_type keep_large_dur = keep_large_en - keep_large_st;
@@ -650,7 +666,7 @@ std::vector<wfn_t<N>> asci_search(
                  [](auto x) { return x.state; });
 
   // Insert the CDETS back in
-  new_dets.insert(new_dets.end(), cdets_begin, cdets_end);
+  // new_dets.insert(new_dets.end(), cdets_begin, cdets_end);
   new_dets.shrink_to_fit();
 
   logger->info("  * New Dets Mem = {:.2e} GiB", to_gib(new_dets));

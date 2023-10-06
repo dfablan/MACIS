@@ -8,6 +8,7 @@
 
 #pragma once
 #include <macis/asci/iteration.hpp>
+#include <macis/wavefunction_io.hpp>
 
 namespace macis {
 
@@ -42,9 +43,16 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   bool converged = false;
   for(size_t iter = 0; iter < asci_settings.max_refine_iter; ++iter) {
     double E;
+    // macis::write_wavefunction("dets_bef_refine.dat", 12, wfn, X);
+    std::cout << "E0 = " << E0 << std::endl ;
+    std::cout << "E = " << E << std::endl ;
+    std::cout << "ndets = " << ndets << std::endl ;
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets, E0, std::move(wfn), std::move(X),
         ham_gen, norb MACIS_MPI_CODE(, comm));
+    std::cout << "E0 = " << E0 << std::endl ;
+    std::cout << "E = " << E << std::endl ;
+    // macis::write_wavefunction("dets_aft_refine.dat", 12, wfn, X);
     if(wfn.size() != ndets)
       throw std::runtime_error("Wavefunction size can't change in refinement");
 

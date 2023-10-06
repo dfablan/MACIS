@@ -13,6 +13,7 @@ add_executable( macis_test
   fcidump.cxx 
   read_wavefunction.cxx
   double_loop.cxx
+  sd_build.cxx
   csr_hamiltonian.cxx
   davidson.cxx
   transform.cxx
@@ -20,12 +21,25 @@ add_executable( macis_test
   mcscf.cxx
   asci.cxx
   dist_quickselect.cxx
+  hubbard.cxx
 )
 target_link_libraries( macis_test PUBLIC macis Catch2::Catch2 )
 target_include_directories( macis_test PUBLIC ${PROJECT_BINARY_DIR}/tests )
 
 add_executable( standalone_driver standalone_driver.cxx ini_input.cxx )
 target_link_libraries( standalone_driver PUBLIC macis )
+
+add_executable( simple_driver simple_driver.cxx ini_input.cxx )
+target_link_libraries( simple_driver PUBLIC macis )
+
+add_executable( simple_driver_no_sparse simple_driver_no_sparse.cxx ini_input.cxx )
+target_link_libraries( simple_driver_no_sparse PUBLIC macis )
+
+add_executable( test_drive test_drive.cxx ini_input.cxx )
+target_link_libraries( test_drive PUBLIC macis )
+
+add_executable( test_drive_call test_drive_call.cxx ini_input.cxx )
+target_link_libraries( test_drive_call PUBLIC macis )
 
 set(REF_DATA_PREFIX "${PROJECT_SOURCE_DIR}/tests/ref_data")
 configure_file( ut_common.hpp.in ${PROJECT_BINARY_DIR}/tests/ut_common.hpp)

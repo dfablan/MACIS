@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     // Create Logger
     auto console = world_rank ? spdlog::null_logger_mt("standalone_driver")
                               : spdlog::stdout_color_mt("standalone_driver");
-
+    
     // Read Input Options
     std::vector<std::string> opts(argc);
     for(int i = 0; i < argc; ++i) opts[i] = argv[i];
@@ -134,7 +134,11 @@ int main(int argc, char** argv) {
 
     if(n_inactive >= norb) throw std::runtime_error("NINACTIVE >= NORB");
 
+    std::cout << "norb=" << norb << std::endl;
+    std::cout << "n_inactive=" << n_inactive  << std::endl;
     size_t n_active = norb - n_inactive;
+    std::cout << "n_active=" << n_active  << std::endl;
+
     OPT_KEYWORD("CI.NACTIVE", n_active, size_t);
 
     if(n_inactive + n_active > norb)
@@ -214,9 +218,9 @@ int main(int argc, char** argv) {
     }
 
     // Setup printing
-    bool print_davidson = false, print_ci = false, print_mcscf = true,
-         print_diis = false, print_asci_search = false,
-         print_determinants = false;
+    bool print_davidson = true, print_ci = true, print_mcscf = true,
+         print_diis = true, print_asci_search = true,
+         print_determinants = true;
     double determinants_threshold = 1e-2;
     OPT_KEYWORD("PRINT.DAVIDSON", print_davidson, bool);
     OPT_KEYWORD("PRINT.CI", print_ci, bool);
@@ -280,10 +284,14 @@ int main(int argc, char** argv) {
 
     double E0 = 0;
 
+    std::cout << "STARTING JOB \n";
+
     // CI
-    if(job == Job::CI) {
+    if(job == Job::CI) {           
+      std::cout << "JOB=CI \n";
       using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
       if(ci_exp == CIExpansion::CAS) {
+        std::cout << "CIExpansion=CAS \n";
         std::vector<double> C_local;
         // TODO: VERIFY MPI + CAS
         E0 = macis::CASRDMFunctor<generator_t>::rdms(
@@ -324,14 +332,17 @@ int main(int argc, char** argv) {
           // Generate frequency grid
           double wmin = -8.;
           double wmax = 8.;
-          size_t nws = 1001;
+          size_t nws = 1000;
+          // size_t nws = 1001;
+          double beta = 157;
           double eta = 0.1;
           std::complex<double> w0(wmin, eta);
           std::complex<double> wf(wmax, eta);
           std::vector<std::complex<double>> ws(nws,
                                                std::complex<double>(0., 0.));
           for(int i = 0; i < nws; i++)
-            ws[i] = w0 + (wf - w0) / double(nws - 1) * double(i);
+            // ws[i] = w0 + (wf - w0) / double(nws - 1) * double(i);
+             ws[i] = std::complex<double>(0.,(2*i+1)*M_PI/ beta);
 
           // MCSCF Settings
           macis::GFSettings gf_settings;
@@ -347,32 +358,51 @@ int main(int argc, char** argv) {
           OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
           gf_settings.GF_orbs_basis = std::vector<int>(n_active, 0);
           for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_basis[i] = i;
-          gf_settings.GF_orbs_comp = std::vector<int>(2, 0);
-          for(int i = 0; i < 2; i++) gf_settings.GF_orbs_comp[i] = i;
+          gf_settings.GF_orbs_comp = std::vector<int>(n_active, 0);
+          for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_comp[i] = i;
           gf_settings.is_up_basis = std::vector<bool>(n_active, true);
-          gf_settings.is_up_comp = std::vector<bool>(2, true);
+          gf_settings.is_up_comp = std::vector<bool>(n_active, true);
 
           // GF vector
+          std::vector<int> todelete_p; 
+          std::vector<int> todelete_h; 
+
           std::vector<std::vector<std::complex<double>>> GF(
               nws, std::vector<std::complex<double>>(
-                       1, std::complex<double>(0., 0.)));
-
+                       n_active*n_active, std::complex<double>(0., 0.)));
+          std::vector<std::vector<std::complex<double>>> GF_tmp(
+              nws, std::vector<std::complex<double>>(
+                       n_active*n_active, std::complex<double>(0., 0.)));
           // Occupation numbers
           std::vector<double> occs(n_active, 1.);
+          for(int i = 0; i < n_active; i++)  {
+            occs[i] = active_ordm[i + i * n_active]/2; 
+            std::cout << "occs[" << i << "] = " << occs[i] << std::endl;}
+
 
           // GS vector
           Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
               C_local.data(), C_local.size());
 
           // Evaluate particle GF
-          macis::RunGFCalc<nwfn_bits>(GF, psi0, ham_gen, dets, E0, true, ws,
-                                      occs, gf_settings);
+          macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws,
+                                      occs, gf_settings, todelete_p);
+          
+          GF=GF_tmp;
           // Evaluate hole GF
-          macis::RunGFCalc<nwfn_bits>(GF, psi0, ham_gen, dets, E0, false, ws,
-                                      occs, gf_settings);
+          macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws,
+                                      occs, gf_settings,todelete_h);
+
+            if (todelete_h!=todelete_p)
+             std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
+
+            GF=macis::sum_GFs(GF,GF_tmp,ws,gf_settings.GF_orbs_comp,todelete_p);
+
+            if(gf_settings.writeGF_singlef) macis::write_GF(GF, ws, gf_settings.GF_orbs_comp,todelete_p);
         }
 
       } else {
+        std::cout << "CIExpansion=ASCI \n";
         // Generate the Hamiltonian Generator
         generator_t ham_gen(
             macis::matrix_span<double>(T_active.data(), n_active, n_active),
@@ -415,11 +445,13 @@ int main(int argc, char** argv) {
         auto asci_st = hrt_t::now();
 
         // Growth phase
+        std::cout << "GROWTH PHASE \n";
         std::tie(E0, dets, C) = macis::asci_grow(
             asci_settings, mcscf_settings, E0, std::move(dets), std::move(C),
             ham_gen, n_active MACIS_MPI_CODE(, MPI_COMM_WORLD));
 
         // Refinement phase
+        std::cout << "REFINEMENT PHASE \n";
         if(asci_settings.max_refine_iter) {
           std::tie(E0, dets, C) = macis::asci_refine(
               asci_settings, mcscf_settings, E0, std::move(dets), std::move(C),

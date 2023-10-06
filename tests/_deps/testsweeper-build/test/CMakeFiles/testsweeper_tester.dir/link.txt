@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/testsweeper_tester.dir/test.cc.o CMakeFiles/testsweeper_tester.dir/test_sort.cc.o -o testsweeper_tester  -Wl,-rpath,/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-build ../libtestsweeper.so /usr/lib/gcc/x86_64-linux-gnu/9/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.so 

@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/CMakeFiles/testsweeper-populate"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/CMakeFiles/testsweeper-populate.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/CMakeFiles/testsweeper-populate-complete.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-build.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-configure.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-download.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-install.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-patch.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-test.rule"
+		},
+		{
+			"file" : "/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/testsweeper-subbuild/testsweeper-populate-prefix/src/testsweeper-populate-stamp/testsweeper-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"testsweeper-populate"
+		],
+		"name" : "testsweeper-populate"
+	}
+}

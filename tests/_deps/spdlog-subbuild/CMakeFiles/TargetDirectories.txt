@@ -1,0 +1,3 @@
+/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/spdlog-subbuild/CMakeFiles/spdlog-populate.dir
+/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/spdlog-subbuild/CMakeFiles/edit_cache.dir
+/home/diego/Documents/SISSA/Projects/CI_solver/MACIS_build/tests/_deps/spdlog-subbuild/CMakeFiles/rebuild_cache.dir
