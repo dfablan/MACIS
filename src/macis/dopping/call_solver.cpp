@@ -6,29 +6,28 @@ namespace macis {
 
 double SolveImpurityED (void * params){
 
-    std::cout<<"Enter solver call"<<std::endl;
 
     // struct fix_mu_params *p = (struct fix_mu_params *)params;
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
-    size_t norb = * p->norb;
-    size_t n_active = * p->n_active;
-    size_t nalpha = * p->nalpha;
-    size_t nbeta = * p->nbeta;
-    size_t n_inactive = * p->n_inactive;
-    std::vector<double> T = * p->T;
-    std::vector<double> V = *p->V;
-    bool just_singles = *p->just_singles;
-    size_t n_imp = *p->n_imp;
-    double E_core = *p->E_core;
-    macis::MCSCFSettings mcscf_settings = *p->mcscf_settings;
-    macis::ASCISettings asci_settings = *p->asci_settings;
+    size_t norb = * (p->norb);
+    size_t n_active = * (p->n_active);
+    size_t nalpha = * (p->nalpha);
+    size_t nbeta = * (p->nbeta);
+    size_t n_inactive = * (p->n_inactive);
+    std::vector<double> T = * (p->T);
+    std::vector<double> V = *(p->V);
+    bool just_singles = *(p->just_singles);
+    size_t n_imp = *(p->n_imp);
+    double E_core = *(p->E_core);
+    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
+    macis::ASCISettings asci_settings = *(p->asci_settings);
 
 
-    std::vector<double> * T_ptr = p->T;
-    for(int i = 0; i < norb; i++) {
-        std::cout << "T_diagonal_" << i << " = " << T_ptr->at(i+norb*i) << std::endl;
-    }
+    // std::vector<double> * T_ptr = p->T;
+    // for(int i = 0; i < norb; i++) {
+    //     std::cout << "T_diagonal_" << i << " = " << T_ptr->at(i+norb*i) << std::endl;
+    // }
 
    std::vector<macis::wfn_t<nwfn_bits>> dets;
    std::vector<double> C;  
@@ -99,12 +98,11 @@ double SolveImpurityED (void * params){
       // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    *p->occs = occs;
-    *p->C = C;
-    *p->dets = dets;
+    *(p->occs) = occs;
+    *(p->C) = C;
+    *(p->dets) = dets;
 
 
-    std::cout<<"Exit solver call"<<std::endl;
     
     return E0;
 }
@@ -116,21 +114,21 @@ double SolveImpurityASCI (void * params){
     // struct fix_mu_params *p = (struct fix_mu_params *)params;
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
-    size_t norb = *p->norb;
-    size_t n_active =* p->n_active;
-    size_t nalpha = *p->nalpha;
-    size_t nbeta = *p->nbeta;
-    size_t n_inactive = *p->n_inactive;
-    std::vector<double> T = *p->T;
-    std::vector<double> V = *p->V;
-    bool just_singles = *p->just_singles;
-    size_t n_imp = *p->n_imp;
-    double E_core = *p->E_core;
-    macis::MCSCFSettings mcscf_settings = *p->mcscf_settings;
-    macis::ASCISettings asci_settings = *p->asci_settings;
-    std::vector<double> occs = *p->occs;
-    std::vector<double> C = *p->C;
-    std::vector<macis::wfn_t<nwfn_bits>> dets = *p->dets;
+    size_t norb = *(p->norb);
+    size_t n_active =* (p->n_active);
+    size_t nalpha = *(p->nalpha);
+    size_t nbeta = *(p->nbeta);
+    size_t n_inactive = *(p->n_inactive);
+    std::vector<double> T = *(p->T);
+    std::vector<double> V = *(p->V);
+    bool just_singles = *(p->just_singles);
+    size_t n_imp = *(p->n_imp);
+    double E_core = *(p->E_core);
+    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
+    macis::ASCISettings asci_settings = *(p->asci_settings);
+    std::vector<double> occs = *(p->occs);
+    std::vector<double> C = *(p->C);
+    std::vector<macis::wfn_t<nwfn_bits>> dets = *(p->dets);
 
     size_t norb2 = norb * norb;
     size_t norb3 = norb2 * norb;
@@ -186,12 +184,8 @@ double SolveImpurityASCI (void * params){
     E0 += E_inactive + E_core;
     
 
-   //print dets
-   for(int i = 0; i < dets.size(); i++) {
-      std::cout << "C[" << i << "] = " << C[i] << std::endl;
-    }
 
-    std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
+    // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
     ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C.data(), 
     macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
@@ -201,12 +195,12 @@ double SolveImpurityASCI (void * params){
     // std::vector<double> occs(n_active, 1);
     for(int i = 0; i < n_active; i++) {
       occs[i] = active_ordm[i + i * n_active]; 
-      std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+      // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    *p->occs = occs;
-    *p->C = C;
-    *p->dets = dets;
+    *(p->occs) = occs;
+    *(p->C) = C;
+    *(p->dets) = dets;
 
     return E0;
 }

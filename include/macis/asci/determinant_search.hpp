@@ -404,8 +404,7 @@ std::vector<wfn_t<N>> asci_search(
   using clock_type = std::chrono::high_resolution_clock;
   using duration_type = std::chrono::duration<double>;
 
-  std::cout << "ASCI Search has been called \n";
-
+  //std::cout << "ASCI Search has been called \n";
   // MPI Info
 #ifdef MACIS_ENABLE_MPI
   auto world_rank = comm_rank(comm);
@@ -509,18 +508,18 @@ std::vector<wfn_t<N>> asci_search(
 #endif
     logger->info("  * ASCI will search over {} unique determinants", npairs);
 
-  std::vector<double> scores(asci_pairs.size());
-  std::transform(asci_pairs.begin(), asci_pairs.end(), scores.begin(),
-                     [](const auto& p) { return std::abs(p.rv); });
-  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
-  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
-                 [](auto x) { return x.state; });
-
-  //  ############################################################# 
-   macis::write_wavefunction("D_SD.dat", norb,new_dets, scores);
-  //  ############################################################# 
-
-
+//  std::vector<double> scores(asci_pairs.size());
+//  std::transform(asci_pairs.begin(), asci_pairs.end(), scores.begin(),
+//                     [](const auto& p) { return std::abs(p.rv); });
+//  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
+//  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
+//                 [](auto x) { return x.state; });
+//
+//  //  ############################################################# 
+//   macis::write_wavefunction("D_SD.dat", norb,new_dets, scores);
+//  //  ############################################################# 
+//
+//
     float pairs_dur = duration_type(pairs_en - pairs_st).count();
     float bit_sort_dur = duration_type(bit_sort_en - bit_sort_st).count();
 
@@ -560,7 +559,7 @@ std::vector<wfn_t<N>> asci_search(
 
   // Only do top-K on (ndets_max - ncdets) b/c CDETS will be added later
   // const size_t top_k_elements = ndets_max - ncdets;
-  const size_t top_k_elements = ndets_max; 
+  const size_t top_k_elements = ndets_max;
 
   auto keep_large_en = clock_type::now();
   duration_type keep_large_dur = keep_large_en - keep_large_st;

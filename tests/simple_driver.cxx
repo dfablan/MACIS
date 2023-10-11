@@ -340,7 +340,7 @@ int main(int argc, char** argv) {
     macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
   }
 
-  ham_gen.form_rdms(dets.begin(),dets.begin(),dets.end(),dets.end(), C.data(), 
+  ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C.data(), 
   macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
   macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
 
@@ -434,6 +434,9 @@ if(testGF) {
     occs[i] = active_ordm[i + i * n_active]/2; 
     std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
   }
+  double curr_nel = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
+    std::cout<< "Total number of electrons = "<< std::setprecision(10) << 2*curr_nel << std::endl;
+
   // GS vector
   std::vector<int> todelete_p; 
   std::vector<int> todelete_h; 

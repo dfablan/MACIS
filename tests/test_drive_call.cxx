@@ -204,8 +204,9 @@ int main(int argc, char** argv) {
   params.C = &C;
   params.occs = &occs;
   params.E = &E;
+  params.ci_exp = &ciexp_str;
 
-  double mu = -9.0;
+  // double mu = -9.0;
   // for(int i = 0; i < n_imp; i++) 
   // {
   //  T[i*norb+i] = mu;
@@ -214,7 +215,7 @@ int main(int argc, char** argv) {
  params.T = &T;
 
 
-  // std::cout << "E = " << E << std::endl;
+  std::cout << "E = " << E << std::endl;
   
   // for(int i = 0; i < n_active; i++) {
   // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
@@ -223,22 +224,38 @@ int main(int argc, char** argv) {
   // E = SolveImpurityED(&params);
   // E = SolveImpurityASCI(&params);
 
-  std::cout << "E = " << E << std::endl;
+  // std::cout << "E = " << E << std::endl;
 
-  for(int i = 0; i < n_active; i++) {
-  std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+  // for(int i = 0; i < n_active; i++) {
+  // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+  // }
+
+
+// Printing Mu_Cost_f and Mu_Cost_df as a function of mu to check if they are correct
+// mu ranging from -10 to 10
+
+  double mu = -10.0;
+  double err;
+  double derr;
+  int npt = 1000;
+  for (int i = 0; i < npt; i++)
+  {
+    mu += 20.0/npt;
+    err = Mu_Cost_f (mu , &params);
+    derr = Mu_Cost_df (mu , &params);
+    std::cout << mu << " " << err+nel << " " << derr << std::endl;
   }
 
-  double err = Mu_Cost_f (mu , &params);
-  double derr = Mu_Cost_df (mu , &params);
-  std::cout << "err = " << err << std::endl;
-  std::cout << "derr = " << derr << std::endl;
+  // double err = Mu_Cost_f (mu , &params);
+  // double derr = Mu_Cost_df (mu , &params);
+  // std::cout << "err = " << err << std::endl;
+  // std::cout << "derr = " << derr << std::endl;
 
-  std::cout << "E = " << E << std::endl;
+  // std::cout << "E = " << E << std::endl;
 
-  for(int i = 0; i < n_active; i++) {
-  std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
-  }
+  // for(int i = 0; i < n_active; i++) {
+  // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+  // }
 
   return 0;
 }

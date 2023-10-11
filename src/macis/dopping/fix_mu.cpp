@@ -5,70 +5,73 @@ namespace macis {
 
   double Mu_Cost_f (double x, void * params)
   {
-    std::cout<< "enter mu_cost_f"<<std::endl;
 
 // CAN I AVOID DEFINING THIS HERE? AND USING DIRECTLY SOMETHING LIKE params->norb?
 //  struct fix_mu_params *p = (struct fix_mu_params *)params;
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
-    std::cout<< "0 mu_cost_f"<<std::endl;
 
 
     size_t norb = *(p->norb);
     size_t n_imp = *(p->n_imp);
-    size_t nel = *(p->nel);
-
+    double nel = *(p->nel);
+    
+    std::string ci_exp = *(p->ci_exp);
+    
     // Solve the impurity problem
     double mu = x;  
     double curr_nel = 0.0;
 
 
-    std::cout<< "1 mu_cost_f"<<std::endl;
 
     for(int i = 0; i < n_imp; i++) 
     {
      p->T->at(i*norb+i) = mu;
     }
 
-    std::cout<< "2 mu_cost_f"<<std::endl;
 
 
     // std::vector<double> * T_ptr = p->T;
     // for(int i = 0; i < norb; i++) {
     //     std::cout << "T_diagonal_" << i << " = " << T_ptr->at(i+norb*i) << std::endl;
     // }
+
     // CAN I AVOID DEFINING THIS HERE? 
-    std::vector<double> occs = *p->occs;
+    std::vector<double> occs = *(p->occs);
 
     curr_nel = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
 
-    std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
+    // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
 
-    // if (norb<=10)
-    // {
-        double E = SolveImpurityED(p);
-    // }
-    // else 
-    // {
-    //     double E = SolveImpurityASCI(p);
-    // }
+// IMPLEMENT DIRECT CHOICE FROM INPUT FILE
+    double E;
+    if (ci_exp == "CAS")
+    {
+        E = SolveImpurityED(p);
+    }
+    else 
+    {
+        E = SolveImpurityASCI(p);
+    }
 
-    occs = *p->occs;
-    *p->E = E;
+    occs = *(p->occs);
+    *(p->E) = E;
 
-    curr_nel = std::accumulate(occs.begin(), occs.begin()+*p->n_imp, 0.0);
+    curr_nel = std::accumulate(occs.begin(), occs.begin()+*(p->n_imp), 0.0);
 
-    std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
+    // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
+    // std::cout<< "Goal number of electrons = "<< nel << std::endl;
 
     double err = curr_nel - nel;
-    std::cout<< "exit mu_cost_f"<<std::endl;
+
+    // std::cout<< "err = "<< err << std::endl;
+    // std::cout << "x = " << x << std::endl;
 
     return err;
   }
 
   double Mu_Cost_df(double x, void * params)
   {
-    std::cout<< "enter mu_cost_df"<<std::endl;
 
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
     //  struct fix_mu_params *p = (struct fix_mu_params *)params;
@@ -79,19 +82,17 @@ namespace macis {
      double fdx = Mu_Cost_f(dmu, p);
      double f   = Mu_Cost_f( mu, p);
     
-    std::cout<< "exit mu_cost_df"<<std::endl;
      
      return (fdx - f) / dstep;
   }
 
   void Mu_Cost_fdf(double x, void * params, double *f , double *df)
   {
-    std::cout<< "enter mu_cost_fdf"<<std::endl;
 
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
     // struct fix_mu_params *p = (struct fix_mu_params *)params;
-    double dstep = *p->dstep;
+    double dstep = *(p->dstep);
     double mu = x;
     double dmu = mu + dstep;
     double fdx = Mu_Cost_f(dmu, p);
@@ -99,7 +100,6 @@ namespace macis {
     *f  = Mu_Cost_f(mu, p);
     *df = (fdx - *f)/dstep;
 
-    std::cout<< "exit mu_cost_fdf"<<std::endl;
 
  }
 
@@ -146,13 +146,13 @@ namespace macis {
            << std::endl;
   }
 
-  const gsl_root_fsolver_type * SelectMuSolverType_noder( const std::string &solver_name )
+  const gsl_root_fsolver_type * SelectMuSolverType_noder( const std::string &method_name )
   {
-      if (solver_name == "brent")
+      if (method_name == "brent")
           return gsl_root_fsolver_brent;
-      else if (solver_name == "bisection")
+      else if (method_name == "bisection")
           return gsl_root_fsolver_bisection;
-      else if (solver_name == "falsepos")
+      else if (method_name == "falsepos")
           return gsl_root_fsolver_falsepos;
       else
       {
@@ -166,13 +166,13 @@ namespace macis {
       }
   }
 
-  const gsl_root_fdfsolver_type * SelectMuSolverType_der( const std::string &solver_name )
+  const gsl_root_fdfsolver_type * SelectMuSolverType_der( const std::string &method_name )
   {
-    if (solver_name == "newton")
+    if (method_name == "newton")
       return gsl_root_fdfsolver_newton;
-    else if (solver_name == "secant")
+    else if (method_name == "secant")
       return gsl_root_fdfsolver_secant;
-    else if (solver_name == "steffenson")
+    else if (method_name == "steffenson")
       return gsl_root_fdfsolver_steffenson;
     else
     {
@@ -244,28 +244,22 @@ namespace macis {
   } 
 
   // Version using derivatives!
-  double Fix_Mu_der(const std::string &solver_name, double &init_mu, void * params)
+  double Fix_Mu_der(const std::string &method_name, double &init_mu, fix_mu_params * params)
   {
-      // Optimization parameters
-      // size_t Natoms_cell    = gg.latt->GetNAtomsPerCell();
-      // mu_opt_ED_params params = { &gg, 
-      //                             &Vs, 
-			// 	  &lambda_cs, 
-			// 	  &Chis,
-			// 	  &ref_n, 
-			// 	  &imp_1rdms,
-			// 	  &spsp_cfs,
-			// 	  &Eimps,
-			// 	  &input };
 
-    double abs_tol;
-    abs_tol =  1.E-4; 
+
+    double abs_tol = *(params -> abs_tol);
+    size_t maxiter = *(params->maxiter);
+    bool print = *(params->nel);
+
+    // double abs_tol;
+    // abs_tol =  1.E-4; 
     
-    size_t maxiter;
-    maxiter = 100; 
+    // size_t maxiter;
+    // maxiter = 100; 
       
-    bool print;
-    print =  true; 
+    // bool print;
+    // print =  true; 
       
     // Solver type label and solver
       
@@ -289,11 +283,9 @@ namespace macis {
     double mu0 = init_mu;
 
     // Set the solver:
-    T = SelectMuSolverType_der( solver_name );
+    T = SelectMuSolverType_der( method_name );
     s = gsl_root_fdfsolver_alloc (T);
-    std::cout << "here " << std::endl;
     gsl_root_fdfsolver_set (s, &f, mu0);
-    std::cout << "there " << std::endl;
 
     // Print header and initial point
     if( print )
@@ -331,18 +323,24 @@ namespace macis {
     }
 
 
-  double Fix_Mu_noder(const std::string &solver_name, double &init_mu, void * params)
+  double Fix_Mu_noder(const std::string &method_name, double &init_mu, fix_mu_params * params)
   {
     
     // Optimization parameters
-    double abs_tol;
-    abs_tol =  1.E-4; 
-    size_t maxiter;
-    maxiter = 100; 
-    bool print;
-    print =  true; 
-    double init_shift ;
-    init_shift =  2.0;
+
+    double abs_tol = *(params -> abs_tol);
+    size_t maxiter = *(params->maxiter);
+    bool print = *(params->nel);
+    double init_shift = *(params->init_shift);
+
+    // double abs_tol;
+    // abs_tol =  1.E-4; 
+    // size_t maxiter;
+    // maxiter = 100; 
+    // bool print;
+    // print =  true; 
+    // double init_shift ;
+    // init_shift =  2.0;
 
     // Solver type label and solver
     const gsl_root_fsolver_type *T;
@@ -359,10 +357,14 @@ namespace macis {
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
     double x_lo = mu0-std::abs(init_shift), x_hi = mu0+std::abs(init_shift);
-    //ProposeInitBracket( &params, x_lo, x_hi );
+    ProposeInitBracket_MuED( params, x_lo, x_hi );
+
+    // std::cout<< "f(" << x_lo << ") =" << f.function(x_lo,params) << std::endl;
+    // std::cout<< "f(" << x_hi << ") =" << f.function(x_hi,params) << std::endl;
+
 
     // Set the solver:
-    T = SelectMuSolverType_noder( solver_name );
+    T = SelectMuSolverType_noder( method_name );
     s = gsl_root_fsolver_alloc (T);
     gsl_root_fsolver_set (s, &f, x_lo, x_hi);
 

@@ -32,6 +32,15 @@ struct fix_mu_params
     double* nel;
     size_t* n_imp;
 
+    
+    double *abs_tol;
+    size_t *maxiter;
+    bool *print;
+    double *init_shift;
+
+    std::string *ci_exp;
+
+
     macis::MCSCFSettings* mcscf_settings;
     macis::ASCISettings* asci_settings;
     std::vector<double>* occs;
@@ -45,15 +54,6 @@ struct fix_mu_params
     std::vector<double>* V;    
     bool* just_singles;
 
-    // GhostGutzwiller const*              gg;
-    // std::vector<Eigen::MatrixXd> const* Vs;
-    // std::vector<Eigen::MatrixXd> const* lambdcs;
-    // std::vector<Eigen::MatrixXd> const* Chis;
-    // double const*                       nel;
-    // std::vector<Eigen::MatrixXd>*       imp_1rdms;
-    // std::vector<Eigen::MatrixXd>*       spsp_cfs;
-    // std::vector<double>*                Eimps;
-    // Input_t const*                      input;
 };
 
 /**
@@ -144,7 +144,7 @@ void print_state_fix_mu_noder( std::ostream& stream, size_t iter, const gsl_root
 //  * @returns double: Optimal chemical potential
 //  *
 //  */ 
-double Fix_Mu_der(const std::string &solver_name, double &init_mu, void * params);
+double Fix_Mu_der(const std::string &method_name, double &init_mu, fix_mu_params * params);
              
              
 
@@ -168,7 +168,7 @@ double Fix_Mu_der(const std::string &solver_name, double &init_mu, void * params
 //  *
 //  * @returns double: Optimal chemical potential
 //  *
-double Fix_Mu_noder(const std::string &solver_name, double &init_mu, void * params);
+double Fix_Mu_noder(const std::string &method_name, double &init_mu, fix_mu_params * params);
 
 
 }

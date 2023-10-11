@@ -52,10 +52,10 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
         std::min(std::max(asci_settings.ntdets_min,
                           wfn.size() * asci_settings.grow_factor),
                  asci_settings.ntdets_max);
-    std::cout << "ndets_new = " << ndets_new << std::endl;
+//    std::cout << "ndets_new = " << ndets_new << std::endl;
     double E;
     auto ai_st = hrt_t::now();
-    std::cout << "CALLING asci_iter inside GROWTH PHASE \n";
+//    std::cout << "CALLING asci_iter inside GROWTH PHASE \n";
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets_new, E0, std::move(wfn),
         std::move(X), ham_gen, norb MACIS_MPI_CODE(, comm));
@@ -63,8 +63,8 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
     dur_t ai_dur = ai_en - ai_st;
     logger->trace("  * ASCI_ITER_DUR = {:.2e} ms", ai_dur.count());
     if(ndets_new > wfn.size())
-      // throw std::runtime_error("Wavefunction didn't grow enough...");
       logger->info("Wavefunction didn't grow enough...");
+    // throw std::runtime_error("Wavefunction didn't grow enough...");
 
     logger->info(fmt_string, iter++, E, E - E0, wfn.size());
     if(asci_settings.grow_with_rot and
