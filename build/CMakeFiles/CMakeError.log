@@ -1,0 +1,80 @@
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_5e8d3
+[1/2] /usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_5e8d3.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_5e8d3.dir/func_check.c.o -o cmTC_5e8d3  /usr/lib/x86_64-linux-gnu/libblas.so && :
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_55463
+[1/2] /usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_55463.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_55463.dir/func_check.c.o -o cmTC_55463  /usr/lib/x86_64-linux-gnu/libblas.so && :
+FAILED: cmTC_55463 
+: && /usr/bin/cc   CMakeFiles/cmTC_55463.dir/func_check.c.o -o cmTC_55463  /usr/lib/x86_64-linux-gnu/libblas.so && :
+/usr/bin/ld: CMakeFiles/cmTC_55463.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `dpstrf_'
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.
+
+FUNCTION CHECK: LAPACK_LOWER_NO_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_ecccb
+[1/2] /usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_ecccb.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_ecccb.dir/func_check.c.o -o cmTC_ecccb  /usr/lib/x86_64-linux-gnu/libblas.so && :
+FAILED: cmTC_ecccb 
+: && /usr/bin/cc   CMakeFiles/cmTC_ecccb.dir/func_check.c.o -o cmTC_ecccb  /usr/lib/x86_64-linux-gnu/libblas.so && :
+/usr/bin/ld: CMakeFiles/cmTC_ecccb.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `dpstrf_'
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.
+
+FUNCTION CHECK: LAPACK_UPPER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_96f4d
+[1/2] /usr/bin/cc -DFUNC_NAME=DPSTRF_   -o CMakeFiles/cmTC_96f4d.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_96f4d.dir/func_check.c.o -o cmTC_96f4d  /usr/lib/x86_64-linux-gnu/libblas.so && :
+FAILED: cmTC_96f4d 
+: && /usr/bin/cc   CMakeFiles/cmTC_96f4d.dir/func_check.c.o -o cmTC_96f4d  /usr/lib/x86_64-linux-gnu/libblas.so && :
+/usr/bin/ld: CMakeFiles/cmTC_96f4d.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `DPSTRF_'
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.
+
+FUNCTION CHECK: LAPACK_UPPER_NO_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_36be1
+[1/2] /usr/bin/cc -DFUNC_NAME=DPSTRF_   -o CMakeFiles/cmTC_36be1.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_36be1.dir/func_check.c.o -o cmTC_36be1  /usr/lib/x86_64-linux-gnu/libblas.so && :
+FAILED: cmTC_36be1 
+: && /usr/bin/cc   CMakeFiles/cmTC_36be1.dir/func_check.c.o -o cmTC_36be1  /usr/lib/x86_64-linux-gnu/libblas.so && :
+/usr/bin/ld: CMakeFiles/cmTC_36be1.dir/func_check.c.o: in function `main':
+func_check.c:(.text+0xe): undefined reference to `DPSTRF_'
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_d88d4
+[1/2] /usr/bin/cc -DFUNC_NAME=dpstrf_   -o CMakeFiles/cmTC_d88d4.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_d88d4.dir/func_check.c.o -o cmTC_d88d4  /usr/lib/x86_64-linux-gnu/liblapack.so  /usr/lib/x86_64-linux-gnu/libblas.so && :
+
+FUNCTION CHECK: LAPACK_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_127e4
+[1/2] /usr/bin/cc -DFUNC_NAME=dgesvd_   -o CMakeFiles/cmTC_127e4.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_127e4.dir/func_check.c.o -o cmTC_127e4  /usr/lib/x86_64-linux-gnu/liblapack.so  /usr/lib/x86_64-linux-gnu/libblas.so && :
+
+FUNCTION CHECK: BLAS_LOWER_UNDERSCORE
+ Change Dir: '/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/src/lobpcgxx/CMakeFiles/CMakeTmp'
+
+Run Build Command(s): /home/diego/.local/bin/ninja -v cmTC_46b7a
+[1/2] /usr/bin/cc -DFUNC_NAME=dgemm_   -o CMakeFiles/cmTC_46b7a.dir/func_check.c.o -c /home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/linalg-cmake-modules-src/util/func_check.c
+[2/2] : && /usr/bin/cc   CMakeFiles/cmTC_46b7a.dir/func_check.c.o -o cmTC_46b7a  /usr/lib/x86_64-linux-gnu/libblas.so && :
+

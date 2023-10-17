@@ -1,0 +1,21 @@
+# ninja log v5
+0	11	1697530077707478983	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-mkdir	3e17fc79cb2b58cf
+0	11	1697530077707478983	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-mkdir	3e17fc79cb2b58cf
+11	4397	1697530082095492282	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-download	47234cfa9a17bcf8
+11	4397	1697530082095492282	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-download	47234cfa9a17bcf8
+4398	4941	0	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-update	f80a9a049fdf7d3d
+4398	4941	0	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-update	f80a9a049fdf7d3d
+4941	4949	1697530082647493956	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-patch	6ae62e2dd52c9b35
+4941	4949	1697530082647493956	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-patch	6ae62e2dd52c9b35
+4949	4959	1697530082655493981	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-configure	11cf8c7ebdebf272
+4949	4959	1697530082655493981	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-configure	11cf8c7ebdebf272
+4959	4968	1697530082667494018	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-build	58f13eafe37ae2f1
+4959	4968	1697530082667494018	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-build	58f13eafe37ae2f1
+4968	4977	1697530082675494042	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-install	fcd8a404c44db62
+4968	4977	1697530082675494042	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-install	fcd8a404c44db62
+4977	4985	1697530082683494066	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-test	5292f8a0e2808cc1
+4977	4985	1697530082683494066	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-test	5292f8a0e2808cc1
+4985	4997	1697530082695494103	CMakeFiles/spdlog-populate-complete	8d2d8659cee3d256
+4985	4997	1697530082695494103	spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-done	8d2d8659cee3d256
+4985	4997	1697530082695494103	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/CMakeFiles/spdlog-populate-complete	8d2d8659cee3d256
+4985	4997	1697530082695494103	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/spdlog-subbuild/spdlog-populate-prefix/src/spdlog-populate-stamp/spdlog-populate-done	8d2d8659cee3d256

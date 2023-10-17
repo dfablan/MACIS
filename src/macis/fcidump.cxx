@@ -58,7 +58,6 @@ auto fcidump_line(const std::vector<std::string>& tokens) {
 
   if(p < 0 or q < 0 or r < 0 or s < 0)
     throw std::runtime_error("Invalid Orb Idx");
-
   return std::make_tuple(p, q, r, s, integral);
 }
 

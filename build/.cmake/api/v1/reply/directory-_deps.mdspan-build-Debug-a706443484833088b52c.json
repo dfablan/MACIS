@@ -1,0 +1,85 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"build/_deps/mdspan-src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 157,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 168,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 180,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/mdspan",
+			"exportName" : "mdspanTargets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "mdspan::@a5f9435af7d3520cdf45",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"_deps/mdspan-build/CMakeFiles/Export/0fcc4e9244b7da2a9197bf159c4c4e9e/mdspanTargets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "include",
+			"paths" : 
+			[
+				"build/_deps/mdspan-src/include/experimental",
+				"build/_deps/mdspan-src/include/mdspan"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/mdspan",
+			"paths" : 
+			[
+				"build/_deps/mdspan-build/mdspanConfig.cmake",
+				"build/_deps/mdspan-build/mdspanConfigVersion.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "_deps/mdspan-build",
+		"source" : "build/_deps/mdspan-src"
+	}
+}

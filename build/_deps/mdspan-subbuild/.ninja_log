@@ -1,0 +1,21 @@
+# ninja log v5
+1	10	1697530083195495620	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-mkdir	33c106242b364f43
+1	10	1697530083195495620	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-mkdir	33c106242b364f43
+11	1034	1697530084219498730	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-download	cfcff2a91eb01c79
+11	1034	1697530084219498730	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-download	cfcff2a91eb01c79
+1034	1636	0	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-update	4b163e0e8d4216e1
+1034	1636	0	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-update	4b163e0e8d4216e1
+1636	1648	1697530084831500588	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-patch	12b5e6ebb8fd7ace
+1636	1648	1697530084831500588	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-patch	12b5e6ebb8fd7ace
+1648	1661	1697530084843500625	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-configure	7898ebb15b042afd
+1648	1661	1697530084843500625	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-configure	7898ebb15b042afd
+1661	1671	1697530084855500661	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-build	22a364522f304396
+1661	1671	1697530084855500661	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-build	22a364522f304396
+1671	1688	1697530084871500710	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-install	c1513c345c546a59
+1671	1688	1697530084871500710	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-install	c1513c345c546a59
+1688	1696	1697530084879500734	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-test	41922de2046661e8
+1688	1696	1697530084879500734	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-test	41922de2046661e8
+1696	1708	1697530084891500770	CMakeFiles/mdspan-populate-complete	6a24e302a566175f
+1696	1708	1697530084891500770	mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-done	6a24e302a566175f
+1696	1708	1697530084891500770	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/CMakeFiles/mdspan-populate-complete	6a24e302a566175f
+1696	1708	1697530084891500770	/home/diego/Documents/Trabajo/SISSA/Projects/CI_solver/MACIS_mod/build/_deps/mdspan-subbuild/mdspan-populate-prefix/src/mdspan-populate-stamp/mdspan-populate-done	6a24e302a566175f

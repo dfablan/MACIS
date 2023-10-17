@@ -435,7 +435,7 @@ if(testGF) {
     std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
   }
   double curr_nel = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
-    std::cout<< "Total number of electrons = "<< std::setprecision(10) << 2*curr_nel << std::endl;
+    std::cout<< "Total number of electrons = "<< std::setprecision(16) << 2*curr_nel << std::endl;
 
   // GS vector
   std::vector<int> todelete_p; 

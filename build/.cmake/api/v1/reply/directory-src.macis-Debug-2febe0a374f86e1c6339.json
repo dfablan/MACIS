@@ -1,0 +1,234 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"install_linalg_modules"
+		],
+		"files" : 
+		[
+			"src/macis/CMakeLists.txt",
+			"build/_deps/linalg-cmake-modules-src/LinAlgModulesMacros.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 80,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 96,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 102,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 110,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 133,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 141,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 61,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 66,
+				"parent" : 6
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"src/macis/libmacis.so"
+			],
+			"targetId" : "macis::@3f23511e92cb5e41dd93",
+			"targetIndex" : 30,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"src/sparsexx/libsparsexx.so"
+			],
+			"targetId" : "sparsexx::@73f47534886deb2a6db0",
+			"targetIndex" : 34,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"_deps/spdlog-build/libspdlogd.so.1.12.0",
+				"_deps/spdlog-build/libspdlogd.so.1.12"
+			],
+			"targetId" : "spdlog::@eb35cfce7893ccfeff1e",
+			"targetIndex" : 35,
+			"targetInstallNamelink" : "skip",
+			"type" : "target"
+		},
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"_deps/spdlog-build/libspdlogd.so"
+			],
+			"targetId" : "spdlog::@eb35cfce7893ccfeff1e",
+			"targetIndex" : 35,
+			"targetInstallNamelink" : "only",
+			"type" : "target"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "/usr/local",
+			"paths" : 
+			[
+				"include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "include/macis",
+			"paths" : 
+			[
+				"build/include/macis/macis_config.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/macis",
+			"exportName" : "macis-targets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "macis::@3f23511e92cb5e41dd93",
+					"index" : 30
+				},
+				{
+					"id" : "lobpcgxx::@f6e861de985baaa38498",
+					"index" : 0
+				},
+				{
+					"id" : "sparsexx::@73f47534886deb2a6db0",
+					"index" : 34
+				},
+				{
+					"id" : "spdlog::@eb35cfce7893ccfeff1e",
+					"index" : 35
+				}
+			],
+			"paths" : 
+			[
+				"src/macis/CMakeFiles/Export/7bb25f7bad96ebd129324292344148a0/macis-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/macis",
+			"paths" : 
+			[
+				"build/src/macis/macis-config.cmake",
+				"build/src/macis/macis-config-version.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/macis/linalg-cmake-modules",
+			"paths" : 
+			[
+				"build/_deps/linalg-cmake-modules-src/FindBLAS.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindBLIS.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindIBMESSL.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindIntelMKL.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindLAPACK.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindOpenBLAS.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindReferenceBLAS.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindReferenceLAPACK.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindReferenceScaLAPACK.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindScaLAPACK.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindILP64.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindTBB.cmake",
+				"build/_deps/linalg-cmake-modules-src/FindStandardFortran.cmake",
+				"build/_deps/linalg-cmake-modules-src/LinAlgModulesMacros.cmake",
+				"build/_deps/linalg-cmake-modules-src/LICENSE.txt"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "Unspecified",
+			"destination" : "lib/cmake/macis/linalg-cmake-modules/util",
+			"paths" : 
+			[
+				"build/_deps/linalg-cmake-modules-src/util/BLASUtilities.cmake",
+				"build/_deps/linalg-cmake-modules-src/util/blis_int_size.c",
+				"build/_deps/linalg-cmake-modules-src/util/func_check.c",
+				"build/_deps/linalg-cmake-modules-src/util/get_mpi_vendor.c",
+				"build/_deps/linalg-cmake-modules-src/util/ilp64_checker.c",
+				"build/_deps/linalg-cmake-modules-src/util/lapack_ilp64_checker.c",
+				"build/_deps/linalg-cmake-modules-src/util/openblas_int_size.c",
+				"build/_deps/linalg-cmake-modules-src/util/CommonFunctions.cmake",
+				"build/_deps/linalg-cmake-modules-src/util/IntrospectMPI.cmake",
+				"build/_deps/linalg-cmake-modules-src/util/IntrospectOpenMP.cmake",
+				"build/_deps/linalg-cmake-modules-src/util/LAPACKUtilities.cmake",
+				"build/_deps/linalg-cmake-modules-src/util/ScaLAPACKUtilities.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/macis",
+		"source" : "src/macis"
+	}
+}
