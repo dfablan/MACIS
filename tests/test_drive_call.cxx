@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
   double mu = -10.0;
   double err;
   double derr;
-  int npt = 1000;
+  int npt = 100;
   for (int i = 0; i < npt; i++)
   {
     mu += 20.0/npt;

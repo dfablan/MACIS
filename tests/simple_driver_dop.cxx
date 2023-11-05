@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
     macis::write_fcidump(fcilocal_out_fname, n_imp,T.data(), norb, V.data(), norb,
                      E_core);
 
-    if(asci_wfn_out_fname.size()) 
+    if(ci_exp == CIExpansion::ASCI && asci_wfn_out_fname.size()) 
     {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
        macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
