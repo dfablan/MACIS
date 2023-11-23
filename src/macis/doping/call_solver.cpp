@@ -119,7 +119,9 @@ double SolveImpurityASCI (void * params){
     // struct fix_mu_params *p = (struct fix_mu_params *)params;
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
-    bool asci_wfn_guess = *(p->asci_wfn_guess);
+    bool compute_asci_E0 = *(p->compute_asci_E0);
+    double asci_E0 = *(p->asci_E0);
+    std::string asci_wfn_fname = *(p->asci_wfn_fname);
     size_t norb = *(p->norb);
     size_t n_active =* (p->n_active);
     size_t nalpha = *(p->nalpha);
@@ -169,25 +171,54 @@ double SolveImpurityASCI (void * params){
     ham_gen.SetJustSingles(just_singles);
     ham_gen.SetNimp(n_imp);
 
-    if(asci_wfn_guess == false) 
+    if(asci_wfn_fname.size()) 
     {
-      // HF Guess
-      // console->info("Generating HF Guess for ASCI");
-      dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
+      // Read wave function from standard file
+      // console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
+      std::cout<<"Reading Guess Wavefunction From "<< asci_wfn_fname << std::endl;
+      macis::read_wavefunction(asci_wfn_fname, dets, C);
       // std::cout << dets[0].to_ullong() << std::endl;
-      E0 = ham_gen.matrix_element(dets[0], dets[0]);
-      C = {1.0};
+      if(compute_asci_E0) 
+      {
+        // console->info("*  Calculating E0");
+        std::cout<<"Calculating E0"<<std::endl;
+        E0 = 0;
+        for(auto ii = 0; ii < dets.size(); ++ii) 
+        {
+          double tmp = 0.0;
+          for(auto jj = 0; jj < dets.size(); ++jj) 
+          {
+            tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C[jj];
+          }
+          E0 += C[ii] * tmp;
+        }
+      } 
+      else 
+      {
+        // console->info("*  Reading E0");
+        std::cout<<"Reading E0"<<std::endl;
+        E0 = asci_E0 - E_core - E_inactive;
+      }
+    } 
+    else 
+    {
+    // HF Guess
+    // console->info("Generating HF Guess for ASCI");
+    std::cout<<"Generating HF Guess for ASCI"<<std::endl;
+    dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
+    // std::cout << dets[0].to_ullong() << std::endl;
+    E0 = ham_gen.matrix_element(dets[0], dets[0]);
+    C = {1.0};
     }
-  
-  
+
     // Perform the ASCI calculation
     // Growth phase
-    // std::cout << "GROWTH PHASE \n";
+    std::cout << "GROWTH PHASE \n";
     std::tie(E0, dets, C) = macis::asci_grow(
         asci_settings, mcscf_settings, E0, std::move(dets), std::move(C),
         ham_gen, n_active MACIS_MPI_CODE(, MPI_COMM_WORLD));
     // Refinement phase
-    // std::cout << "REFINEMENT PHASE \n";
+    std::cout << "REFINEMENT PHASE \n";
     if(asci_settings.max_refine_iter) {
       std::tie(E0, dets, C) = macis::asci_refine(
           asci_settings, mcscf_settings, E0, std::move(dets), std::move(C),

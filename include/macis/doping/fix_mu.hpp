@@ -39,7 +39,9 @@ struct fix_mu_params
     double *init_shift;
 
     std::string *ci_exp;
-    bool *asci_wfn_guess;
+    std::string *asci_wfn_fname;
+    bool *compute_asci_E0;
+    double *asci_E0;
 
 
     macis::MCSCFSettings* mcscf_settings;

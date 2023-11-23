@@ -186,35 +186,7 @@ int main(int argc, char** argv) {
   double nel ;
   std::vector<double> occs(n_active, 0);
   double E0=0.0;
-  bool asci_wfn_guess = false;
-
-  if(ci_exp == CIExpansion::ASCI && asci_wfn_fname.size()) 
-  {
-    // Read wave function from standard file
-    console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
-    macis::read_wavefunction(asci_wfn_fname, dets, C);
-    asci_wfn_guess = true;
-    //std::cout << dets[0].to_ullong() << std::endl;
-    // if(compute_asci_E0) 
-    // {
-    //   console->info("*  Calculating E0");
-    //   E0 = 0;
-    //   for(auto ii = 0; ii < dets.size(); ++ii) {
-    //     double tmp = 0.0;
-    //     for(auto jj = 0; jj < dets.size(); ++jj) {
-    //       tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C[jj];
-    //     }
-    //     E0 += C[ii] * tmp;
-    //   }
-    // } 
-    // else 
-    // {
-    //   console->info("*  Reading E0");
-    //   E0 = asci_E0 - E_core - E_inactive;
-    // }
-  }
-
-
+  // bool asci_wfn_guess = false;
 
   macis::fix_mu_params params;
   params.nbeta = &nbeta;
@@ -233,7 +205,9 @@ int main(int argc, char** argv) {
   params.C = &C;
   params.occs = &occs;
   params.E = &E0;
-  params.asci_wfn_guess = &asci_wfn_guess;
+  params.asci_wfn_fname = &asci_wfn_fname;
+  params.compute_asci_E0 = &compute_asci_E0;
+  params.asci_E0 = &asci_E0;
 
 
 

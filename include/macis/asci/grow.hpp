@@ -55,7 +55,7 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 //    std::cout << "ndets_new = " << ndets_new << std::endl;
     double E;
     auto ai_st = hrt_t::now();
-//    std::cout << "CALLING asci_iter inside GROWTH PHASE \n";
+    std::cout << "CALLING asci_iter inside GROWTH PHASE \n";
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets_new, E0, std::move(wfn),
         std::move(X), ham_gen, norb MACIS_MPI_CODE(, comm));
