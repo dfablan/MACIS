@@ -1,5 +1,5 @@
 #define find_roots_cpp
-#include "macis/dopping/fix_mu.hpp"
+#include "macis/doping/fix_mu.hpp"
 
 namespace macis {
 

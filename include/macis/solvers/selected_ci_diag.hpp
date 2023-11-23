@@ -23,6 +23,7 @@ template <typename SpMatType>
 double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
                                  double davidson_res_tol,
                                  std::vector<double>& C_local, MPI_Comm comm) {
+
   auto logger = spdlog::get("ci_solver");
   if(!logger) {
     logger = spdlog::stdout_color_mt("ci_solver");
@@ -57,9 +58,11 @@ double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
   MPI_Barrier(comm);
   auto dav_st = clock_type::now();
 
+
   auto [niter, E] =
       p_davidson(H.local_row_extent(), davidson_max_m, op, D_local.data(),
                  davidson_res_tol, C_local.data() MACIS_MPI_CODE(, H.comm()));
+
 
   MPI_Barrier(comm);
   auto dav_en = clock_type::now();
@@ -76,10 +79,13 @@ template <typename SpMatType>
 double serial_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
                                double davidson_res_tol,
                                std::vector<double>& C) {
+
+
   auto logger = spdlog::get("ci_solver");
   if(!logger) {
     logger = spdlog::stdout_color_mt("ci_solver");
   }
+
 
   using clock_type = std::chrono::high_resolution_clock;
   using duration_type = std::chrono::duration<double, std::milli>;
@@ -193,6 +199,8 @@ double selected_ci_diag(wavefunction_iterator_t<N> dets_begin,
                  total_nnz / double(world_size));
   }
 #endif
+
+// std::cout<<"davidson_max_m = "<<davidson_max_m<<std::endl ;
 
   // Solve EVP
 #ifdef MACIS_ENABLE_MPI

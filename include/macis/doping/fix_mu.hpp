@@ -5,11 +5,11 @@
 */
 
 #pragma once
-// #ifndef MACIS_DOPPING_FIX_MU_HPP
-// #define MACIS_DOPPING_FIX_MU_HPP
+// #ifndef MACIS_DOPING_FIX_MU_HPP
+// #define MACIS_DOPING_FIX_MU_HPP
 #include <gsl/gsl_vector.h>
 #include <gsl/gsl_roots.h>
-#include "macis/dopping/call_solver.hpp"
+#include "macis/doping/call_solver.hpp"
 #include <iostream>
 
 constexpr size_t nwfn_bits = 64;
@@ -39,6 +39,7 @@ struct fix_mu_params
     double *init_shift;
 
     std::string *ci_exp;
+    bool *asci_wfn_guess;
 
 
     macis::MCSCFSettings* mcscf_settings;
@@ -172,4 +173,4 @@ double Fix_Mu_noder(const std::string &method_name, double &init_mu, fix_mu_para
 
 
 }
-// #endif // MACIS_DOPPING_FIX_MU_HPP
+// #endif // MACIS_DOPING_FIX_MU_HPP

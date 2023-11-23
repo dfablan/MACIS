@@ -1,5 +1,5 @@
-#include <macis/dopping/call_solver.hpp>
-#include <macis/dopping/fix_mu.hpp>
+#include <macis/doping/call_solver.hpp>
+#include <macis/doping/fix_mu.hpp>
 
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/null_sink.h>

@@ -19,8 +19,8 @@ add_library( macis
   gf/bandlan.cxx
   gf/gf.cxx
   model/hubbard.cxx
-  dopping/call_solver.cpp
-  dopping/fix_mu.cpp
+  doping/call_solver.cpp
+  doping/fix_mu.cpp
 )
 
 target_include_directories( macis PUBLIC 
@@ -67,7 +67,7 @@ include(macis-mdspan)
 target_link_libraries(macis PUBLIC mdspan)
 
 # GSL
-set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
+#set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
 find_package(GSL REQUIRED)
 target_link_libraries(macis PUBLIC GSL::gsl GSL::gslcblas)
 

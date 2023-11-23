@@ -1,5 +1,5 @@
-#include <macis/dopping/call_solver.hpp>
-#include <macis/dopping/fix_mu.hpp>
+#include <macis/doping/call_solver.hpp>
+#include <macis/doping/fix_mu.hpp>
 
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/null_sink.h>
@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("DOP.DSTEP",dstep, double);    
     OPT_KEYWORD("DOP.METHOD",method_name, std::string);
 
-    std::cout << "Dopping different from half-filling \n" ;
+    std::cout << "Doping different from half-filling \n" ;
     std::cout << std::setprecision(2) << nel<< " electrons in " << std::setprecision(1) << n_imp <<  " orbitals \n" ;
     std::cout << std::setprecision(3) << nel/n_imp << " electrons per orbital \n" ;
 

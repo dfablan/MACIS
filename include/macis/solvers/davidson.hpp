@@ -303,10 +303,14 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
   logger->info("  {} = {:6}, {} = {:4}, {} = {:10.5e}", "N_LOCAL", N_local,
                "MAX_M", max_m, "RES_TOL", tol);
 
+  // std::cout<<"=================================HERE0================================="<<std::endl;
+
   // Allocations
   std::vector<double> V_local(N_local * (max_m + 1)),
       AV_local(N_local * (max_m + 1)), C((max_m + 1) * (max_m + 1)),
       LAM(max_m + 1);
+
+  // std::cout<<"=================================HERE1================================="<<std::endl;
 
   // Copy over guess
   std::copy_n(X_local, N_local, V_local.begin());

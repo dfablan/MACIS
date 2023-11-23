@@ -1,5 +1,5 @@
-#include <macis/dopping/call_solver.hpp>
-#include <macis/dopping/fix_mu.hpp>
+#include <macis/doping/call_solver.hpp>
+#include <macis/doping/fix_mu.hpp>
 
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/null_sink.h>
@@ -185,7 +185,36 @@ int main(int argc, char** argv) {
 
   double nel ;
   std::vector<double> occs(n_active, 0);
-  double E=0.0;
+  double E0=0.0;
+  bool asci_wfn_guess = false;
+
+  if(ci_exp == CIExpansion::ASCI && asci_wfn_fname.size()) 
+  {
+    // Read wave function from standard file
+    console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
+    macis::read_wavefunction(asci_wfn_fname, dets, C);
+    asci_wfn_guess = true;
+    //std::cout << dets[0].to_ullong() << std::endl;
+    // if(compute_asci_E0) 
+    // {
+    //   console->info("*  Calculating E0");
+    //   E0 = 0;
+    //   for(auto ii = 0; ii < dets.size(); ++ii) {
+    //     double tmp = 0.0;
+    //     for(auto jj = 0; jj < dets.size(); ++jj) {
+    //       tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C[jj];
+    //     }
+    //     E0 += C[ii] * tmp;
+    //   }
+    // } 
+    // else 
+    // {
+    //   console->info("*  Reading E0");
+    //   E0 = asci_E0 - E_core - E_inactive;
+    // }
+  }
+
+
 
   macis::fix_mu_params params;
   params.nbeta = &nbeta;
@@ -203,7 +232,10 @@ int main(int argc, char** argv) {
   params.dets = &dets;
   params.C = &C;
   params.occs = &occs;
-  params.E = &E;
+  params.E = &E0;
+  params.asci_wfn_guess = &asci_wfn_guess;
+
+
 
 
   bool doping = false;
@@ -212,7 +244,8 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("DOP.NELECTRONS",nel, double);
 
   if(doping && nel/n_imp==1)
-    std::cout << "WARNING: Dopping routine were called but half-filling was asked \n" ;
+    std::cout << "WARNING: Doping routines were called but half-filling was asked \n" ;
+    std::cout << "Doping =" << doping << std::endl ;
   if(doping)
   {
     double dstep = 2.E-2;
@@ -233,7 +266,7 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("DOP.DSTEP",dstep, double);    
     OPT_KEYWORD("DOP.METHOD",method_name, std::string);
 
-    std::cout << "Dopping different from half-filling \n" ;
+    std::cout << "Electron filling parameters \n" ;
     std::cout << std::setprecision(2) << nel<< " electrons in " << std::setprecision(1) << n_imp <<  " orbitals \n" ;
     std::cout << std::setprecision(3) << nel/n_imp << " electrons per orbital \n" ;
 
@@ -281,12 +314,12 @@ int main(int argc, char** argv) {
   else
   {
 
-    std::cout << "Dopping at half-filling \n" ;
-    std::cout << "mu should be equal to -U/2 \n" ;
+    std::cout << "Doping routines have not been called\n" ;
+    std::cout << "mu should be equal to -U/2 for have filling in single band models\n" ;
 
     if(ci_exp == CIExpansion::CAS) 
     { 
-        E = SolveImpurityED(&params);
+        E0 = SolveImpurityED(&params);
 
         if(print_determinants) 
         {
@@ -306,7 +339,7 @@ int main(int argc, char** argv) {
     }
     else 
     {
-        E = SolveImpurityASCI(&params);
+        E0 = SolveImpurityASCI(&params);
 
         if(asci_wfn_out_fname.size()) 
         {
@@ -318,7 +351,7 @@ int main(int argc, char** argv) {
 
   }
 
-  console->info("E(CI)  = {:.12f} Eh", E);
+  console->info("E(CI)  = {:.12f} Eh", E0);
   double curr_nel = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
   std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
 
@@ -435,12 +468,12 @@ int main(int argc, char** argv) {
         C.data(), C.size());
 
     // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E, true, ws,
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws,
                               occs, gf_settings,todelete_p);
     GF=GF_tmp;
  
     // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E, false, ws,
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws,
                               occs, gf_settings, todelete_h);
 
 

@@ -1,6 +1,6 @@
 #define CALL_SOLVER_CPP
-#include "macis/dopping/call_solver.hpp"
-#include "macis/dopping/fix_mu.hpp"
+#include "macis/doping/call_solver.hpp"
+#include "macis/doping/fix_mu.hpp"
 
 namespace macis {
 
@@ -77,18 +77,22 @@ double SolveImpurityED (void * params){
     ham_gen.SetJustSingles(just_singles);
     ham_gen.SetNimp(n_imp);
     
-
+    
     std::vector<double> C_local;
     dets = macis::generate_hilbert_space<nwfn_bits>(norb, nalpha, nbeta);
     E0 = macis::selected_ci_diag(
           dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,
           mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol, C_local,
           MACIS_MPI_CODE(MPI_COMM_WORLD, ) true);
+
+
     E0 += E_inactive + E_core;
     ham_gen.form_rdms(
           dets.begin(), dets.end(), dets.begin(), dets.end(), C_local.data(),
           macis::matrix_span<double>(active_ordm.data(), norb, norb),
           macis::rank4_span<double>(active_trdm.data(), norb, norb, norb, norb));
+    
+    
     C=C_local;
 
     // Occupation numbers
@@ -103,6 +107,7 @@ double SolveImpurityED (void * params){
     *(p->dets) = dets;
 
 
+
     
     return E0;
 }
@@ -114,6 +119,7 @@ double SolveImpurityASCI (void * params){
     // struct fix_mu_params *p = (struct fix_mu_params *)params;
     struct fix_mu_params *p = static_cast<fix_mu_params*> (params);
 
+    bool asci_wfn_guess = *(p->asci_wfn_guess);
     size_t norb = *(p->norb);
     size_t n_active =* (p->n_active);
     size_t nalpha = *(p->nalpha);
@@ -163,11 +169,17 @@ double SolveImpurityASCI (void * params){
     ham_gen.SetJustSingles(just_singles);
     ham_gen.SetNimp(n_imp);
 
-    // HF Guess
-    dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
-    E0 = ham_gen.matrix_element(dets[0], dets[0]);
-    C = {1.0};
-
+    if(asci_wfn_guess == false) 
+    {
+      // HF Guess
+      // console->info("Generating HF Guess for ASCI");
+      dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
+      // std::cout << dets[0].to_ullong() << std::endl;
+      E0 = ham_gen.matrix_element(dets[0], dets[0]);
+      C = {1.0};
+    }
+  
+  
     // Perform the ASCI calculation
     // Growth phase
     // std::cout << "GROWTH PHASE \n";
