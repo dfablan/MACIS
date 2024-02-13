@@ -171,6 +171,7 @@ double SolveImpurityASCI (void * params){
     ham_gen.SetJustSingles(just_singles);
     ham_gen.SetNimp(n_imp);
 
+    std::cout<<"this line exists and asci_wfn_name = "<< asci_wfn_fname << std::endl;
     if(asci_wfn_fname.size()) 
     {
       // Read wave function from standard file
@@ -245,6 +246,7 @@ double SolveImpurityASCI (void * params){
     *(p->C) = C;
     *(p->dets) = dets;
 
+          
     return E0;
 }
 } // namespace macis

@@ -26,14 +26,14 @@ add_executable( macis_test
 target_link_libraries( macis_test PUBLIC macis Catch2::Catch2 )
 target_include_directories( macis_test PUBLIC ${PROJECT_BINARY_DIR}/tests )
 
-# add_executable( standalone_driver standalone_driver.cxx ini_input.cxx )
-# target_link_libraries( standalone_driver PUBLIC macis )
+add_executable( standalone_driver standalone_driver.cxx ini_input.cxx )
+target_link_libraries( standalone_driver PUBLIC macis )
 
 add_executable( simple_driver simple_driver.cxx ini_input.cxx )
 target_link_libraries( simple_driver PUBLIC macis )
 
-# add_executable( simple_driver_no_sparse simple_driver_no_sparse.cxx ini_input.cxx )
-# target_link_libraries( simple_driver_no_sparse PUBLIC macis )
+add_executable( simple_driver_no_sparse simple_driver_no_sparse.cxx ini_input.cxx )
+target_link_libraries( simple_driver_no_sparse PUBLIC macis )
 
 add_executable( test_drive test_drive.cxx ini_input.cxx )
 target_link_libraries( test_drive PUBLIC macis )

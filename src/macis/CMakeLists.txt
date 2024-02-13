@@ -67,7 +67,7 @@ include(macis-mdspan)
 target_link_libraries(macis PUBLIC mdspan)
 
 # GSL
-#set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
+set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
 find_package(GSL REQUIRED)
 target_link_libraries(macis PUBLIC GSL::gsl GSL::gslcblas)
 

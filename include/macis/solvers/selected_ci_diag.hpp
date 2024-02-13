@@ -48,7 +48,8 @@ double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
     logger->info("  * Will use passed vector as guess");
   } else {
     logger->info("  * Will generate identity guess");
-    p_diagonal_guess(C_local.size(), H, C_local.data());
+    //p_diagonal_guess(C_local.size(), H, C_local.data());
+    C_local[0] = 1.0;
   }
 
   // Setup Davidson Functor
