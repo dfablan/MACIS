@@ -133,8 +133,8 @@ void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
 void read_fcidump_1body(std::string fname, double* T, size_t LDT) {
   auto norb = read_fcidump_norb(fname);
   col_major_span<double, 2> T_map(T, LDT, norb);
-  read_fcidump_1body(fname, Kokkos::submdspan(T_map, std::pair{0, norb},
-                                                Kokkos::full_extent));
+  read_fcidump_1body(
+      fname, Kokkos::submdspan(T_map, std::pair{0, norb}, Kokkos::full_extent));
 }
 
 void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
@@ -176,8 +176,8 @@ void read_fcidump_2body(std::string fname, double* V, size_t LDV) {
   auto norb = read_fcidump_norb(fname);
   col_major_span<double, 4> V_map(V, LDV, LDV, LDV, norb);
   auto sl = std::pair{0, norb};
-  read_fcidump_2body(
-      fname, Kokkos::submdspan(V_map, sl, sl, sl, Kokkos::full_extent));
+  read_fcidump_2body(fname,
+                     Kokkos::submdspan(V_map, sl, sl, sl, Kokkos::full_extent));
 }
 
 bool is_2body_diagonal(std::string fname) {
@@ -217,16 +217,17 @@ void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
     for(size_t j = 0; j < norb; ++j)
       for(size_t k = 0; k < norb; ++k)
         for(size_t l = 0; l < norb; ++l) {
-            if( std::abs(V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV] )> 1E-8)
-                logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
-                       V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
+          if(std::abs(V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]) >
+             1E-8)
+            logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
+                         V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
         }
 
   // Write one body
   for(size_t i = 0; i < norb; ++i)
     for(size_t j = 0; j < norb; ++j) {
-            if( std::abs(T[i + j * LDT ] )> 1E-8)
-      logger->info(fmt_string, i + 1, j + 1, 0, 0, T[i + j * LDT]);
+      if(std::abs(T[i + j * LDT]) > 1E-8)
+        logger->info(fmt_string, i + 1, j + 1, 0, 0, T[i + j * LDT]);
     }
 
   // Write core

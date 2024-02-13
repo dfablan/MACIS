@@ -17,10 +17,10 @@
 #include <macis/asci/determinant_sort.hpp>
 #include <macis/sd_operations.hpp>
 #include <macis/types.hpp>
-#include <macis/wavefunction_io.hpp>
 #include <macis/util/dist_quickselect.hpp>
 #include <macis/util/memory.hpp>
 #include <macis/util/mpi.hpp>
+#include <macis/wavefunction_io.hpp>
 
 namespace macis {
 
@@ -404,8 +404,8 @@ std::vector<wfn_t<N>> asci_search(
   using clock_type = std::chrono::high_resolution_clock;
   using duration_type = std::chrono::duration<double>;
 
-  //std::cout << "ASCI Search has been called \n";
-  // MPI Info
+  // std::cout << "ASCI Search has been called \n";
+  //  MPI Info
 #ifdef MACIS_ENABLE_MPI
   auto world_rank = comm_rank(comm);
   auto world_size = comm_size(comm);
@@ -508,18 +508,18 @@ std::vector<wfn_t<N>> asci_search(
 #endif
     logger->info("  * ASCI will search over {} unique determinants", npairs);
 
-//  std::vector<double> scores(asci_pairs.size());
-//  std::transform(asci_pairs.begin(), asci_pairs.end(), scores.begin(),
-//                     [](const auto& p) { return std::abs(p.rv); });
-//  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
-//  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
-//                 [](auto x) { return x.state; });
-//
-//  //  ############################################################# 
-//   macis::write_wavefunction("D_SD.dat", norb,new_dets, scores);
-//  //  ############################################################# 
-//
-//
+    //  std::vector<double> scores(asci_pairs.size());
+    //  std::transform(asci_pairs.begin(), asci_pairs.end(), scores.begin(),
+    //                     [](const auto& p) { return std::abs(p.rv); });
+    //  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
+    //  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
+    //                 [](auto x) { return x.state; });
+    //
+    //  //  #############################################################
+    //   macis::write_wavefunction("D_SD.dat", norb,new_dets, scores);
+    //  //  #############################################################
+    //
+    //
     float pairs_dur = duration_type(pairs_en - pairs_st).count();
     float bit_sort_dur = duration_type(bit_sort_en - bit_sort_st).count();
 

@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     // Create Logger
     auto console = world_rank ? spdlog::null_logger_mt("standalone_driver")
                               : spdlog::stdout_color_mt("standalone_driver");
-    
+
     // Read Input Options
     std::vector<std::string> opts(argc);
     for(int i = 0; i < argc; ++i) opts[i] = argv[i];
@@ -135,9 +135,9 @@ int main(int argc, char** argv) {
     if(n_inactive >= norb) throw std::runtime_error("NINACTIVE >= NORB");
 
     std::cout << "norb=" << norb << std::endl;
-    std::cout << "n_inactive=" << n_inactive  << std::endl;
+    std::cout << "n_inactive=" << n_inactive << std::endl;
     size_t n_active = norb - n_inactive;
-    std::cout << "n_active=" << n_active  << std::endl;
+    std::cout << "n_active=" << n_active << std::endl;
 
     OPT_KEYWORD("CI.NACTIVE", n_active, size_t);
 
@@ -219,8 +219,7 @@ int main(int argc, char** argv) {
 
     // Setup printing
     bool print_davidson = true, print_ci = true, print_mcscf = true,
-         print_diis = true, print_asci_search = true,
-         print_determinants = true;
+         print_diis = true, print_asci_search = true, print_determinants = true;
     double determinants_threshold = 1e-2;
     OPT_KEYWORD("PRINT.DAVIDSON", print_davidson, bool);
     OPT_KEYWORD("PRINT.CI", print_ci, bool);
@@ -287,7 +286,7 @@ int main(int argc, char** argv) {
     std::cout << "STARTING JOB \n";
 
     // CI
-    if(job == Job::CI) {           
+    if(job == Job::CI) {
       std::cout << "JOB=CI \n";
       using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
       if(ci_exp == CIExpansion::CAS) {
@@ -342,7 +341,7 @@ int main(int argc, char** argv) {
                                                std::complex<double>(0., 0.));
           for(int i = 0; i < nws; i++)
             // ws[i] = w0 + (wf - w0) / double(nws - 1) * double(i);
-             ws[i] = std::complex<double>(0.,(2*i+1)*M_PI/ beta);
+            ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / beta);
 
           // MCSCF Settings
           macis::GFSettings gf_settings;
@@ -364,21 +363,21 @@ int main(int argc, char** argv) {
           gf_settings.is_up_comp = std::vector<bool>(n_active, true);
 
           // GF vector
-          std::vector<int> todelete_p; 
-          std::vector<int> todelete_h; 
+          std::vector<int> todelete_p;
+          std::vector<int> todelete_h;
 
           std::vector<std::vector<std::complex<double>>> GF(
               nws, std::vector<std::complex<double>>(
-                       n_active*n_active, std::complex<double>(0., 0.)));
+                       n_active * n_active, std::complex<double>(0., 0.)));
           std::vector<std::vector<std::complex<double>>> GF_tmp(
               nws, std::vector<std::complex<double>>(
-                       n_active*n_active, std::complex<double>(0., 0.)));
+                       n_active * n_active, std::complex<double>(0., 0.)));
           // Occupation numbers
           std::vector<double> occs(n_active, 1.);
-          for(int i = 0; i < n_active; i++)  {
-            occs[i] = active_ordm[i + i * n_active]/2; 
-            std::cout << "occs[" << i << "] = " << occs[i] << std::endl;}
-
+          for(int i = 0; i < n_active; i++) {
+            occs[i] = active_ordm[i + i * n_active] / 2;
+            std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+          }
 
           // GS vector
           Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
@@ -387,18 +386,20 @@ int main(int argc, char** argv) {
           // Evaluate particle GF
           macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws,
                                       occs, gf_settings, todelete_p);
-          
-          GF=GF_tmp;
+
+          GF = GF_tmp;
           // Evaluate hole GF
-          macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws,
-                                      occs, gf_settings,todelete_h);
+          macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false,
+                                      ws, occs, gf_settings, todelete_h);
 
-            if (todelete_h!=todelete_p)
-             std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
+          if(todelete_h != todelete_p)
+            std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
 
-            GF=macis::sum_GFs(GF,GF_tmp,ws,gf_settings.GF_orbs_comp,todelete_p);
+          GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp,
+                              todelete_p);
 
-            if(gf_settings.writeGF_singlef) macis::write_GF(GF, ws, gf_settings.GF_orbs_comp,todelete_p);
+          if(gf_settings.writeGF_singlef)
+            macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
         }
 
       } else {

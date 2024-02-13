@@ -52,7 +52,7 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
         std::min(std::max(asci_settings.ntdets_min,
                           wfn.size() * asci_settings.grow_factor),
                  asci_settings.ntdets_max);
-//    std::cout << "ndets_new = " << ndets_new << std::endl;
+    //    std::cout << "ndets_new = " << ndets_new << std::endl;
     double E;
     auto ai_st = hrt_t::now();
     std::cout << "CALLING asci_iter inside GROWTH PHASE \n";

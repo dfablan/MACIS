@@ -53,13 +53,14 @@ void write_GF(const std::vector<std::vector<std::complex<double> > > &GF,
 
 void write_GF(const std::vector<std::vector<std::complex<double> > > &GF,
               const std::vector<std::complex<double> > &ws,
-              const std::vector<int> &GF_orbs, const std::vector<int> &todelete) {
+              const std::vector<int> &GF_orbs,
+              const std::vector<int> &todelete) {
   using dbl = std::numeric_limits<double>;
   size_t nfreqs = ws.size();
-  int GFmat_size = GF_orbs.size()-todelete.size();
+  int GFmat_size = GF_orbs.size() - todelete.size();
 
   if(GF_orbs.size() > 1) {
-    std::string fname = "GF.dat" ;
+    std::string fname = "GF.dat";
     std::ofstream ofile(fname);
     ofile.precision(dbl::max_digits10);
     for(int iii = 0; iii < nfreqs; iii++) {
@@ -79,7 +80,7 @@ void write_GF(const std::vector<std::vector<std::complex<double> > > &GF,
       ofile2 << GF_orbs[iii] << std::endl;
     }
   } else {
-    std::string fname = "GF_" ;
+    std::string fname = "GF_";
     fname += std::to_string(GF_orbs[0] + 1) + "_" +
              std::to_string(GF_orbs[0] + 1) + ".dat";
     std::ofstream ofile(fname);
