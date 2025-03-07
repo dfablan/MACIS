@@ -604,10 +604,9 @@ void GetGS(const MatOp &H, double &E0, Eigen::VectorXd &psi0,
   // Initial vector. We choose (1,0,0,0,...)t
   // for HF, Otherwhise  (1,1,1,1,...)t
   Eigen::VectorXd start_psi = Eigen::VectorXd::Ones(n);
-  if( isHF )
-  {
-      start_psi= Eigen::VectorXd::Zero(n);
-      start_psi(0) = 1.;
+  if(isHF) {
+    start_psi = Eigen::VectorXd::Zero(n);
+    start_psi(0) = 1.;
   }
   // Determine lowest eigenvalue for the given
   // tolerance.
