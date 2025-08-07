@@ -9,7 +9,6 @@
 #include "ini_input.hpp"
 
 #include <sstream>
-
 // Misc string functions
 
 /**
@@ -350,6 +349,7 @@ std::vector<int> INIFile::getData(std::string query) {
 }  // INIFile::getData<std::vector<int>>
 
 /**
+ **
  *  \brief Specialization of getData to return bool of query
  *  data field
  *
@@ -386,6 +386,7 @@ std::vector<bool> INIFile::getData(std::string query) {
 }  // INIFile::getData<std::vector<bool>>
 
 /**
+ **
  *  \brief Specialization of getData to return size_t of query
  *  data field
  *
