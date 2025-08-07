@@ -136,9 +136,9 @@ int main(int argc, char** argv) {
     if(n_inactive >= norb) throw std::runtime_error("NINACTIVE >= NORB");
 
     std::cout << "norb=" << norb << std::endl;
-    std::cout << "n_inactive=" << n_inactive  << std::endl;
+    std::cout << "n_inactive=" << n_inactive << std::endl;
     size_t n_active = norb - n_inactive;
-    std::cout << "n_active=" << n_active  << std::endl;
+    std::cout << "n_active=" << n_active << std::endl;
 
     OPT_KEYWORD("CI.NACTIVE", n_active, size_t);
 
@@ -222,8 +222,7 @@ int main(int argc, char** argv) {
 
     // Setup printing
     bool print_davidson = true, print_ci = true, print_mcscf = true,
-         print_diis = true, print_asci_search = true,
-         print_determinants = true;
+         print_diis = true, print_asci_search = true, print_determinants = true;
     double determinants_threshold = 1e-2;
     OPT_KEYWORD("PRINT.DAVIDSON", print_davidson, bool);
     OPT_KEYWORD("PRINT.CI", print_ci, bool);
@@ -366,23 +365,23 @@ int main(int argc, char** argv) {
                       std::vector<int>);
           OPT_KEYWORD("GF.IS_UP_COMP", gf_settings.is_up_comp,
                       std::vector<bool>);
-          //gf_settings.GF_orbs_basis = std::vector<int>(n_active, 0);
-          //for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_basis[i] = i;
-          //gf_settings.GF_orbs_comp = std::vector<int>(n_active, 0);
-          //for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_comp[i] = i;
-          //gf_settings.is_up_basis = std::vector<bool>(n_active, true);
-          //gf_settings.is_up_comp = std::vector<bool>(n_active, true);
+          // gf_settings.GF_orbs_basis = std::vector<int>(n_active, 0);
+          // for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_basis[i] = i;
+          // gf_settings.GF_orbs_comp = std::vector<int>(n_active, 0);
+          // for(int i = 0; i < n_active; i++) gf_settings.GF_orbs_comp[i] = i;
+          // gf_settings.is_up_basis = std::vector<bool>(n_active, true);
+          // gf_settings.is_up_comp = std::vector<bool>(n_active, true);
 
           // GF vector
-          //std::vector<int> todelete_p; 
-          //std::vector<int> todelete_h; 
+          // std::vector<int> todelete_p;
+          // std::vector<int> todelete_h;
           std::vector<std::vector<std::complex<double>>> GF(
               nws, std::vector<std::complex<double>>(
                        n_active * n_active, std::complex<double>(0., 0.)));
-          //std::vector<std::vector<std::complex<double>>> GF_tmp(
-          //    nws, std::vector<std::complex<double>>(
-          //             n_active*n_active, std::complex<double>(0., 0.)));
-          // Occupation numbers
+          // std::vector<std::vector<std::complex<double>>> GF_tmp(
+          //     nws, std::vector<std::complex<double>>(
+          //              n_active*n_active, std::complex<double>(0., 0.)));
+          //  Occupation numbers
           std::vector<double> occs(n_active, 1.);
           for(int i = 0; i < n_active; i++)
             occs[i] = active_ordm[i + n_active * i] / 2.;
