@@ -15,7 +15,6 @@
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
-
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
 using macis::NumCanonicalVirtual;
@@ -32,4 +31,4 @@ double SolveImpurityED(void *params);
 
 double SolveImpurityASCI(void *params);
 
-} // namespace macis
+}  // namespace macis
