@@ -8,10 +8,10 @@
 
 #pragma once
 #include <algorithm>
-#include <tuple>
 #include <cassert>
 #include <macis/bitset_operations.hpp>
 #include <numeric>
+#include <tuple>
 
 namespace macis {
 
