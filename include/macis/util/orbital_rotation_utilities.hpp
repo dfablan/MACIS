@@ -8,6 +8,7 @@
 
 #pragma once
 #include <macis/types.hpp>
+#include <tuple>
 
 namespace macis {
 
