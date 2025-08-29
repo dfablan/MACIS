@@ -54,7 +54,7 @@ struct GFSettings {
   bool saveGFmats = false;
   double wmin = -8.;
   double wmax = 8.;
-  size_t nws = 2001;
+  size_t nws = 1001;
   double eta = 0.1;
   std::string w_scale = "lin";
   bool real_g = true;

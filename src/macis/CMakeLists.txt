@@ -19,6 +19,7 @@ add_library( macis
   gf/bandlan.cxx
   gf/gf.cxx
   model/hubbard.cxx
+  impurity_solver.cpp
 )
 
 target_include_directories( macis PUBLIC 
