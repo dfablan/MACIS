@@ -16,7 +16,6 @@
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
-
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
 using macis::NumCanonicalVirtual;
@@ -30,48 +29,44 @@ constexpr size_t nwfn_bits = 64;
 namespace macis {
 
 /**
-* @brief Structure to hold the parameters of the impurity problem.
-*/
+ * @brief Structure to hold the parameters of the impurity problem.
+ */
 
-struct impurity_params
-{
-    size_t* n_active;
-    size_t* nbeta;
-    size_t* nalpha;
-    size_t* n_inactive;
-    size_t* norb;
-    double* nel;
-    size_t* n_imp;
-    
-    double *abs_tol;
-    size_t *maxiter;
-    bool *print;
-    double *init_shift;
+struct impurity_params {
+  size_t* n_active;
+  size_t* nbeta;
+  size_t* nalpha;
+  size_t* n_inactive;
+  size_t* norb;
+  double* nel;
+  size_t* n_imp;
 
-    std::string *ci_exp;
-    std::string *asci_wfn_fname;
-    bool *compute_asci_E0;
-    double *asci_E0;
+  double* abs_tol;
+  size_t* maxiter;
+  bool* print;
+  double* init_shift;
 
+  std::string* ci_exp;
+  std::string* asci_wfn_fname;
+  bool* compute_asci_E0;
+  double* asci_E0;
 
-    macis::MCSCFSettings* mcscf_settings;
-    macis::ASCISettings* asci_settings;
-    std::vector<double>* occs;
-    std::vector<double>* C;
-    std::vector<macis::wfn_t<nwfn_bits>>* dets;
-    
-    double* dstep;
-    double* E_core;
-    double* E;
-    std::vector<double>* T;
-    std::vector<double>* V;    
-    bool* just_singles;
+  macis::MCSCFSettings* mcscf_settings;
+  macis::ASCISettings* asci_settings;
+  std::vector<double>* occs;
+  std::vector<double>* C;
+  std::vector<macis::wfn_t<nwfn_bits>>* dets;
 
+  double* dstep;
+  double* E_core;
+  double* E;
+  std::vector<double>* T;
+  std::vector<double>* V;
+  bool* just_singles;
 };
 
+double SolveImpurityED(void* params);
 
-double SolveImpurityED(void *params);
+double SolveImpurityASCI(void* params);
 
-double SolveImpurityASCI(void *params);
-
-} // namespace macis
+}  // namespace macis
