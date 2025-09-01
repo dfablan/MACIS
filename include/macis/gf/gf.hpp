@@ -613,16 +613,20 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   std::vector<int> todelete;
   std::vector<double> wfns;
   int nvecs;
+  std::cout << "Before BuildWfn4Lanczos" << std::endl; //DEBUG
   std::tie(wfns, nvecs) = BuildWfn4Lanczos<nbits, index_t>(
       wfn0, GF_orbs_comp, is_up_comp, base_dets, gf_dets, is_part, todelete);
+  std::cout << "After BuildWfn4Lanczos" << std::endl; //DEBUG
 
   // //ACTUALLY COMPUTE THE GF!
   time_t GF_loop1 = time(NULL);
   auto GF_loop1C = Clock::now();
 
   if(use_bandLan) {
+  std::cout << "Before BandResolvent" << std::endl; //DEBUG
     BandResolvent(hamil, wfns, ws, GF, nLanIts, energ, is_part, nvecs, nterms,
                   print, saveGFmats);
+    std::cout << "After BandResolvent" << std::endl; //DEBUG
   } else {
     // DO SIMPLE LANCZOS FOR ALL GF ELEMENTS
     SparsexDistSpMatOp hamil_wrap(hamil);

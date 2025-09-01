@@ -103,6 +103,9 @@ int main(int argc, char** argv) {
 
   size_t n_virtual = norb - n_active - n_inactive;
 
+  size_t n_imp = norb;
+  OPT_KEYWORD("CI.NIMP", n_imp, size_t);
+
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);
@@ -186,7 +189,6 @@ int main(int argc, char** argv) {
   double nel;
   std::vector<double> occs(n_active, 0);
   double E0 = 0.0;
-  size_t n_imp = 0;
 
   macis::impurity_params params;
   params.nbeta = &nbeta;
@@ -239,7 +241,7 @@ int main(int argc, char** argv) {
 
   console->info("E(CI)  = {:.12f} Eh", E0);
   double curr_nel = std::accumulate(occs.begin(), occs.begin() + n_imp, 0.0);
-  std::cout << "Total number of electrons = " << curr_nel << std::endl;
+  std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp << " impurity orbitals" << std::endl;
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
