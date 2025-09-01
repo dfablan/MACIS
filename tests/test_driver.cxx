@@ -241,7 +241,8 @@ int main(int argc, char** argv) {
 
   console->info("E(CI)  = {:.12f} Eh", E0);
   double curr_nel = std::accumulate(occs.begin(), occs.begin() + n_imp, 0.0);
-  std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp << " impurity orbitals" << std::endl;
+  std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp
+            << " impurity orbitals" << std::endl;
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
