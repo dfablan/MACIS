@@ -407,11 +407,10 @@ auto BuildWfn4Lanczos(const Eigen::VectorXd &base_wfn,
                       const std::vector<std::bitset<nbits>> &GF_dets,
                       bool is_part, std::vector<int> &todelete,
                       double zero_thresh = 1.E-7) {
-  
-
-  //Safety check
-  if(GF_orbs.size() != is_up.size()){
-    throw std::runtime_error("In BuildWfn4Lanczos: GF_orbs and is_up have different sizes");
+  // Safety check
+  if(GF_orbs.size() != is_up.size()) {
+    throw std::runtime_error(
+        "In BuildWfn4Lanczos: GF_orbs and is_up have different sizes");
   }
 
   // INITIALIZE THE DICTIONARY OF BASE DETERMINANTS

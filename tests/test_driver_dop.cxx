@@ -1,5 +1,3 @@
-#include <macis/doping/fix_mu.hpp>
-
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/null_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -8,13 +6,14 @@
 
 #include <iomanip>
 #include <iostream>
+#include <macis/doping/fix_mu.hpp>
 #include <macis/gf/gf.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
 #include "ini_input.hpp"
 
-enum class CIExpansion {CAS , ASCI};
+enum class CIExpansion { CAS, ASCI };
 
 std::map<std::string, CIExpansion> ci_exp_map = {{"CAS", CIExpansion::CAS},
                                                  {"ASCI", CIExpansion::ASCI}};
@@ -210,32 +209,32 @@ int main(int argc, char** argv) {
   params.asci_E0 = &asci_E0;
 
   bool doping = false;
-  OPT_KEYWORD("CI.DOPING",doping, bool);
+  OPT_KEYWORD("CI.DOPING", doping, bool);
 
-  OPT_KEYWORD("DOP.NELECTRONS",nel, double);
+  OPT_KEYWORD("DOP.NELECTRONS", nel, double);
 
-  if(doping && nel/n_imp==1)
-    std::cout << "WARNING: Doping routines were called but half-filling was asked \n" ;
-    std::cout << "Doping =" << doping << std::endl ;
-  if(doping)
-  {
+  if(doping && nel / n_imp == 1)
+    std::cout
+        << "WARNING: Doping routines were called but half-filling was asked \n";
+  std::cout << "Doping =" << doping << std::endl;
+  if(doping) {
     double dstep = 2.E-2;
     double init_mu = -9.5;
-    double abs_tol =  1.E-4; 
-    size_t maxiter = 100; 
-    bool print_doping =  true; 
-    double init_shift =  2.0;
+    double abs_tol = 1.E-4;
+    size_t maxiter = 100;
+    bool print_doping = true;
+    double init_shift = 2.0;
     bool deriv;
     std::string method_name;
 
-    OPT_KEYWORD("DOP.DERIV",deriv, bool);
-    OPT_KEYWORD("DOP.INIT_MU",init_mu, double);
-    OPT_KEYWORD("DOP.ABS_TOL",abs_tol, double);
-    OPT_KEYWORD("DOP.MAXITER",maxiter, size_t);
-    OPT_KEYWORD("DOP.PRINT_DOPING",print_doping, bool);
-    OPT_KEYWORD("DOP.INIT_SHIFT",init_shift, double);
-    OPT_KEYWORD("DOP.DSTEP",dstep, double);    
-    OPT_KEYWORD("DOP.METHOD",method_name, std::string);
+    OPT_KEYWORD("DOP.DERIV", deriv, bool);
+    OPT_KEYWORD("DOP.INIT_MU", init_mu, double);
+    OPT_KEYWORD("DOP.ABS_TOL", abs_tol, double);
+    OPT_KEYWORD("DOP.MAXITER", maxiter, size_t);
+    OPT_KEYWORD("DOP.PRINT_DOPING", print_doping, bool);
+    OPT_KEYWORD("DOP.INIT_SHIFT", init_shift, double);
+    OPT_KEYWORD("DOP.DSTEP", dstep, double);
+    OPT_KEYWORD("DOP.METHOD", method_name, std::string);
 
     std::cout << "Electron filling parameters \n" ;
     std::cout << std::setprecision(3) << nel << " electrons per orbital \n" ;
@@ -256,8 +255,9 @@ int main(int argc, char** argv) {
     else
       mu_fixed = Fix_Mu_noder(method_name, init_mu, &params);
 
-    std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed << std::endl;
-    
+    std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed
+              << std::endl;
+
     // std::cout << "The current occupation values are: \n";
     // for(int i = 0; i < n_active; i++) {
     //   std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
@@ -277,40 +277,37 @@ int main(int argc, char** argv) {
 
     // Write new FCIDUMP file for the impurity orbitals
     std::string fcilocal_out_fname = "locFCIDUMP.dat";
-    macis::write_fcidump(fcilocal_out_fname, n_imp,T.data(), norb, V.data(), norb,
-                     E_core);
+    macis::write_fcidump(fcilocal_out_fname, n_imp, T.data(), norb, V.data(),
+                         norb, E_core);
 
-    if(ci_exp == CIExpansion::ASCI && asci_wfn_out_fname.size()) 
-    {
-        console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
-       macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
+    if(ci_exp == CIExpansion::ASCI && asci_wfn_out_fname.size()) {
+      console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
+      macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
     }
   }
-  
-  else
-  {
 
-    std::cout << "Doping routines have not been called\n" ;
-    std::cout << "mu should be equal to -U/2 for have filling in single band models\n" ;
+  else {
+    std::cout << "Doping routines have not been called\n";
+    std::cout << "mu should be equal to -U/2 for have filling in single band "
+                 "models\n";
 
-    if(ci_exp == CIExpansion::CAS) 
-    { 
-        E0 = SolveImpurityED(&params);
+    if(ci_exp == CIExpansion::CAS) {
+      E0 = SolveImpurityED(&params);
 
-        if(print_determinants) {
-          auto det_logger = world_rank ? spdlog::null_logger_mt("determinants")
+      if(print_determinants) {
+        auto det_logger = world_rank ? spdlog::null_logger_mt("determinants")
                                      : spdlog::stdout_color_mt("determinants");
-          det_logger->info("Print leading determinants > {:.12f}",
+        det_logger->info("Print leading determinants > {:.12f}",
                          determinants_threshold);
-          for(size_t i = 0; i < dets.size(); ++i) {
-            if(std::abs(C[i]) > determinants_threshold) {
-              det_logger->info("{:>16.12f}   {}", C[i],
+        for(size_t i = 0; i < dets.size(); ++i) {
+          if(std::abs(C[i]) > determinants_threshold) {
+            det_logger->info("{:>16.12f}   {}", C[i],
                              macis::to_canonical_string(dets[i]));
           }
         }
       }
     } else {
-        E0 = SolveImpurityASCI(&params);
+      E0 = SolveImpurityASCI(&params);
 
         if(asci_wfn_out_fname.size()) {
             console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
@@ -379,7 +376,7 @@ int main(int argc, char** argv) {
     bool imag_freq = true;
     OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
     std::vector<std::complex<double>> ws(gf_settings.nws,
-                                       std::complex<double>(0., 0.));
+                                         std::complex<double>(0., 0.));
 
     for(int i = 0; i < gf_settings.nws; i++)
       if (imag_freq) 
@@ -403,11 +400,12 @@ int main(int argc, char** argv) {
                  n_active*n_active, std::complex<double>(0., 0.)));
     
     // Occupation numbers
-    // for(int i = 0; i < n_active; i++) 
+    // for(int i = 0; i < n_active; i++)
     // {
-      // occs[i] = active_ordm[i + i * n_active]/2; 
-      // occs[i] = occs[i]/2; 
-      // std::cout << "occs[" << i << "] = " << std::setprecision(10)<< occs[i] << std::endl;
+    // occs[i] = active_ordm[i + i * n_active]/2;
+    // occs[i] = occs[i]/2;
+    // std::cout << "occs[" << i << "] = " << std::setprecision(10)<< occs[i] <<
+    // std::endl;
     // }
   
     // GS vector
