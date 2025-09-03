@@ -31,6 +31,10 @@ target_link_libraries( standalone_driver PUBLIC macis )
 
 add_executable( test_driver test_driver.cxx ini_input.cxx )
 target_link_libraries( test_driver PUBLIC macis )
+
+add_executable( test_driver_dop test_driver_dop.cxx ini_input.cxx )
+target_link_libraries( test_driver_dop PUBLIC macis )
+
 set(REF_DATA_PREFIX "${PROJECT_SOURCE_DIR}/tests/ref_data")
 configure_file( ut_common.hpp.in ${PROJECT_BINARY_DIR}/tests/ut_common.hpp)
 

@@ -20,6 +20,7 @@ add_library( macis
   gf/gf.cxx
   model/hubbard.cxx
   impurity_solver.cpp
+  doping/fix_mu.cpp
 )
 
 target_include_directories( macis PUBLIC 
@@ -64,6 +65,11 @@ target_link_libraries(macis PUBLIC spdlog::spdlog)
 # MDSPAN
 include(macis-mdspan)
 target_link_libraries(macis PUBLIC mdspan)
+
+# GSL
+set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
+find_package(GSL REQUIRED)
+target_link_libraries(macis PUBLIC GSL::gsl GSL::gslcblas)
 
 #find_package( Ceres REQUIRED )
 #target_link_libraries( macis PUBLIC Ceres::ceres )
