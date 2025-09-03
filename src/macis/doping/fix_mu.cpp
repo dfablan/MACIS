@@ -20,7 +20,7 @@ namespace macis {
     
     // Solve the impurity problem
     double mu = x;  
-    double curr_nel = 0.0;
+    double curr_nel_per_spin = 0.0;
 
 
 
@@ -38,10 +38,8 @@ namespace macis {
 
     // CAN I AVOID DEFINING THIS HERE? 
     std::vector<double> occs = *(p->occs);
-
-    curr_nel = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
-
-    // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
+    // curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
+    // std::cout<< "Total number of electrons = "<< 2*curr_nel_per_spin << std::endl;
 
 // IMPLEMENT DIRECT CHOICE FROM INPUT FILE
     double E;
@@ -57,12 +55,12 @@ namespace macis {
     occs = *(p->occs);
     *(p->E) = E;
 
-    curr_nel = std::accumulate(occs.begin(), occs.begin()+*(p->n_imp), 0.0);
+    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+*(p->n_imp), 0.0);
 
     // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
     // std::cout<< "Goal number of electrons = "<< nel << std::endl;
 
-    double err = curr_nel - nel;
+    double err = curr_nel_per_spin - nel;
 
     // std::cout<< "err = "<< err << std::endl;
     // std::cout << "x = " << x << std::endl;

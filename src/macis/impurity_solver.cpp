@@ -46,7 +46,7 @@ double SolveImpurityED (void * params){
     auto E_inactive = macis::inactive_energy(NumInactive(n_inactive), T.data(),
                                              norb, F_inactive.data(), norb);
     // console->info("E(inactive) = {:.12f}", E_inactive);
-    std::cout<<"E(inactive) = "<< E_inactive << std::endl;
+    // std::cout<<"E(inactive) = "<< E_inactive << std::endl;
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -70,7 +70,7 @@ double SolveImpurityED (void * params){
 
     // Occupation numbers
     for(int i = 0; i < n_active; i++) {
-      occs[i] = active_ordm[i + i * n_active]; 
+      occs[i] = active_ordm[i + i * n_active]*1./2; 
     }
 
     *(p->occs) = occs;
@@ -208,7 +208,7 @@ double SolveImpurityASCI (void * params){
     // Occupation numbers
     // std::vector<double> occs(n_active, 1);
     for(int i = 0; i < n_active; i++) {
-      occs[i] = active_ordm[i + i * n_active]; 
+      occs[i] = active_ordm[i + i * n_active]*1./2;   //number of electrons in orbital i per spin
       // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 

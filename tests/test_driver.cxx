@@ -239,13 +239,13 @@ int main(int argc, char** argv) {
 
   console->info("E(CI)  = {:.12f} Eh", E0);
 
-  std::cout << "\nOrbital Occupations in the original basis: " << std::endl;
+  std::cout << "\nOrbital Occupations (per spin) in the original basis: " << std::endl;
   std::cout << "Occs: ";
   for( const auto oc : occs)
-    std::cout << oc/2 << ", ";
+    std::cout << oc << ", ";
   std::cout << std::endl;
   
-  double curr_nel = std::accumulate(occs.begin(), occs.begin() + n_imp, 0.0);
+  double curr_nel = 2*std::accumulate(occs.begin(), occs.begin() + n_imp, 0.0);
   std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp << " impurity orbitals\n" << std::endl;
 
   bool testGF = false;
