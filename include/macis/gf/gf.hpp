@@ -407,11 +407,10 @@ auto BuildWfn4Lanczos(const Eigen::VectorXd &base_wfn,
                       const std::vector<std::bitset<nbits>> &GF_dets,
                       bool is_part, std::vector<int> &todelete,
                       double zero_thresh = 1.E-7) {
-  
-
-  //Safety check
-  if(GF_orbs.size() != is_up.size()){
-    throw std::runtime_error("In BuildWfn4Lanczos: GF_orbs and is_up have different sizes");
+  // Safety check
+  if(GF_orbs.size() != is_up.size()) {
+    throw std::runtime_error(
+        "In BuildWfn4Lanczos: GF_orbs and is_up have different sizes");
   }
 
   // INITIALIZE THE DICTIONARY OF BASE DETERMINANTS
@@ -623,7 +622,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   int nvecs;
   std::tie(wfns, nvecs) = BuildWfn4Lanczos<nbits, index_t>(
       wfn0, GF_orbs_comp, is_up_comp, base_dets, gf_dets, is_part, todelete);
-  std::cout << "After BuildWfn4Lanczos" << std::endl; //DEBUG
+  std::cout << "After BuildWfn4Lanczos" << std::endl;  // DEBUG
 
   // //ACTUALLY COMPUTE THE GF!
   time_t GF_loop1 = time(NULL);
