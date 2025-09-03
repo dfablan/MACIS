@@ -63,8 +63,6 @@ int main(int argc, char** argv) {
   spdlog::cfg::load_env_levels();
   spdlog::set_pattern("[%n] %v");
 
-  constexpr size_t nwfn_bits = 64;
-
   MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
 
 #ifdef MACIS_ENABLE_MPI

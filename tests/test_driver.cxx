@@ -13,7 +13,7 @@
 
 #include "ini_input.hpp"
 
-enum class CIExpansion { CAS, ASCI };
+enum class CIExpansion {CAS , ASCI};
 
 std::map<std::string, CIExpansion> ci_exp_map = {{"CAS", CIExpansion::CAS},
                                                  {"ASCI", CIExpansion::ASCI}};
@@ -29,8 +29,6 @@ int main(int argc, char** argv) {
   std::cout << std::scientific << std::setprecision(12);
   spdlog::cfg::load_env_levels();
   spdlog::set_pattern("[%n] %v");
-
-  constexpr size_t nwfn_bits = 64;
 
   MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
 
@@ -230,23 +228,29 @@ int main(int argc, char** argv) {
         }
       }
     } else {
-      E0 = SolveImpurityASCI(&params);
+        E0 = SolveImpurityASCI(&params);
 
-      if(asci_wfn_out_fname.size()) {
-        console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
-        macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
-      }
+        if(asci_wfn_out_fname.size()) {
+            console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
+            macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
+        }
     }
   }
 
   console->info("E(CI)  = {:.12f} Eh", E0);
+
+  std::cout << "\nOrbital Occupations in the original basis: " << std::endl;
+  std::cout << "Occs: ";
+  for( const auto oc : occs)
+    std::cout << oc/2 << ", ";
+  std::cout << std::endl;
+  
   double curr_nel = std::accumulate(occs.begin(), occs.begin() + n_imp, 0.0);
-  std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp << " impurity orbitals" << std::endl;
+  std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp << " impurity orbitals\n" << std::endl;
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
-  if(testGF) {
-    std::cout << "CI.GF=TRUE \n";
+  if(testGF){
 
     // Copy integrals into active subsets
     std::vector<double> T_active(n_active * n_active);
@@ -273,7 +277,7 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ASTHRES", gf_settings.asThres, double);
     OPT_KEYWORD("GF.USE_BANDLAN", gf_settings.use_bandLan, bool);
     OPT_KEYWORD("GF.NLANITS", gf_settings.nLanIts, int);
-    OPT_KEYWORD("GF.WRITE", gf_settings.writeGF, bool);
+    OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
     OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
     OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
     OPT_KEYWORD("GF.ORBS_BASIS", gf_settings.GF_orbs_basis, std::vector<int>);
@@ -290,12 +294,12 @@ int main(int argc, char** argv) {
     bool imag_freq = true;
     OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
     std::vector<std::complex<double>> ws(gf_settings.nws,
-                                         std::complex<double>(0., 0.));
+                                       std::complex<double>(0., 0.));
 
     for(int i = 0; i < gf_settings.nws; i++)
       if(imag_freq) {
         //  MATSUBARA GRID
-        ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
+        ws[i] = std::complex<double>(0.,( 2*i + 1 ) * M_PI/ gf_settings.beta);
       } else {
         std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
         std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
@@ -305,15 +309,20 @@ int main(int argc, char** argv) {
     // GF vector
     std::vector<std::vector<std::complex<double>>> GF(
         gf_settings.nws,
+	std::vector<std::complex<double>>(n_active * n_active,
+                                          std::complex<double>(0., 0.)));
+    std::vector<std::vector<std::complex<double>>> GF_tmp(
+        gf_settings.nws,
         std::vector<std::complex<double>>(n_active * n_active,
                                           std::complex<double>(0., 0.)));
 
     // Occupation numbers
-    for(int i = 0; i < n_active; i++) {
-      occs[i] = occs[i] / 2;
-      std::cout << "occs[" << i << "] = " << std::setprecision(10) << occs[i]
-                << std::endl;
-    }
+//    for(int i = 0; i < n_active; i++) {
+//      occs[i] = occs[i] / 2;
+//      std::cout << "occs[" << i << "] = " << std::setprecision(10) << occs[i]
+//                << std::endl;
+//}
+
 
     // GS vector
     std::vector<int> todelete_p;
@@ -322,12 +331,19 @@ int main(int argc, char** argv) {
         Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(C.data(), C.size());
 
     // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF, psi0, ham_gen, dets, E0, true, ws, occs,
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws, occs,
                                 gf_settings);
 
+    GF = GF_tmp;
+
     // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF, psi0, ham_gen, dets, E0, false, ws, occs,
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws, occs,
                                 gf_settings);
+
+    if (todelete_h != todelete_p)
+      throw std::runtime_error("Error: todelete_h != todelete_p");
+
+    GF = macis::sum_GFs(GF, GF_tmp,ws, gf_settings.GF_orbs_comp,todelete_p);
 
     if(gf_settings.writeGF_singlef)
       macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);

@@ -128,7 +128,7 @@ double SolveImpurityASCI (void * params){
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
-    std::vector<double> active_trdm;
+    std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
 
     double E0 = 0 ;
 
@@ -138,7 +138,6 @@ double SolveImpurityASCI (void * params){
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
 
-    std::cout<<"this line exists and asci_wfn_name = "<< asci_wfn_fname << std::endl;
     if(asci_wfn_fname.size()) 
     {
       // Read wave function from standard file
@@ -183,7 +182,7 @@ double SolveImpurityASCI (void * params){
     // console->info("ASCI Guess Size = {}", dets.size());
     // console->info("ASCI E0 = {:.10e}", E0 + E_core + E_inactive);
 
-    // Perform the ASCI calculation
+    //==============PERFORM THE ASCI CALCULATION=========
     // Growth phase
     std::cout << "GROWTH PHASE \n";
     std::tie(E0, dets, C) = macis::asci_grow(
