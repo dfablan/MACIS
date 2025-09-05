@@ -69,4 +69,6 @@ double SolveImpurityED(void* params);
 
 double SolveImpurityASCI(void* params);
 
+double SolveImpurityCheapASCI(void* params);
+
 }  // namespace macis

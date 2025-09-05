@@ -171,4 +171,86 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   return std::make_tuple(E0, wfn, X);
 }
 
+template <size_t N, typename index_t = int32_t>
+auto asci_grow_with_rot( ASCISettings asci_settings, MCSCFSettings mcscf_settings,
+  double E0, std::vector<std::bitset<N>> wfn, std::vector<double> X_local, 
+  HamiltonianGenerator<N>& ham_gen, size_t norb,
+  const int nrots = 4, const bool quiet = false MACIS_MPI_CODE(, MPI_Comm comm)) {
+
+  // double ham_tol, size_t eig_max_subspace, double eig_res_tol,
+  // const std::function<void(double)>& print_asci = std::function<void(double)>(),
+  // const int nrots = 4, const bool quiet = false ) {
+
+#ifdef MACIS_ENABLE_MPI
+  auto world_rank = comm_rank(comm);
+  auto world_size = comm_size(comm);
+#else
+  auto world_rank = 0;
+  auto world_size = 1;
+#endif
+
+  using hrt_t = std::chrono::high_resolution_clock;
+  using dur_t = std::chrono::duration<double, std::milli>;
+
+  auto logger = spdlog::get("asci_grow_with_rot");
+  if(!logger)
+    logger = world_rank ? spdlog::null_logger_mt("asci_grow_with_rot")
+                        : spdlog::stdout_color_mt("asci_grow_with_rot");
+
+  logger->info("[ASCI Grow Settings]:");
+  logger->info("  NTDETS_MAX = {:6}, NCDETS_MAX = {:6}, GROW_FACTOR = {}",
+               asci_settings.ntdets_max, asci_settings.ncdets_max,
+               asci_settings.grow_factor);
+
+  const std::string fmt_string =
+      "iter = {:4}, E0 = {:20.12e}, dE = {:14.6e}, WFN_SIZE = {}";
+
+  logger->info(fmt_string, 0, E0, 0.0, wfn.size());
+  // Grow wfn until max size, or until we get stuck
+  size_t prev_size = wfn.size();
+  size_t iter = 1;
+  auto grow_st = hrt_t::now();
+
+  if( wfn.size() >= ndets_max && !quiet ) {
+    std::cout << "Wavefunction Already Of Sufficient Size, Skipping Grow"
+      << std::endl;
+  }
+
+  // Grow wfn until max size, or until we get stuck
+  size_t prev_size = wfn.size();
+  int its = 0;
+  while( wfn.size() < ndets_max || its < nrots ) {
+    size_t ndets_new = std::min(std::max(100ul,wfn.size() * grow_factor), ndets_max);
+    std::tie(E0, wfn, X_local) = asci_iter<N,index_t>( ndets_new, ncdets, E0,
+      std::move(wfn), std::move(X_local), ham_gen, norb, ham_tol,
+      eig_max_subspace, eig_res_tol, quiet);
+    if( print_asci && !quiet ) print_asci( E0 );
+    its++;
+    if( its > 0 && its < nrots )
+    {
+      auto orbrot_st = clock_type::now();
+      std::vector<double> ordm( norb*norb, 0. );
+      ham_gen.form_rdms( wfn.begin(), wfn.end(), 
+                         wfn.begin(), wfn.end(),
+                         X_local.data(), ordm.data() );
+      ham_gen.rotate_hamiltonian_ordm( ordm.data() );
+      ham_gen.SetJustSingles( false );
+      // Rediagonalize
+      E0 = selected_ci_diag<N,index_t>( wfn.begin(), wfn.end(), ham_gen, 
+        ham_tol, eig_max_subspace, eig_res_tol, X_local, MPI_COMM_WORLD, true);
+      auto orbrot_en = clock_type::now();
+      if( !quiet )
+        std::cout << "\n  * Rotating to natural orbitals: " << 
+                     duration_type(orbrot_en - orbrot_st).count() << std::endl;
+    }
+    if( std::abs( float(wfn.size() - prev_size) / float(wfn.size())) < 1.E-3
+        && its >= nrots  )
+      break;
+    prev_size = wfn.size();
+  }
+
+  return std::make_tuple(E0, wfn, X_local);
+
+}
+
 }  // namespace macis
