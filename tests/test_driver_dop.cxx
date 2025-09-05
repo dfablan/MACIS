@@ -31,12 +31,12 @@ int main(int argc, char** argv) {
   spdlog::set_pattern("[%n] %v");
 
 #ifdef MACIS_ENABLE_MPI
-    MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
-    auto world_rank = macis::comm_rank(MPI_COMM_WORLD);
-    auto world_size = macis::comm_size(MPI_COMM_WORLD);
+  MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
+  auto world_rank = macis::comm_rank(MPI_COMM_WORLD);
+  auto world_size = macis::comm_size(MPI_COMM_WORLD);
 #else
-    int world_rank = 0;
-    int world_size = 1;
+  int world_rank = 0;
+  int world_size = 1;
 #endif
 
   std::vector<macis::wfn_t<nwfn_bits>> dets;
