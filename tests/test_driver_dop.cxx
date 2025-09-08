@@ -139,6 +139,8 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.MAX_REFINE_ITER", asci_settings.max_refine_iter, size_t);
   OPT_KEYWORD("ASCI.REFINE_ETOL", asci_settings.refine_energy_tol, double);
   OPT_KEYWORD("ASCI.GROW_WITH_ROT", asci_settings.grow_with_rot, bool);
+  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY", asci_settings.grow_with_rot_legacy, bool);
+  OPT_KEYWORD("ASCI.NROTS", asci_settings.nrots, size_t);
   OPT_KEYWORD("ASCI.ROT_SIZE_START", asci_settings.rot_size_start, size_t);
   OPT_KEYWORD("ASCI.CONSTRAINT_LVL", asci_settings.constraint_level, int);
   OPT_KEYWORD("ASCI.WFN_FILE", asci_wfn_fname, std::string);

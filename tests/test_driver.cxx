@@ -140,6 +140,8 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.MAX_REFINE_ITER", asci_settings.max_refine_iter, size_t);
   OPT_KEYWORD("ASCI.REFINE_ETOL", asci_settings.refine_energy_tol, double);
   OPT_KEYWORD("ASCI.GROW_WITH_ROT", asci_settings.grow_with_rot, bool);
+  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY", asci_settings.grow_with_rot_legacy, bool);
+  OPT_KEYWORD("ASCI.NROTS", asci_settings.nrots, size_t);
   OPT_KEYWORD("ASCI.ROT_SIZE_START", asci_settings.rot_size_start, size_t);
   OPT_KEYWORD("ASCI.CONSTRAINT_LVL", asci_settings.constraint_level, int);
   OPT_KEYWORD("ASCI.WFN_FILE", asci_wfn_fname, std::string);
@@ -169,7 +171,7 @@ int main(int argc, char** argv) {
 
   // Setup printing
   bool print_davidson = true, print_ci = true, print_mcscf = true,
-       print_diis = true, print_asci_search = true, print_determinants = true;
+       print_diis = true, print_asci_search = false, print_determinants = true;
   double determinants_threshold = 1e-2;
   OPT_KEYWORD("PRINT.DAVIDSON", print_davidson, bool);
   OPT_KEYWORD("PRINT.CI", print_ci, bool);
@@ -212,27 +214,29 @@ int main(int argc, char** argv) {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
 
-    if(ci_exp == CIExpansion::CAS) {
+    if(ci_exp == CIExpansion::CAS) 
       E0 = SolveImpurityED(&params);
-
-      if(print_determinants) {
-        auto det_logger = world_rank ? spdlog::null_logger_mt("determinants")
-                                     : spdlog::stdout_color_mt("determinants");
-        det_logger->info("Print leading determinants > {:.12f}",
-                         determinants_threshold);
-        for(size_t i = 0; i < dets.size(); ++i) {
-          if(std::abs(C[i]) > determinants_threshold) {
-            det_logger->info("{:>16.12f}   {}", C[i],
-                             macis::to_canonical_string(dets[i]));
-          }
-        }
-      }
-    } else {
-      E0 = SolveImpurityASCI(&params);
-
+    else {
+      if(asci_settings.grow_with_rot_legacy)
+        E0 = SolveImpurityASCI_rot(&params);
+      else
+        E0 = SolveImpurityASCI(&params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
         macis::write_wavefunction(asci_wfn_out_fname, n_active, dets, C);
+      }
+    }
+
+    if(print_determinants) {
+      auto det_logger = world_rank ? spdlog::null_logger_mt("determinants")
+                                   : spdlog::stdout_color_mt("determinants");
+      det_logger->info("Print leading determinants > {:.12f}",
+                       determinants_threshold);
+      for(size_t i = 0; i < dets.size(); ++i) {
+        if(std::abs(C[i]) > determinants_threshold) {
+          det_logger->info("{:>16.12f}   {}", C[i],
+                           macis::to_canonical_string(dets[i]));
+        }
       }
     }
   }

@@ -38,13 +38,19 @@ struct impurity_params {
   size_t* nalpha;
   size_t* n_inactive;
   size_t* norb;
-  double* nel;
   size_t* n_imp;
 
+  double* nel;
+  // double* delta_CFS;
+  std::vector<double>* orb_rot;
+
+  double* dstep;
   double* abs_tol;
   size_t* maxiter;
+  size_t* mu_cost_counter;
   bool* print;
   double* init_shift;
+  bool* cheap_mode;
 
   std::string* ci_exp;
   std::string* asci_wfn_fname;
@@ -57,7 +63,6 @@ struct impurity_params {
   std::vector<double>* C;
   std::vector<macis::wfn_t<nwfn_bits>>* dets;
 
-  double* dstep;
   double* E_core;
   double* E;
   std::vector<double>* T;
@@ -68,6 +73,8 @@ struct impurity_params {
 double SolveImpurityED(void* params);
 
 double SolveImpurityASCI(void* params);
+
+double SolveImpurityASCI_rot(void* params);
 
 double SolveImpurityCheapASCI(void* params);
 

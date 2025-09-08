@@ -17,7 +17,7 @@
 namespace macis {
 
 template <size_t N>
-void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm) {
+void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm, double* rot_mat) {
   // SVD on ordm to get natural orbitals
   std::vector<double> natural_orbitals(ordm, ordm + norb2_);
   std::vector<double> S(norb_);
@@ -45,6 +45,11 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm) {
 #endif
 
   std::vector<double> tmp(norb3_ * norb_), tmp2(norb3_ * norb_);
+
+  // Save rotation matrix
+  if (rot_mat != nullptr)
+    std::copy(natural_orbitals.data(), natural_orbitals.data() + norb2_, rot_mat);
+
 
   // Transform T
   // T <- N**H * T * N
