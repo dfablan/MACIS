@@ -50,15 +50,16 @@ struct GFSettings {
   std::vector<bool> is_up_comp = std::vector<bool>(0);
   int nLanIts = 1000;
   bool writeGF = false;
+  bool writeGF_singlef = false;
   bool print = false;
   bool saveGFmats = false;
   double wmin = -8.;
   double wmax = 8.;
-  size_t nws = 2001;
+  size_t nws = 1001;
   double eta = 0.1;
   std::string w_scale = "lin";
   bool real_g = true;
-  bool beta = 1.;
+  double beta = 1.;
 };
 
 /**
@@ -406,6 +407,12 @@ auto BuildWfn4Lanczos(const Eigen::VectorXd &base_wfn,
                       const std::vector<std::bitset<nbits>> &GF_dets,
                       bool is_part, std::vector<int> &todelete,
                       double zero_thresh = 1.E-7) {
+  // Safety check
+  if(GF_orbs.size() != is_up.size()) {
+    throw std::runtime_error(
+        "In BuildWfn4Lanczos: GF_orbs and is_up have different sizes");
+  }
+
   // INITIALIZE THE DICTIONARY OF BASE DETERMINANTS
   using bitset_map =
       std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>;
@@ -417,6 +424,7 @@ auto BuildWfn4Lanczos(const Eigen::VectorXd &base_wfn,
 
   // PREPARE THE WAVEFUNCTIONS FOR THE BAND LANCZOS
   size_t nterms = GF_dets.size();
+
   std::vector<double> wfns(GF_orbs.size() * nterms, 0.);
   for(size_t iorb = 0; iorb < GF_orbs.size(); iorb++) {
     int orb = GF_orbs[iorb];
@@ -489,6 +497,10 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
               const std::vector<std::complex<double>> &ws,
               const std::vector<int> &GF_orbs, const std::vector<int> &todelete,
               const bool is_part);
+void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
+              const std::vector<std::complex<double>> &ws,
+              const std::vector<int> &GF_orbs,
+              const std::vector<int> &todelete);
 
 /**
  * @brief Routine to run Green's function calculation at zero temperature from
@@ -673,6 +685,38 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
             << std::endl;
 
   if(writeGF) write_GF(GF, ws, GF_orbs_comp, todelete, is_part);
+}
+
+/**
+ * @brief Routine to sum two Green function matrices.
+
+*/
+const std::vector<std::vector<std::complex<double>>> sum_GFs(
+    const std::vector<std::vector<std::complex<double>>> &GF1,
+    const std::vector<std::vector<std::complex<double>>> &GF2,
+    const std::vector<std::complex<double>> &ws,
+    const std::vector<int> &GF_orbs, const std::vector<int> &todelete) {
+  using dbl = std::numeric_limits<double>;
+  size_t nfreqs = ws.size();
+  int GFmat_size = GF_orbs.size() - todelete.size();
+
+  std::vector<std::vector<std::complex<double>>> GF(
+      nfreqs, std::vector<std::complex<double>>(GFmat_size * GFmat_size,
+                                                std::complex<double>(0., 0.)));
+
+  if(GF_orbs.size() > 1) {
+    for(int iii = 0; iii < nfreqs; iii++) {
+      for(int jjj = 0; jjj < GFmat_size; jjj++) {
+        for(int lll = 0; lll < GFmat_size; lll++)
+          GF[iii][jjj * GFmat_size + lll] = GF1[iii][jjj * GFmat_size + lll] +
+                                            GF2[iii][jjj * GFmat_size + lll];
+      }
+    }
+  } else {
+    for(int iii = 0; iii < nfreqs; iii++)
+      GF[iii][0] = GF1[iii][0] + GF2[iii][0];
+  }
+  return GF;
 }
 
 }  // namespace macis
