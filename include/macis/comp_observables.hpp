@@ -32,39 +32,30 @@ namespace macis {
  * @brief Structure to hold the parameters of the impurity problem.
  */
 
+double Comp_db_occs(void* params) {
+  struct impurity_params* p = static_cast<impurity_params*>(params);
 
-double Comp_db_occs(void* params){
+  norb = *(p->norb);
+  n_active = *(p->n_active);
+  norb2 = norb * norb;
+  norb3 = norb2 * norb;
+  norb4 = norb2 * norb2;
+  macis::ASCISettings asci_settings = *(p->asci_settings);
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+  std::vector<double> T = *(p->T);
+  std::vector<double> V = *(p->V);
 
-    norb = *(p->norb);
-    n_active =* (p->n_active);
-    norb2 = norb * norb;
-    norb3 = norb2 * norb;
-    norb4 = norb2 * norb2;
-    macis::ASCISettings asci_settings = *(p->asci_settings);
+  using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
 
-    std::vector<double> T = *(p->T);
-    std::vector<double> V = *(p->V);
+  generator_t ham_gen(
+      matrix_span_t(T.data(), n_active, n_active),
+      rank4_span_t(V.data(), n_active, n_active, n_active, n_active));
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+  double orb_db_occs;
 
-    generator_t ham_gen(
-        matrix_span_t(T.data(), n_active, n_active),
-        rank4_span_t(V.data(), n_active, n_active, n_active, n_active));
-
-    double orb_db_occs;
-
-    if (asci_settings.nrots == 0){
-
-        ham_gen.form_rdms
-
-    }
-
-
-
-
+  if(asci_settings.nrots == 0) {
+    ham_gen.form_rdms
+  }
 }
-
 
 }  // namespace macis

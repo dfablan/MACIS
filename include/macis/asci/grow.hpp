@@ -49,7 +49,8 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   auto grow_st = hrt_t::now();
 
   while(wfn.size() < asci_settings.ntdets_max) {
-    std::cout<<"=====Starting ASCI Growth Iteration!!!!===== " << iter++ << "\n"; //DEBUG!!!!!
+    std::cout << "=====Starting ASCI Growth Iteration!!!!===== " << iter++
+              << "\n";  // DEBUG!!!!!
     size_t ndets_new =
         std::min(std::max(asci_settings.ntdets_min,
                           wfn.size() * asci_settings.grow_factor),
@@ -71,7 +72,8 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
        wfn.size() >= asci_settings.rot_size_start) {
       auto grow_rot_st = hrt_t::now();
 
-      std::cout<<"Performing Natural Orbital Rotation of Integrals!!!! \n"; //DEBUG!!!!!
+      std::cout
+          << "Performing Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
 
       // Only do rotation on root rank
       if(!world_rank) {
@@ -176,14 +178,15 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 }
 
 template <size_t N, typename index_t = int32_t>
-auto asci_grow_with_rot_legacy( ASCISettings asci_settings, MCSCFSettings mcscf_settings,
-  double E0, std::vector<std::bitset<N>> wfn, std::vector<double> X_local, 
-  HamiltonianGenerator<N>& ham_gen, size_t norb, 
-  std::vector<double> &orb_rot MACIS_MPI_CODE(, MPI_Comm comm)) {
-
+auto asci_grow_with_rot_legacy(
+    ASCISettings asci_settings, MCSCFSettings mcscf_settings, double E0,
+    std::vector<std::bitset<N>> wfn, std::vector<double> X_local,
+    HamiltonianGenerator<N>& ham_gen, size_t norb,
+    std::vector<double>& orb_rot MACIS_MPI_CODE(, MPI_Comm comm)) {
   // double ham_tol, size_t eig_max_subspace, double eig_res_tol,
-  // const std::function<void(double)>& print_asci = std::function<void(double)>(),
-  // const int asci_settings.nrots = 4, const bool quiet = false ) 
+  // const std::function<void(double)>& print_asci =
+  // std::function<void(double)>(), const int asci_settings.nrots = 4, const
+  // bool quiet = false )
 
 #ifdef MACIS_ENABLE_MPI
   auto world_rank = comm_rank(comm);
@@ -206,42 +209,42 @@ auto asci_grow_with_rot_legacy( ASCISettings asci_settings, MCSCFSettings mcscf_
                asci_settings.ntdets_max, asci_settings.ncdets_max,
                asci_settings.grow_factor);
 
-
   // Grow wfn until max size, or until we get stuck
   auto grow_st = hrt_t::now();
 
   // Grow wfn until max size, or until we get stuck
   size_t prev_size = wfn.size();
   int its = 0;
-  while( wfn.size() < asci_settings.ntdets_max || its < asci_settings.nrots ) {
-    size_t ndets_new = std::min(std::max(100ul,wfn.size() * asci_settings.grow_factor), asci_settings.ntdets_max);
+  while(wfn.size() < asci_settings.ntdets_max || its < asci_settings.nrots) {
+    size_t ndets_new =
+        std::min(std::max(100ul, wfn.size() * asci_settings.grow_factor),
+                 asci_settings.ntdets_max);
     std::tie(E0, wfn, X_local) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets_new, E0, std::move(wfn),
         std::move(X_local), ham_gen, norb MACIS_MPI_CODE(, comm));
     its++;
-    if( its > 0 && its < asci_settings.nrots )
-    {
+    if(its > 0 && its < asci_settings.nrots) {
       auto orbrot_st = hrt_t::now();
-      std::vector<double> ordm( norb*norb, 0. );
-      ham_gen.form_rdms( wfn.begin(), wfn.end(), 
-                         wfn.begin(), wfn.end(),
-                         X_local.data(), ordm.data() );
-      std::vector<double> tmp_rot( norb*norb, 0. );
-      ham_gen.rotate_hamiltonian_ordm( ordm.data(), tmp_rot.data() );
+      std::vector<double> ordm(norb * norb, 0.);
+      ham_gen.form_rdms(wfn.begin(), wfn.end(), wfn.begin(), wfn.end(),
+                        X_local.data(), ordm.data());
+      std::vector<double> tmp_rot(norb * norb, 0.);
+      ham_gen.rotate_hamiltonian_ordm(ordm.data(), tmp_rot.data());
       blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-                norb, norb, norb, 1.0, tmp_rot.data(), norb,
-                orb_rot.data(), norb, 0.0, orb_rot.data(), norb);
-      ham_gen.SetJustSingles( false );
+                 norb, norb, norb, 1.0, tmp_rot.data(), norb, orb_rot.data(),
+                 norb, 0.0, orb_rot.data(), norb);
+      ham_gen.SetJustSingles(false);
       // Rediagonalize
-      E0 = selected_ci_diag( wfn.begin(), wfn.end(), ham_gen, mcscf_settings.ci_matel_tol,
-           mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol, X_local,
-           MACIS_MPI_CODE( MPI_COMM_WORLD, ) true, mcscf_settings.ci_nstates);
+      E0 = selected_ci_diag(
+          wfn.begin(), wfn.end(), ham_gen, mcscf_settings.ci_matel_tol,
+          mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol, X_local,
+          MACIS_MPI_CODE(MPI_COMM_WORLD, ) true, mcscf_settings.ci_nstates);
       auto orbrot_en = hrt_t::now();
-      std::cout << "\n  * Rotating to natural orbitals: " << 
-                     dur_t(orbrot_en - orbrot_st).count() << std::endl;
+      std::cout << "\n  * Rotating to natural orbitals: "
+                << dur_t(orbrot_en - orbrot_st).count() << std::endl;
     }
-    if( std::abs( float(wfn.size() - prev_size) / float(wfn.size())) < 1.E-3
-        && its >= asci_settings.nrots  )
+    if(std::abs(float(wfn.size() - prev_size) / float(wfn.size())) < 1.E-3 &&
+       its >= asci_settings.nrots)
       break;
     prev_size = wfn.size();
   }

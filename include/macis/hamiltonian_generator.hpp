@@ -180,7 +180,7 @@ class HamiltonianGenerator {
                          full_det_iterator, full_det_iterator, double* C,
                          matrix_span_t ordm, rank4_span_t trdm) = 0;
 
-  void rotate_hamiltonian_ordm(const double* ordm, double* rot_mat=nullptr);
+  void rotate_hamiltonian_ordm(const double* ordm, double* rot_mat = nullptr);
 
   virtual void SetJustSingles(bool /*_js*/) {}
   virtual bool GetJustSingles() const { return false; }
