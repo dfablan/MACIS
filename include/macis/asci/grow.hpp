@@ -247,7 +247,6 @@ auto asci_grow_with_rot_legacy( ASCISettings asci_settings, MCSCFSettings mcscf_
   }
 
   return std::make_tuple(E0, wfn, X_local);
-
 }
 
 }  // namespace macis
