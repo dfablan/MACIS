@@ -1,20 +1,5 @@
-#include <iomanip>
-#include <iostream>
-#include <macis/asci/grow.hpp>
-#include <macis/asci/refine.hpp>
-#include <macis/hamiltonian_generator/double_loop.hpp>
-#include <macis/hamiltonian_generator/sd_build.hpp>
-#include <macis/util/cas.hpp>
-#include <macis/util/detail/rdm_files.hpp>
-#include <macis/util/fcidump.hpp>
-#include <macis/util/fock_matrices.hpp>
-#include <macis/util/memory.hpp>
-#include <macis/util/moller_plesset.hpp>
-#include <macis/util/mpi.hpp>
-#include <macis/util/transform.hpp>
-#include <macis/wavefunction_io.hpp>
-#include <map>
-#include <sparsexx/io/write_dist_mm.hpp>
+
+#include "macis/impurity_solver.hpp"
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -24,7 +9,6 @@ using macis::NumInactive;
 using macis::NumOrbital;
 using macis::NumVirtual;
 
-constexpr size_t nwfn_bits = 64;
 
 namespace macis {
 
@@ -35,19 +19,23 @@ namespace macis {
 double Comp_db_occs(void* params) {
   struct impurity_params* p = static_cast<impurity_params*>(params);
 
-  n_imp = *(p->n_imp);
-  n_imp2 = n_imp * n_imp;
-  n_imp3 = n_imp2 * n_imp;
-  n_imp4 = n_imp3 * n_imp;
+  size_t n_imp = *(p->n_imp);
+  size_t n_imp2 = n_imp * n_imp;
+  size_t n_imp3 = n_imp2 * n_imp;
+  size_t n_imp4 = n_imp3 * n_imp;
   macis::ASCISettings asci_settings = *(p->asci_settings);
 
   std::vector<double> T = *(p->T);
   std::vector<double> V = *(p->V);
 
+  std::vector<macis::wfn_t<nwfn_bits>> dets = *(p->dets);
+  std::vector<double> C_local = *(p->C);
+
   using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
 
-  generator_t ham_gen(matrix_span_t(T.data(), n_imp, n_imp),
-                      rank4_span_t(V.data(), n_imp, n_imp, n_imp, n_imp));
+  generator_t ham_gen(
+    macis::matrix_span<double>(T.data(), n_imp, n_imp),
+    macis::rank4_span<double> (V.data(), n_imp, n_imp, n_imp, n_imp));
 
   double orb_db_occs = 0.0;
 
@@ -55,24 +43,24 @@ double Comp_db_occs(void* params) {
   std::vector<double> trdm_uu, trdm_dd, trdm_ud, trdm_du;
 
   if(asci_settings.nrots == 0) {
-    ham_gen.form_rdms(dets.begin(), dets.end(), dets.begin(), dets.end(),
-                      C.data(), matrix_span<double>(ordm_u, n_imp, n_imp),
-                      matrix_span<double>(ordm_d, n_imp, n_imp),
-                      rank4_span<double>(trdm_uu, n_imp, n_imp, n_imp, n_imp),
-                      rank4_span<double>(trdm_ud, n_imp, n_imp, n_imp, n_imp),
-                      rank4_span<double>(trdm_ud, n_imp, n_imp, n_imp, n_imp),
-                      rank4_span<double>(trdm_dd, n_imp, n_imp, n_imp, n_imp));
+    ham_gen.form_rdms(dets.begin(), dets.end(), dets.begin(), dets.end(), C_local.data(), 
+                      macis::matrix_span<double>(ordm_u.data(), n_imp, n_imp),
+                      macis::matrix_span<double>(ordm_d.data(), n_imp, n_imp),
+                      macis::rank4_span<double>(trdm_uu.data(), n_imp, n_imp, n_imp, n_imp),
+                      macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
+                      macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
+                      macis::rank4_span<double>(trdm_dd.data(), n_imp, n_imp, n_imp, n_imp));
 
     for(int a = 0; a < n_imp; a++) {
       orb_db_occs += trdm_ud[a + a * n_imp + a * n_imp2 + a * n_imp3];
     }
     orb_db_occs = orb_db_occs / n_imp;
 
-    {
-      orb_db_occs_bm = 0.0;
+    std::cout << "Double Occupancies (from 2-RDM) = " << std::setprecision(10)
+              << orb_db_occs << std::endl;
 
-      dets = *(p->dets);
-      C_local = *(p->C);
+    {
+      double orb_db_occs_bm = 0.0;
 
       struct wf_pair {
         std::string str;
@@ -90,19 +78,19 @@ double Comp_db_occs(void* params) {
                 [](const wf_pair& a, const wf_pair& b) {
                   return abs(a.coeff) > abs(b.coeff);
                 });
-
-      for(size_t i = 0; i < n_imp; ++i) {
-        if(pairs[idet].str[i] == '2') {
-          orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
+          
+      for(size_t idet = 0; idet < pairs.size(); ++idet){
+        for(size_t i = 0; i < n_imp; ++i) {
+          if(pairs[idet].str[i] == '2') {
+            orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
+          }
         }
       }
       orb_db_occs_bm = orb_db_occs_bm / n_imp;
-    }
-
-    std::cout << "Double Occupancies (from 2-RDM) = " << std::setprecision(10)
-              << orb_db_occs << std::endl;
     std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
               << orb_db_occs_bm << std::endl;
+    }
+
   }
 
   return orb_db_occs;
@@ -223,8 +211,8 @@ private:
     std::vector<double> ordm_u_, ordm_d_;
     std::vector<double> trdm_uu_, trdm_dd_, trdm_ud_, trdm_du_;
     
-    std::vector<macis::wfn_t<nwfn_bits>>& dets_;
-    std::vector<double>& C_;
+    std::vector<macis::wfn_t<nwfn_bits>> dets_;
+    std::vector<double> C_;
 
 public:
     CompObservables(void* params) 
@@ -256,17 +244,17 @@ public:
         // Build generator and compute RDMs
         using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
         generator_t ham_gen(
-            matrix_span_t(p->T->data(), n_imp_, n_imp_),
-            rank4_span_t(p->V->data(), n_imp_, n_imp_, n_imp_, n_imp_));
+            macis::matrix_span<double>(p->T->data(), n_imp_, n_imp_),
+            macis::rank4_span <double>(p->V->data(), n_imp_, n_imp_, n_imp_, n_imp_));
 
         ham_gen.form_rdms(dets_.begin(), dets_.end(), dets_.begin(), dets_.end(),
                          C_.data(), 
-                         matrix_span<double>(ordm_u_.data(), n_imp_, n_imp_),
-                         matrix_span<double>(ordm_d_.data(), n_imp_, n_imp_),
-                         rank4_span<double>(trdm_uu_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         rank4_span<double>(trdm_ud_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         rank4_span<double>(trdm_du_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         rank4_span<double>(trdm_dd_.data(), n_imp_, n_imp_, n_imp_, n_imp_));
+                         macis::matrix_span<double>(ordm_u_.data(), n_imp_, n_imp_),
+                         macis::matrix_span<double>(ordm_d_.data(), n_imp_, n_imp_),
+                         macis::rank4_span<double>(trdm_uu_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
+                         macis::rank4_span<double>(trdm_ud_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
+                         macis::rank4_span<double>(trdm_du_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
+                         macis::rank4_span<double>(trdm_dd_.data(), n_imp_, n_imp_, n_imp_, n_imp_));
     }
 
     double compute_double_occupancies() const {

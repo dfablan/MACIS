@@ -8,7 +8,6 @@
 #include <iostream>
 #include <macis/comp_observables.hpp>
 #include <macis/gf/gf.hpp>
-#include <macis/impurity_solver.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -107,6 +106,7 @@ int main(int argc, char** argv) {
 
   size_t nbands = 1;
   OPT_KEYWORD("CI.NBANDS", nbands, size_t);
+  size_t nsites = norb / nbands;
 
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
@@ -229,6 +229,8 @@ int main(int argc, char** argv) {
     if(ci_exp == CIExpansion::CAS)
       E0 = SolveImpurityED(&params);
     else {
+      std::cout << " Value of GROW_WITH_ROT_LEGACY = " << asci_settings.grow_with_rot_legacy << "\n";  // DEBUG!!!!!
+      std::cout << " Value of GROW_WITH_ROT = " << asci_settings.grow_with_rot << "\n";  // DEBUG!!!!!
       if(asci_settings.grow_with_rot_legacy)
         E0 = SolveImpurityASCI_rot(&params);
       else
@@ -274,37 +276,41 @@ int main(int argc, char** argv) {
   } 
 
   if (compute_db_occs or compute_sz_sz or compute_tz_tz){
+    using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if (compute_db_occs){
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
     }
     if (compute_sz_sz){
-      auto sz_sz = obs.compute_sz_sz_correlations();
+      std::vector<double> sz_sz(nsites*nsites, 0.0);
+      sz_sz = obs.compute_sz_sz_correlations();
       //print to file
       std::ofstream ofile_sz( "sz_sz.dat");
       ofile_sz.precision(dbl::max_digits10);
-      for (int i = 0; i < nsites; i++)
+      for (size_t i = 0; i < nsites; i++)
       {
-        for (int j = 0; j < nsites; j++)
-          ofile_sz << scientific << sz_sz(i,j) << "  ";
+        for (size_t j = 0; j < nsites; j++)
+          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";
         ofile_sz << std::endl;
       } 
       ofile_sz.close();
     }
     if (compute_tz_tz){
-      auto tz_tz = obs.compute_tz_tz_correlations();
+      std::vector<double> tz_tz(nsites*nsites, 0.0);
+      tz_tz = obs.compute_tz_tz_correlations();
       //print to file
       std::ofstream ofile_tz( "tauz_tauz.dat");
       ofile_tz.precision(dbl::max_digits10);
-      for (int i = 0; i < nsites; i++)
+      for (size_t i = 0; i < nsites; i++)
       {
-        for (int j = 0; j < nsites; j++)
-          ofile_tz << scientific << tz_tz(i,j) << "  ";
+        for (size_t j = 0; j < nsites; j++)
+          ofile_tz << std::scientific << tz_tz[i+j*nsites] << "  ";
         ofile_tz << std::endl;
       }
       ofile_tz.close();
     }
+  }
 
 
 
