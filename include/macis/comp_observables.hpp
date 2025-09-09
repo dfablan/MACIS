@@ -9,7 +9,6 @@ using macis::NumInactive;
 using macis::NumOrbital;
 using macis::NumVirtual;
 
-
 namespace macis {
 
 /**
@@ -34,8 +33,8 @@ double Comp_db_occs(void* params) {
   using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
 
   generator_t ham_gen(
-    macis::matrix_span<double>(T.data(), n_imp, n_imp),
-    macis::rank4_span<double> (V.data(), n_imp, n_imp, n_imp, n_imp));
+      macis::matrix_span<double>(T.data(), n_imp, n_imp),
+      macis::rank4_span<double>(V.data(), n_imp, n_imp, n_imp, n_imp));
 
   double orb_db_occs = 0.0;
 
@@ -43,13 +42,14 @@ double Comp_db_occs(void* params) {
   std::vector<double> trdm_uu, trdm_dd, trdm_ud, trdm_du;
 
   if(asci_settings.nrots == 0) {
-    ham_gen.form_rdms(dets.begin(), dets.end(), dets.begin(), dets.end(), C_local.data(), 
-                      macis::matrix_span<double>(ordm_u.data(), n_imp, n_imp),
-                      macis::matrix_span<double>(ordm_d.data(), n_imp, n_imp),
-                      macis::rank4_span<double>(trdm_uu.data(), n_imp, n_imp, n_imp, n_imp),
-                      macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
-                      macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
-                      macis::rank4_span<double>(trdm_dd.data(), n_imp, n_imp, n_imp, n_imp));
+    ham_gen.form_rdms(
+        dets.begin(), dets.end(), dets.begin(), dets.end(), C_local.data(),
+        macis::matrix_span<double>(ordm_u.data(), n_imp, n_imp),
+        macis::matrix_span<double>(ordm_d.data(), n_imp, n_imp),
+        macis::rank4_span<double>(trdm_uu.data(), n_imp, n_imp, n_imp, n_imp),
+        macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
+        macis::rank4_span<double>(trdm_ud.data(), n_imp, n_imp, n_imp, n_imp),
+        macis::rank4_span<double>(trdm_dd.data(), n_imp, n_imp, n_imp, n_imp));
 
     for(int a = 0; a < n_imp; a++) {
       orb_db_occs += trdm_ud[a + a * n_imp + a * n_imp2 + a * n_imp3];
@@ -78,8 +78,8 @@ double Comp_db_occs(void* params) {
                 [](const wf_pair& a, const wf_pair& b) {
                   return abs(a.coeff) > abs(b.coeff);
                 });
-          
-      for(size_t idet = 0; idet < pairs.size(); ++idet){
+
+      for(size_t idet = 0; idet < pairs.size(); ++idet) {
         for(size_t i = 0; i < n_imp; ++i) {
           if(pairs[idet].str[i] == '2') {
             orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
@@ -87,10 +87,9 @@ double Comp_db_occs(void* params) {
         }
       }
       orb_db_occs_bm = orb_db_occs_bm / n_imp;
-    std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
-              << orb_db_occs_bm << std::endl;
+      std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
+                << orb_db_occs_bm << std::endl;
     }
-
   }
 
   return orb_db_occs;
@@ -211,21 +210,21 @@ double Comp_db_occs(void* params) {
 //   }
 
 class CompObservables {
-private:
-    size_t norb_;
-    size_t n_imp_;
-    size_t n_bands_;
-    size_t n_sites_;
-    size_t n_sites2_;
-    size_t n_imp2_;
-    size_t n_imp3_;
-    size_t n_imp4_;
-    
-    std::vector<double> ordm_u_, ordm_d_;
-    std::vector<double> trdm_uu_, trdm_dd_, trdm_ud_, trdm_du_;
-    
-    std::vector<macis::wfn_t<nwfn_bits>> dets_;
-    std::vector<double> C_;
+ private:
+  size_t norb_;
+  size_t n_imp_;
+  size_t n_bands_;
+  size_t n_sites_;
+  size_t n_sites2_;
+  size_t n_imp2_;
+  size_t n_imp3_;
+  size_t n_imp4_;
+
+  std::vector<double> ordm_u_, ordm_d_;
+  std::vector<double> trdm_uu_, trdm_dd_, trdm_ud_, trdm_du_;
+
+  std::vector<macis::wfn_t<nwfn_bits>> dets_;
+  std::vector<double> C_;
 
  public:
   CompObservables(void* params) {
@@ -252,21 +251,26 @@ private:
     trdm_ud_.resize(n_imp4_);
     trdm_du_.resize(n_imp4_);
 
-        // Build generator and compute RDMs
-        using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
-        generator_t ham_gen(
-            macis::matrix_span<double>(p->T->data(), n_imp_, n_imp_),
-            macis::rank4_span <double>(p->V->data(), n_imp_, n_imp_, n_imp_, n_imp_));
+    // Build generator and compute RDMs
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    generator_t ham_gen(
+        macis::matrix_span<double>(p->T->data(), n_imp_, n_imp_),
+        macis::rank4_span<double>(p->V->data(), n_imp_, n_imp_, n_imp_,
+                                  n_imp_));
 
-        ham_gen.form_rdms(dets_.begin(), dets_.end(), dets_.begin(), dets_.end(),
-                         C_.data(), 
-                         macis::matrix_span<double>(ordm_u_.data(), n_imp_, n_imp_),
-                         macis::matrix_span<double>(ordm_d_.data(), n_imp_, n_imp_),
-                         macis::rank4_span<double>(trdm_uu_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         macis::rank4_span<double>(trdm_ud_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         macis::rank4_span<double>(trdm_du_.data(), n_imp_, n_imp_, n_imp_, n_imp_),
-                         macis::rank4_span<double>(trdm_dd_.data(), n_imp_, n_imp_, n_imp_, n_imp_));
-    }
+    ham_gen.form_rdms(
+        dets_.begin(), dets_.end(), dets_.begin(), dets_.end(), C_.data(),
+        macis::matrix_span<double>(ordm_u_.data(), n_imp_, n_imp_),
+        macis::matrix_span<double>(ordm_d_.data(), n_imp_, n_imp_),
+        macis::rank4_span<double>(trdm_uu_.data(), n_imp_, n_imp_, n_imp_,
+                                  n_imp_),
+        macis::rank4_span<double>(trdm_ud_.data(), n_imp_, n_imp_, n_imp_,
+                                  n_imp_),
+        macis::rank4_span<double>(trdm_du_.data(), n_imp_, n_imp_, n_imp_,
+                                  n_imp_),
+        macis::rank4_span<double>(trdm_dd_.data(), n_imp_, n_imp_, n_imp_,
+                                  n_imp_));
+  }
 
   double compute_double_occupancies() const {
     double orb_db_occs = 0.0;
