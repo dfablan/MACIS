@@ -8,6 +8,7 @@
 #include <iostream>
 #include <macis/gf/gf.hpp>
 #include <macis/impurity_solver.hpp>
+#include <macis/comp_observables.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -104,10 +105,20 @@ int main(int argc, char** argv) {
   size_t n_imp = norb;
   OPT_KEYWORD("CI.NIMP", n_imp, size_t);
 
+  size_t nbands = 1;
+  OPT_KEYWORD("CI.NBANDS", nbands, size_t);
+
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);
   OPT_KEYWORD("CI.FCIDUMP_OUT", fci_out_fname, std::string);
+  bool compute_db_occs = false;
+  bool compute_sz_sz = false;
+  bool compute_tz_tz = false;
+  OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
+  OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
+  OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
+
 
   if(n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
@@ -198,6 +209,7 @@ int main(int argc, char** argv) {
   params.n_inactive = &n_inactive;
   params.norb = &norb;
   params.n_imp = &n_imp;
+  params.nbands = &nbands;
   params.E_core = &E_core;
   params.V = &V;
   params.T = &T;
@@ -255,6 +267,17 @@ int main(int argc, char** argv) {
   std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp
             << " impurity orbitals\n"
             << std::endl;
+
+  if (compute_db_occs){
+    double db_occs = 0;
+    db_occs = macis::compute_db_occs(n_imp, n_bands, dets, C, rdm_fname + ".db_occs");
+  }
+
+  if (compute_db_occs or compute_sz_sz or compute_tz_tz){
+ 
+  }
+
+
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
