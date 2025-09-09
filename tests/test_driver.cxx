@@ -270,143 +270,141 @@ int main(int argc, char** argv) {
   if(compute_db_occs) {
     double db_occs = 0;
     db_occs = macis::Comp_db_occs(&params);
-    std::cout << "  * Double occupancy (test function) = " << db_occs << std::endl;
-  } 
+    std::cout << "  * Double occupancy (test function) = " << db_occs
+              << std::endl;
+  }
 
-  if (compute_db_occs or compute_sz_sz or compute_tz_tz){
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     macis::CompObservables obs(&params);
-    if (compute_db_occs){
+    if(compute_db_occs) {
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
     }
-    if (compute_sz_sz){
+    if(compute_sz_sz) {
       auto sz_sz = obs.compute_sz_sz_correlations();
-      //print to file
-      std::ofstream ofile_sz( "sz_sz.dat");
+      // print to file
+      std::ofstream ofile_sz("sz_sz.dat");
       ofile_sz.precision(dbl::max_digits10);
-      for (int i = 0; i < nsites; i++)
-      {
-        for (int j = 0; j < nsites; j++)
-          ofile_sz << scientific << sz_sz(i,j) << "  ";
+      for(int i = 0; i < nsites; i++) {
+        for(int j = 0; j < nsites; j++)
+          ofile_sz << scientific << sz_sz(i, j) << "  ";
         ofile_sz << std::endl;
-      } 
+      }
       ofile_sz.close();
     }
-    if (compute_tz_tz){
+    if(compute_tz_tz) {
       auto tz_tz = obs.compute_tz_tz_correlations();
-      //print to file
-      std::ofstream ofile_tz( "tauz_tauz.dat");
+      // print to file
+      std::ofstream ofile_tz("tauz_tauz.dat");
       ofile_tz.precision(dbl::max_digits10);
-      for (int i = 0; i < nsites; i++)
-      {
-        for (int j = 0; j < nsites; j++)
-          ofile_tz << scientific << tz_tz(i,j) << "  ";
+      for(int i = 0; i < nsites; i++) {
+        for(int j = 0; j < nsites; j++)
+          ofile_tz << scientific << tz_tz(i, j) << "  ";
         ofile_tz << std::endl;
       }
       ofile_tz.close();
     }
 
+    bool testGF = false;
+    OPT_KEYWORD("CI.GF", testGF, bool);
+    if(testGF) {
+      // Copy integrals into active subsets
+      std::vector<double> T_active(n_active * n_active);
+      std::vector<double> V_active(n_active * n_active * n_active * n_active);
+      // Compute active-space Hamiltonian and inactive Fock matrix
+      std::vector<double> F_inactive(norb2);
+      macis::active_hamiltonian(
+          NumOrbital(norb), NumActive(n_active), NumInactive(n_inactive),
+          T.data(), norb, V.data(), norb, F_inactive.data(), norb,
+          T_active.data(), n_active, V_active.data(), n_active);
 
+      // Generate the Hamiltonian Generator
+      macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
+          macis::matrix_span<double>(T_active.data(), n_active, n_active),
+          macis::rank4_span<double>(V_active.data(), n_active, n_active,
+                                    n_active, n_active));
 
-  bool testGF = false;
-  OPT_KEYWORD("CI.GF", testGF, bool);
-  if(testGF) {
-    // Copy integrals into active subsets
-    std::vector<double> T_active(n_active * n_active);
-    std::vector<double> V_active(n_active * n_active * n_active * n_active);
-    // Compute active-space Hamiltonian and inactive Fock matrix
-    std::vector<double> F_inactive(norb2);
-    macis::active_hamiltonian(NumOrbital(norb), NumActive(n_active),
-                              NumInactive(n_inactive), T.data(), norb, V.data(),
-                              norb, F_inactive.data(), norb, T_active.data(),
-                              n_active, V_active.data(), n_active);
+      // MCSCF Settings
+      macis::GFSettings gf_settings;
+      OPT_KEYWORD("GF.NORBS", gf_settings.norbs, size_t);
+      OPT_KEYWORD("GF.TRUNC_SIZE", gf_settings.trunc_size, size_t);
+      OPT_KEYWORD("GF.TOT_SD", gf_settings.tot_SD, int);
+      OPT_KEYWORD("GF.GFSEEDTHRES", gf_settings.GFseedThres, double);
+      OPT_KEYWORD("GF.ASTHRES", gf_settings.asThres, double);
+      OPT_KEYWORD("GF.USE_BANDLAN", gf_settings.use_bandLan, bool);
+      OPT_KEYWORD("GF.NLANITS", gf_settings.nLanIts, int);
+      OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
+      OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
+      OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
+      OPT_KEYWORD("GF.ORBS_BASIS", gf_settings.GF_orbs_basis, std::vector<int>);
+      OPT_KEYWORD("GF.IS_UP_BASIS", gf_settings.is_up_basis, std::vector<bool>);
+      OPT_KEYWORD("GF.ORBS_COMP", gf_settings.GF_orbs_comp, std::vector<int>);
+      OPT_KEYWORD("GF.IS_UP_COMP", gf_settings.is_up_comp, std::vector<bool>);
 
-    // Generate the Hamiltonian Generator
-    macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
-        macis::matrix_span<double>(T_active.data(), n_active, n_active),
-        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active,
-                                  n_active));
+      // Generate frequency grid
+      OPT_KEYWORD("GF.WMIN", gf_settings.wmin, double);
+      OPT_KEYWORD("GF.WMAX", gf_settings.wmax, double);
+      OPT_KEYWORD("GF.NWS", gf_settings.nws, size_t);
+      OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
+      OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
+      bool imag_freq = true;
+      OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
+      std::vector<std::complex<double>> ws(gf_settings.nws,
+                                           std::complex<double>(0., 0.));
 
-    // MCSCF Settings
-    macis::GFSettings gf_settings;
-    OPT_KEYWORD("GF.NORBS", gf_settings.norbs, size_t);
-    OPT_KEYWORD("GF.TRUNC_SIZE", gf_settings.trunc_size, size_t);
-    OPT_KEYWORD("GF.TOT_SD", gf_settings.tot_SD, int);
-    OPT_KEYWORD("GF.GFSEEDTHRES", gf_settings.GFseedThres, double);
-    OPT_KEYWORD("GF.ASTHRES", gf_settings.asThres, double);
-    OPT_KEYWORD("GF.USE_BANDLAN", gf_settings.use_bandLan, bool);
-    OPT_KEYWORD("GF.NLANITS", gf_settings.nLanIts, int);
-    OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
-    OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
-    OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
-    OPT_KEYWORD("GF.ORBS_BASIS", gf_settings.GF_orbs_basis, std::vector<int>);
-    OPT_KEYWORD("GF.IS_UP_BASIS", gf_settings.is_up_basis, std::vector<bool>);
-    OPT_KEYWORD("GF.ORBS_COMP", gf_settings.GF_orbs_comp, std::vector<int>);
-    OPT_KEYWORD("GF.IS_UP_COMP", gf_settings.is_up_comp, std::vector<bool>);
+      for(int i = 0; i < gf_settings.nws; i++)
+        if(imag_freq) {
+          //  MATSUBARA GRID
+          ws[i] =
+              std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
+        } else {
+          std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
+          std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
+          ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
+        }
 
-    // Generate frequency grid
-    OPT_KEYWORD("GF.WMIN", gf_settings.wmin, double);
-    OPT_KEYWORD("GF.WMAX", gf_settings.wmax, double);
-    OPT_KEYWORD("GF.NWS", gf_settings.nws, size_t);
-    OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
-    OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
-    bool imag_freq = true;
-    OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
-    std::vector<std::complex<double>> ws(gf_settings.nws,
-                                         std::complex<double>(0., 0.));
+      // GF vector
+      std::vector<std::vector<std::complex<double>>> GF(
+          gf_settings.nws,
+          std::vector<std::complex<double>>(n_active * n_active,
+                                            std::complex<double>(0., 0.)));
+      std::vector<std::vector<std::complex<double>>> GF_tmp(
+          gf_settings.nws,
+          std::vector<std::complex<double>>(n_active * n_active,
+                                            std::complex<double>(0., 0.)));
 
-    for(int i = 0; i < gf_settings.nws; i++)
-      if(imag_freq) {
-        //  MATSUBARA GRID
-        ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
-      } else {
-        std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
-        std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
-        ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
-      }
+      // Occupation numbers
+      //    for(int i = 0; i < n_active; i++) {
+      //      occs[i] = occs[i] / 2;
+      //      std::cout << "occs[" << i << "] = " << std::setprecision(10) <<
+      //      occs[i]
+      //                << std::endl;
+      //}
 
-    // GF vector
-    std::vector<std::vector<std::complex<double>>> GF(
-        gf_settings.nws,
-        std::vector<std::complex<double>>(n_active * n_active,
-                                          std::complex<double>(0., 0.)));
-    std::vector<std::vector<std::complex<double>>> GF_tmp(
-        gf_settings.nws,
-        std::vector<std::complex<double>>(n_active * n_active,
-                                          std::complex<double>(0., 0.)));
+      // GS vector
+      std::vector<int> todelete_p;
+      std::vector<int> todelete_h;
+      Eigen::VectorXd psi0 =
+          Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(C.data(), C.size());
 
-    // Occupation numbers
-    //    for(int i = 0; i < n_active; i++) {
-    //      occs[i] = occs[i] / 2;
-    //      std::cout << "occs[" << i << "] = " << std::setprecision(10) <<
-    //      occs[i]
-    //                << std::endl;
-    //}
+      // Evaluate particle GF
+      macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws,
+                                  occs, gf_settings);
 
-    // GS vector
-    std::vector<int> todelete_p;
-    std::vector<int> todelete_h;
-    Eigen::VectorXd psi0 =
-        Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(C.data(), C.size());
+      GF = GF_tmp;
 
-    // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, true, ws, occs,
-                                gf_settings);
+      // Evaluate hole GF
+      macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws,
+                                  occs, gf_settings);
 
-    GF = GF_tmp;
+      if(todelete_h != todelete_p)
+        throw std::runtime_error("Error: todelete_h != todelete_p");
 
-    // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, dets, E0, false, ws,
-                                occs, gf_settings);
+      GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
 
-    if(todelete_h != todelete_p)
-      throw std::runtime_error("Error: todelete_h != todelete_p");
+      if(gf_settings.writeGF_singlef)
+        macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+    }
 
-    GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
-
-    if(gf_settings.writeGF_singlef)
-      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+    return 0;
   }
-
-  return 0;
-}
