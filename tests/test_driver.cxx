@@ -270,12 +270,42 @@ int main(int argc, char** argv) {
 
   if (compute_db_occs){
     double db_occs = 0;
-    db_occs = macis::compute_db_occs(n_imp, n_bands, dets, C, rdm_fname + ".db_occs");
-  }
+    db_occs = macis::Comp_db_occs(&params);
+    std::cout << "  * Double occupancy (test function) = " << db_occs << std::endl;
+  } 
 
   if (compute_db_occs or compute_sz_sz or compute_tz_tz){
- 
-  }
+    macis::CompObservables obs(&params);
+    if (compute_db_occs){
+      double db_occs = obs.compute_double_occupancies();
+      std::cout << "  * Double occupancy = " << db_occs << std::endl;
+    }
+    if (compute_sz_sz){
+      auto sz_sz = obs.compute_sz_sz_correlations();
+      //print to file
+      std::ofstream ofile_sz( "sz_sz.dat");
+      ofile_sz.precision(dbl::max_digits10);
+      for (int i = 0; i < nsites; i++)
+      {
+        for (int j = 0; j < nsites; j++)
+          ofile_sz << scientific << sz_sz(i,j) << "  ";
+        ofile_sz << std::endl;
+      } 
+      ofile_sz.close();
+    }
+    if (compute_tz_tz){
+      auto tz_tz = obs.compute_tz_tz_correlations();
+      //print to file
+      std::ofstream ofile_tz( "tauz_tauz.dat");
+      ofile_tz.precision(dbl::max_digits10);
+      for (int i = 0; i < nsites; i++)
+      {
+        for (int j = 0; j < nsites; j++)
+          ofile_tz << scientific << tz_tz(i,j) << "  ";
+        ofile_tz << std::endl;
+      }
+      ofile_tz.close();
+    }
 
 
 
