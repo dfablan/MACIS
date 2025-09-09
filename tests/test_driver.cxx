@@ -6,9 +6,9 @@
 
 #include <iomanip>
 #include <iostream>
+#include <macis/comp_observables.hpp>
 #include <macis/gf/gf.hpp>
 #include <macis/impurity_solver.hpp>
-#include <macis/comp_observables.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -118,7 +118,6 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
-
 
   if(n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
@@ -268,7 +267,7 @@ int main(int argc, char** argv) {
             << " impurity orbitals\n"
             << std::endl;
 
-  if (compute_db_occs){
+  if(compute_db_occs) {
     double db_occs = 0;
     db_occs = macis::Comp_db_occs(&params);
     std::cout << "  * Double occupancy (test function) = " << db_occs << std::endl;

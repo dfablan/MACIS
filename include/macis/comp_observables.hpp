@@ -46,9 +46,8 @@ double Comp_db_occs(void* params) {
 
   using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
 
-  generator_t ham_gen(
-      matrix_span_t(T.data(), n_imp, n_imp),
-      rank4_span_t(V.data(), n_imp, n_imp, n_imp, n_imp));
+  generator_t ham_gen(matrix_span_t(T.data(), n_imp, n_imp),
+                      rank4_span_t(V.data(), n_imp, n_imp, n_imp, n_imp));
 
   double orb_db_occs = 0.0;
 
@@ -56,61 +55,59 @@ double Comp_db_occs(void* params) {
   std::vector<double> trdm_uu, trdm_dd, trdm_ud, trdm_du;
 
   if(asci_settings.nrots == 0) {
-      ham_gen.form_rdms(dets.begin(), dets.end(), dets.begin(), dets.end(),
+    ham_gen.form_rdms(dets.begin(), dets.end(), dets.begin(), dets.end(),
                       C.data(), matrix_span<double>(ordm_u, n_imp, n_imp),
                       matrix_span<double>(ordm_d, n_imp, n_imp),
                       rank4_span<double>(trdm_uu, n_imp, n_imp, n_imp, n_imp),
                       rank4_span<double>(trdm_ud, n_imp, n_imp, n_imp, n_imp),
                       rank4_span<double>(trdm_ud, n_imp, n_imp, n_imp, n_imp),
                       rank4_span<double>(trdm_dd, n_imp, n_imp, n_imp, n_imp));
-  
-      for (int a = 0; a < n_imp; a++) {
-          orb_db_occs += trdm_ud[a + a * n_imp + a * n_imp2 + a * n_imp3];
-      }
-      orb_db_occs = orb_db_occs/n_imp;
-    
-      {
 
+    for(int a = 0; a < n_imp; a++) {
+      orb_db_occs += trdm_ud[a + a * n_imp + a * n_imp2 + a * n_imp3];
+    }
+    orb_db_occs = orb_db_occs / n_imp;
+
+    {
       orb_db_occs_bm = 0.0;
 
       dets = *(p->dets);
       C_local = *(p->C);
 
-      struct wf_pair
-      {
+      struct wf_pair {
         std::string str;
         double coeff;
       };
 
       std::vector<wf_pair> pairs;
       pairs.reserve(dets.size());
-      for (size_t idet = 0; idet < dets.size(); ++idet) {
-           wf_pair p = {macis::to_canonical_string(dets[idet]), C_local[idet]};
-          pairs.push_back(p);
-      }  
-      
-      std::sort(pairs.begin(), pairs.end(),
-              [](const wf_pair& a, const wf_pair& b) { return abs(a.coeff) > abs(b.coeff); });
-
-      for (size_t i = 0; i < n_imp; ++i) {
-          if (pairs[idet].str[i] == '2') {
-            orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
-          }
+      for(size_t idet = 0; idet < dets.size(); ++idet) {
+        wf_pair p = {macis::to_canonical_string(dets[idet]), C_local[idet]};
+        pairs.push_back(p);
       }
-      orb_db_occs_bm = orb_db_occs_bm/n_imp;
 
-  }
+      std::sort(pairs.begin(), pairs.end(),
+                [](const wf_pair& a, const wf_pair& b) {
+                  return abs(a.coeff) > abs(b.coeff);
+                });
 
-  std::cout << "Double Occupancies (from 2-RDM) = " << std::setprecision(10) << orb_db_occs << std::endl;
-  std::cout << "Double Occupancies (from WF) = " << std::setprecision(10) << orb_db_occs_bm << std::endl;
+      for(size_t i = 0; i < n_imp; ++i) {
+        if(pairs[idet].str[i] == '2') {
+          orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
+        }
+      }
+      orb_db_occs_bm = orb_db_occs_bm / n_imp;
+    }
 
+    std::cout << "Double Occupancies (from 2-RDM) = " << std::setprecision(10)
+              << orb_db_occs << std::endl;
+    std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
+              << orb_db_occs_bm << std::endl;
   }
 
   return orb_db_occs;
 
-
-} // close Comp_db_occs
-
+}  // close Comp_db_occs
 
 // auto comp_observables(void* params, bool db_occs_flag, bool sz_sz_flag, bool tz_tz_flag){
 
