@@ -78,6 +78,16 @@ int main(int argc, char** argv) {
     RES = input.getData<DTYPE>(STR); \
   }
 
+   // Possibility of hoppings for the spin-down orbitals
+   std::string fcidump_do_fname = "NONE";
+   std::vector<double> Td(norb2);
+   bool spin_dep = false;
+   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
+   if(fcidump_do_fname != "NONE") {
+     macis::read_fcidump_1body(fcidump_do_fname, Td.data(), norb);
+     spin_dep = true;
+   }
+    
   // Set up job
   std::string ciexp_str;
   OPT_KEYWORD("CI.EXPANSION", ciexp_str, std::string);
@@ -87,6 +97,9 @@ int main(int argc, char** argv) {
   } catch(...) {
     throw std::runtime_error("CI Expansion Not Recognized");
   }
+
+  if(spin_dep && ci_exp == CIExpansion::ASCI)
+    throw std::runtime_error("Spin-dependent ASCI not implemented");
 
   // Set up active space
   size_t n_inactive = 0;
@@ -106,7 +119,7 @@ int main(int argc, char** argv) {
 
   size_t nbands = 1;
   OPT_KEYWORD("CI.NBANDS", nbands, size_t);
-  size_t nsites = norb / nbands;
+  size_t nsites = n_imp / nbands;
 
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
@@ -118,6 +131,9 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
+  std::cout << "db_occs_flag = " << compute_db_occs << "\n";
+  std::cout << "sz_sz_flag = " << compute_sz_sz << "\n";
+  std::cout << "tz_tz_flag = " << compute_tz_tz << "\n";
 
   if(n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
@@ -201,6 +217,37 @@ int main(int argc, char** argv) {
   std::vector<double> occs(n_active, 0);
   double E0 = 0.0;
 
+  // Copy integrals into active subsets
+  std::vector<double> T_active(n_active * n_active);
+  std::vector<double> Td_active(n_active * n_active);
+  std::vector<double> V_active(n_active * n_active * n_active * n_active);
+
+  // Compute active-space Hamiltonian and inactive Fock matrix
+  std::vector<double> F_inactive(norb2);
+  std::vector<double> Fd_inactive(norb2);
+  macis::active_hamiltonian(NumOrbital(norb), NumActive(n_active),
+                            NumInactive(n_inactive), T.data(), norb, V.data(),
+                            norb, F_inactive.data(), norb, T_active.data(),
+                            n_active, V_active.data(), n_active);
+  if(spin_dep)
+        macis::active_hamiltonian(
+        NumOrbital(norb), NumActive(n_active), NumInactive(n_inactive),
+        Td.data(), norb, V.data(), norb, Fd_inactive.data(), norb,
+        Td_active.data(), n_active, V_active.data(), n_active);
+
+  console->debug("FINACTIVE_SUM = {:.12f}", vec_sum(F_inactive));
+  console->debug("VACTIVE_SUM   = {:.12f}", vec_sum(V_active));
+  console->debug("TACTIVE_SUM   = {:.12f}", vec_sum(T_active));
+
+  // Compute Inactive energy
+  auto E_inactive = macis::inactive_energy(NumInactive(n_inactive), T.data(),
+                                           norb, F_inactive.data(), norb);
+  if(spin_dep) {
+    for(int ii = 0; ii < n_inactive; ii++)
+      E_inactive += Td[ii * (1 + n_inactive)] - T[ii * (1 + n_inactive)];
+  }
+  console->info("E(inactive) = {:.12f}", E_inactive);
+
   macis::impurity_params params;
   params.nbeta = &nbeta;
   params.nalpha = &nalpha;
@@ -212,6 +259,10 @@ int main(int argc, char** argv) {
   params.E_core = &E_core;
   params.V = &V;
   params.T = &T;
+  params.Td_active = &Td_active;
+  params.V_active = &V_active;
+  params.T_active = &T_active;
+  params.F_inactive = &F_inactive;
   params.mcscf_settings = &mcscf_settings;
   params.asci_settings = &asci_settings;
   params.dets = &dets;
@@ -221,6 +272,8 @@ int main(int argc, char** argv) {
   params.asci_wfn_fname = &asci_wfn_fname;
   params.compute_asci_E0 = &compute_asci_E0;
   params.asci_E0 = &asci_E0;
+  params.spin_dep = &spin_dep;
+  params.E_inactive = &E_inactive;
 
   {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
@@ -276,7 +329,7 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  if (compute_db_occs or compute_sz_sz or compute_tz_tz){
+  if (compute_db_occs or compute_sz_sz or compute_tz_tz and !spin_dep){
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
@@ -284,6 +337,7 @@ int main(int argc, char** argv) {
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
     }
     if (compute_sz_sz){
+      std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
       std::vector<double> sz_sz(nsites*nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
       //print to file
@@ -291,13 +345,15 @@ int main(int argc, char** argv) {
       ofile_sz.precision(dbl::max_digits10);
       for (size_t i = 0; i < nsites; i++)
       {
-        for (size_t j = 0; j < nsites; j++)
-          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";
+        for (size_t j = 0; j < nsites; j++){
+          std::cout << " sz_sz[" << i << "," << j << "] = " << sz_sz[i+j*nsites] << "\n"; // DEBUG
+          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";}
         ofile_sz << std::endl;
       }
       ofile_sz.close();
     }
     if (compute_tz_tz){
+      std::cout << " Entering class function for tz_tz\n" << std::endl; // DEBUG
       std::vector<double> tz_tz(nsites*nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       //print to file
