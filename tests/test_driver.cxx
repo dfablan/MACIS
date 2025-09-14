@@ -6,8 +6,8 @@
 
 #include <iomanip>
 #include <iostream>
+#include <macis/comp_observables.hpp>
 #include <macis/gf/gf.hpp>
-#include <macis/impurity_solver.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
 
   size_t nbands = 1;
   OPT_KEYWORD("CI.NBANDS", nbands, size_t);
-  size_t nsites = norb / nbands;
+  size_t nsites = n_imp / nbands;
 
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
@@ -214,11 +214,6 @@ int main(int argc, char** argv) {
                             NumInactive(n_inactive), T.data(), norb, V.data(),
                             norb, F_inactive.data(), norb, T_active.data(),
                             n_active, V_active.data(), n_active);
-  if(spin_dep)
-    macis::active_hamiltonian(
-        NumOrbital(norb), NumActive(n_active), NumInactive(n_inactive),
-        Td.data(), norb, V.data(), norb, Fd_inactive.data(), norb,
-        Td_active.data(), n_active, V_active.data(), n_active);
 
   console->debug("FINACTIVE_SUM = {:.12f}", vec_sum(F_inactive));
   console->debug("VACTIVE_SUM   = {:.12f}", vec_sum(V_active));
@@ -227,20 +222,16 @@ int main(int argc, char** argv) {
   // Compute Inactive energy
   auto E_inactive = macis::inactive_energy(NumInactive(n_inactive), T.data(),
                                            norb, F_inactive.data(), norb);
-  if(spin_dep) {
-    for(int ii = 0; ii < n_inactive; ii++)
-      E_inactive += Td[ii * (1 + n_inactive)] - T[ii * (1 + n_inactive)];
-  }
   console->info("E(inactive) = {:.12f}", E_inactive);
 
   macis::impurity_params params;
   params.nbeta = &nbeta;
   params.nalpha = &nalpha;
-  params.nbands = &nbands;
   params.n_active = &n_active;
   params.n_inactive = &n_inactive;
   params.norb = &norb;
   params.n_imp = &n_imp;
+  params.nbands = &nbands;
   params.E_core = &E_core;
   params.V = &V;
   params.T = &T;
@@ -302,6 +293,52 @@ int main(int argc, char** argv) {
   std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp
             << " impurity orbitals\n"
             << std::endl;
+
+  if(compute_db_occs) {
+    double db_occs = 0;
+    db_occs = macis::Comp_db_occs(&params);
+    std::cout << "  * Double occupancy (test function) = " << db_occs
+              << std::endl;
+  }
+
+  if (compute_db_occs or compute_sz_sz or compute_tz_tz ){
+    using dbl = std::numeric_limits<double>;
+    macis::CompObservables obs(&params);
+    if(compute_db_occs) {
+      double db_occs = obs.compute_double_occupancies();
+      std::cout << "  * Double occupancy = " << db_occs << std::endl;
+    }
+    if (compute_sz_sz){
+      std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
+      std::vector<double> sz_sz(nsites*nsites, 0.0);
+      sz_sz = obs.compute_sz_sz_correlations();
+      // print to file
+      std::ofstream ofile_sz("sz_sz.dat");
+      ofile_sz.precision(dbl::max_digits10);
+      for (size_t i = 0; i < nsites; i++)
+      {
+        for (size_t j = 0; j < nsites; j++){
+          std::cout << " sz_sz[" << i << "," << j << "] = " << sz_sz[j+i*nsites] << "\n"; // DEBUG
+          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";}
+        ofile_sz << std::endl;
+      }
+      ofile_sz.close();
+    }
+    if (compute_tz_tz){
+      std::cout << " Entering class function for tz_tz\n" << std::endl; // DEBUG
+      std::vector<double> tz_tz(nsites*nsites, 0.0);
+      tz_tz = obs.compute_tz_tz_correlations();
+      // print to file
+      std::ofstream ofile_tz("tauz_tauz.dat");
+      ofile_tz.precision(dbl::max_digits10);
+      for(size_t i = 0; i < nsites; i++) {
+        for(size_t j = 0; j < nsites; j++)
+          ofile_tz << std::scientific << tz_tz[j + i * nsites] << "  ";
+        ofile_tz << std::endl;
+      }
+      ofile_tz.close();
+    }
+  }
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);

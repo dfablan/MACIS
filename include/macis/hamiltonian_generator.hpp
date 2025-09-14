@@ -160,21 +160,32 @@ class HamiltonianGenerator {
   void rdm_contributions_22(spin_det_t bra_alpha, spin_det_t ket_alpha,
                             spin_det_t ex_alpha, spin_det_t bra_beta,
                             spin_det_t ket_beta, spin_det_t ex_beta, double val,
-                            rank4_span_t trdm);
+                            rank4_span_t trdm_ud, rank4_span_t trdm_du);
   void rdm_contributions_2(spin_det_t bra, spin_det_t ket, spin_det_t ex,
                            const std::vector<uint32_t>& bra_occ_alpha,
                            const std::vector<uint32_t>& bra_occ_beta,
-                           double val, matrix_span_t ordm, rank4_span_t trdm);
+                           double val, matrix_span_t ordm, rank4_span_t trdm_ss,
+                           rank4_span_t trdm_so, rank4_span_t trdm_os);
   void rdm_contributions_diag(const std::vector<uint32_t>& occ_alpha,
                               const std::vector<uint32_t>& occ_beta, double val,
-                              matrix_span_t ordm, rank4_span_t trdm);
+                              matrix_span_t ordm_u, matrix_span_t ordm_d,
+                              rank4_span_t trdm_uu, rank4_span_t trdm_ud,
+                              rank4_span_t trdm_du, rank4_span_t trdm_dd);
 
   void rdm_contributions(spin_det_t bra_alpha, spin_det_t ket_alpha,
                          spin_det_t ex_alpha, spin_det_t bra_beta,
                          spin_det_t ket_beta, spin_det_t ex_beta,
                          const std::vector<uint32_t>& bra_occ_alpha,
                          const std::vector<uint32_t>& bra_occ_beta, double val,
-                         matrix_span_t ordm, rank4_span_t trdm);
+                         matrix_span_t ordm_u, matrix_span_t ordm_d,
+                         rank4_span_t trdm_uu, rank4_span_t trdm_ud,
+                         rank4_span_t trdm_du, rank4_span_t trdm_dd);
+
+  virtual void form_rdms(full_det_iterator, full_det_iterator,
+                         full_det_iterator, full_det_iterator, double* C,
+                         matrix_span_t ordm_u, matrix_span_t ordm_d,
+                         rank4_span_t trdm_uu, rank4_span_t trdm_ud,
+                         rank4_span_t trdm_du, rank4_span_t trdm_dd) = 0;
 
   virtual void form_rdms(full_det_iterator, full_det_iterator,
                          full_det_iterator, full_det_iterator, double* C,
