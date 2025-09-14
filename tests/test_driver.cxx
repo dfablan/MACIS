@@ -301,32 +301,34 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  if (compute_db_occs or compute_sz_sz or compute_tz_tz ){
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
     }
-    if (compute_sz_sz){
+    if(compute_sz_sz) {
       std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
-      std::vector<double> sz_sz(nsites*nsites, 0.0);
+      std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
       // print to file
       std::ofstream ofile_sz("sz_sz.dat");
       ofile_sz.precision(dbl::max_digits10);
-      for (size_t i = 0; i < nsites; i++)
-      {
-        for (size_t j = 0; j < nsites; j++){
-          std::cout << " sz_sz[" << i << "," << j << "] = " << sz_sz[j+i*nsites] << "\n"; // DEBUG
-          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";}
+      for(size_t i = 0; i < nsites; i++) {
+        for(size_t j = 0; j < nsites; j++) {
+          std::cout << " sz_sz[" << i << "," << j
+                    << "] = " << sz_sz[j + i * nsites] << "\n";  // DEBUG
+          ofile_sz << std::scientific << sz_sz[i + j * nsites] << "  ";
+        }
         ofile_sz << std::endl;
       }
       ofile_sz.close();
     }
-    if (compute_tz_tz){
-      std::cout << " Entering class function for tz_tz\n" << std::endl; // DEBUG
-      std::vector<double> tz_tz(nsites*nsites, 0.0);
+    if(compute_tz_tz) {
+      std::cout << " Entering class function for tz_tz\n"
+                << std::endl;  // DEBUG
+      std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
       std::ofstream ofile_tz("tauz_tauz.dat");
