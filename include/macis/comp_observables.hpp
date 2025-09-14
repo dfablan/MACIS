@@ -9,7 +9,6 @@ using macis::NumInactive;
 using macis::NumOrbital;
 using macis::NumVirtual;
 
-
 namespace macis {
 
 void Transform_2RDMs( const int norbs,
@@ -128,10 +127,9 @@ double Comp_db_occs(void* params) {
         }
       }
       orb_db_occs_bm = orb_db_occs_bm / n_imp;
-    std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
-              << orb_db_occs_bm << std::endl;
+      std::cout << "Double Occupancies (from WF) = " << std::setprecision(10)
+                << orb_db_occs_bm << std::endl;
     }
-
   }
 
   return orb_db_occs_bm;
