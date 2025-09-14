@@ -229,10 +229,12 @@ auto asci_grow_with_rot_legacy(
       ham_gen.form_rdms(wfn.begin(), wfn.end(), wfn.begin(), wfn.end(),
                         X_local.data(), ordm.data());
       std::vector<double> tmp_rot(norb * norb, 0.);
+      std::vector<double> comp(norb * norb, 0.);
       ham_gen.rotate_hamiltonian_ordm(ordm.data(), tmp_rot.data());
       blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                  norb, norb, norb, 1.0, tmp_rot.data(), norb, orb_rot.data(),
-                 norb, 0.0, orb_rot.data(), norb);
+                 norb, 0.0, comp.data(), norb);
+      orb_rot = std::move(comp);
       ham_gen.SetJustSingles(false);
       // Rediagonalize
       E0 = selected_ci_diag(
