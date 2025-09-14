@@ -202,6 +202,37 @@ int main(int argc, char** argv) {
   std::vector<double> occs(n_active, 0);
   double E0 = 0.0;
 
+  // Copy integrals into active subsets
+  std::vector<double> T_active(n_active * n_active);
+  std::vector<double> Td_active(n_active * n_active);
+  std::vector<double> V_active(n_active * n_active * n_active * n_active);
+
+  // Compute active-space Hamiltonian and inactive Fock matrix
+  std::vector<double> F_inactive(norb2);
+  std::vector<double> Fd_inactive(norb2);
+  macis::active_hamiltonian(NumOrbital(norb), NumActive(n_active),
+                            NumInactive(n_inactive), T.data(), norb, V.data(),
+                            norb, F_inactive.data(), norb, T_active.data(),
+                            n_active, V_active.data(), n_active);
+  if(spin_dep)
+    macis::active_hamiltonian(
+        NumOrbital(norb), NumActive(n_active), NumInactive(n_inactive),
+        Td.data(), norb, V.data(), norb, Fd_inactive.data(), norb,
+        Td_active.data(), n_active, V_active.data(), n_active);
+
+  console->debug("FINACTIVE_SUM = {:.12f}", vec_sum(F_inactive));
+  console->debug("VACTIVE_SUM   = {:.12f}", vec_sum(V_active));
+  console->debug("TACTIVE_SUM   = {:.12f}", vec_sum(T_active));
+
+  // Compute Inactive energy
+  auto E_inactive = macis::inactive_energy(NumInactive(n_inactive), T.data(),
+                                           norb, F_inactive.data(), norb);
+  if(spin_dep) {
+    for(int ii = 0; ii < n_inactive; ii++)
+      E_inactive += Td[ii * (1 + n_inactive)] - T[ii * (1 + n_inactive)];
+  }
+  console->info("E(inactive) = {:.12f}", E_inactive);
+
   macis::impurity_params params;
   params.nbeta = &nbeta;
   params.nalpha = &nalpha;
@@ -213,6 +244,9 @@ int main(int argc, char** argv) {
   params.E_core = &E_core;
   params.V = &V;
   params.T = &T;
+  params.V_active = &V_active;
+  params.T_active = &T_active;
+  params.F_inactive = &F_inactive;
   params.mcscf_settings = &mcscf_settings;
   params.asci_settings = &asci_settings;
   params.dets = &dets;
@@ -222,6 +256,7 @@ int main(int argc, char** argv) {
   params.asci_wfn_fname = &asci_wfn_fname;
   params.compute_asci_E0 = &compute_asci_E0;
   params.asci_E0 = &asci_E0;
+  params.E_inactive = &E_inactive;
 
   {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
