@@ -40,7 +40,7 @@ struct impurity_params {
   size_t* norb;
   size_t* n_imp;
   size_t* nbands;
-  bool * spin_dep;
+  bool* spin_dep;
 
   double* nel;
   // double* delta_CFS;

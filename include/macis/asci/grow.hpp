@@ -158,30 +158,32 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
           MPI_Bcast(X_rem, nrem, MPI_DOUBLE, world_size - 1, comm);
         }
 #endif
-        } else {
-          // Avoid copy
-          X = std::move(X_local);
-        }
-        auto rdg_en = hrt_t::now();
-        dur_t rdg_dur = rdg_en - rdg_st;
-        logger->trace("    * ReDiag_DUR = {:.2e} ms", rdg_dur.count());
-
-        auto grow_rot_en = hrt_t::now();
-        logger->trace("  * GROW_ROT_DUR = {:.2e} ms",
-                    dur_t(grow_rot_en - grow_rot_st).count());
+      } else {
+        // Avoid copy
+        X = std::move(X_local);
       }
-    else{
-      std::cout<< "Skipping Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
-      std::cout<< "Current WFN SIZE = " << wfn.size() << "\n";  // DEBUG!!!!!
-      std::cout<< "Requested ROT SIZE START = " << asci_settings.rot_size_start << "\n";  // DEBUG!!!!!
-      std::cout<< "GROW_WITH_ROT = " << asci_settings.grow_with_rot << "\n";  // DEBUG!!!!!
-      std::cout<< "CONDITION TO ENTER WFN.SIZE >= ROT_SIZE_START and GROW_WITH_ROT==TRUE \n";  // DEBUG!!!!!
+      auto rdg_en = hrt_t::now();
+      dur_t rdg_dur = rdg_en - rdg_st;
+      logger->trace("    * ReDiag_DUR = {:.2e} ms", rdg_dur.count());
+
+      auto grow_rot_en = hrt_t::now();
+      logger->trace("  * GROW_ROT_DUR = {:.2e} ms",
+                    dur_t(grow_rot_en - grow_rot_st).count());
+    } else {
+      std::cout
+          << "Skipping Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
+      std::cout << "Current WFN SIZE = " << wfn.size() << "\n";  // DEBUG!!!!!
+      std::cout << "Requested ROT SIZE START = " << asci_settings.rot_size_start
+                << "\n";  // DEBUG!!!!!
+      std::cout << "GROW_WITH_ROT = " << asci_settings.grow_with_rot
+                << "\n";  // DEBUG!!!!!
+      std::cout << "CONDITION TO ENTER WFN.SIZE >= ROT_SIZE_START and "
+                   "GROW_WITH_ROT==TRUE \n";  // DEBUG!!!!!
     }
 
-  E0 = E;
+    E0 = E;
   }
 
-  
   auto grow_en = hrt_t::now();
   dur_t grow_dur = grow_en - grow_st;
   logger->info("* GROW_DUR = {:.2e} ms", grow_dur.count());

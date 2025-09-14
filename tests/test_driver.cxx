@@ -78,16 +78,16 @@ int main(int argc, char** argv) {
     RES = input.getData<DTYPE>(STR); \
   }
 
-   // Possibility of hoppings for the spin-down orbitals
-   std::string fcidump_do_fname = "NONE";
-   std::vector<double> Td(norb2);
-   bool spin_dep = false;
-   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
-   if(fcidump_do_fname != "NONE") {
-     macis::read_fcidump_1body(fcidump_do_fname, Td.data(), norb);
-     spin_dep = true;
-   }
-    
+  // Possibility of hoppings for the spin-down orbitals
+  std::string fcidump_do_fname = "NONE";
+  std::vector<double> Td(norb2);
+  bool spin_dep = false;
+  OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
+  if(fcidump_do_fname != "NONE") {
+    macis::read_fcidump_1body(fcidump_do_fname, Td.data(), norb);
+    spin_dep = true;
+  }
+
   // Set up job
   std::string ciexp_str;
   OPT_KEYWORD("CI.EXPANSION", ciexp_str, std::string);
@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
                             norb, F_inactive.data(), norb, T_active.data(),
                             n_active, V_active.data(), n_active);
   if(spin_dep)
-        macis::active_hamiltonian(
+    macis::active_hamiltonian(
         NumOrbital(norb), NumActive(n_active), NumInactive(n_inactive),
         Td.data(), norb, V.data(), norb, Fd_inactive.data(), norb,
         Td_active.data(), n_active, V_active.data(), n_active);
@@ -331,32 +331,34 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  if (compute_db_occs or compute_sz_sz or compute_tz_tz and !spin_dep){
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz and !spin_dep) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
     }
-    if (compute_sz_sz){
+    if(compute_sz_sz) {
       std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
-      std::vector<double> sz_sz(nsites*nsites, 0.0);
+      std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
       // print to file
       std::ofstream ofile_sz("sz_sz.dat");
       ofile_sz.precision(dbl::max_digits10);
-      for (size_t i = 0; i < nsites; i++)
-      {
-        for (size_t j = 0; j < nsites; j++){
-          std::cout << " sz_sz[" << i << "," << j << "] = " << sz_sz[i+j*nsites] << "\n"; // DEBUG
-          ofile_sz << std::scientific << sz_sz[i+j*nsites] << "  ";}
+      for(size_t i = 0; i < nsites; i++) {
+        for(size_t j = 0; j < nsites; j++) {
+          std::cout << " sz_sz[" << i << "," << j
+                    << "] = " << sz_sz[i + j * nsites] << "\n";  // DEBUG
+          ofile_sz << std::scientific << sz_sz[i + j * nsites] << "  ";
+        }
         ofile_sz << std::endl;
       }
       ofile_sz.close();
     }
-    if (compute_tz_tz){
-      std::cout << " Entering class function for tz_tz\n" << std::endl; // DEBUG
-      std::vector<double> tz_tz(nsites*nsites, 0.0);
+    if(compute_tz_tz) {
+      std::cout << " Entering class function for tz_tz\n"
+                << std::endl;  // DEBUG
+      std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
       std::ofstream ofile_tz("tauz_tauz.dat");
