@@ -49,7 +49,7 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   auto grow_st = hrt_t::now();
 
   while(wfn.size() < asci_settings.ntdets_max) {
-    std::cout << "=====Starting ASCI Growth Iteration!!!!===== " << iter++
+    std::cout << "=====Starting ASCI Growth Iteration!!!!===== " << iter
               << "\n";  // DEBUG!!!!!
     size_t ndets_new =
         std::min(std::max(asci_settings.ntdets_min,
@@ -158,21 +158,30 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
           MPI_Bcast(X_rem, nrem, MPI_DOUBLE, world_size - 1, comm);
         }
 #endif
-      } else {
-        // Avoid copy
-        X = std::move(X_local);
-      }
-      auto rdg_en = hrt_t::now();
-      dur_t rdg_dur = rdg_en - rdg_st;
-      logger->trace("    * ReDiag_DUR = {:.2e} ms", rdg_dur.count());
+        } else {
+          // Avoid copy
+          X = std::move(X_local);
+        }
+        auto rdg_en = hrt_t::now();
+        dur_t rdg_dur = rdg_en - rdg_st;
+        logger->trace("    * ReDiag_DUR = {:.2e} ms", rdg_dur.count());
 
-      auto grow_rot_en = hrt_t::now();
-      logger->trace("  * GROW_ROT_DUR = {:.2e} ms",
+        auto grow_rot_en = hrt_t::now();
+        logger->trace("  * GROW_ROT_DUR = {:.2e} ms",
                     dur_t(grow_rot_en - grow_rot_st).count());
+      }
+    else{
+      std::cout<< "Skipping Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
+      std::cout<< "Current WFN SIZE = " << wfn.size() << "\n";  // DEBUG!!!!!
+      std::cout<< "Requested ROT SIZE START = " << asci_settings.rot_size_start << "\n";  // DEBUG!!!!!
+      std::cout<< "GROW_WITH_ROT = " << asci_settings.grow_with_rot << "\n";  // DEBUG!!!!!
+      std::cout<< "CONDITION TO ENTER WFN.SIZE >= ROT_SIZE_START and GROW_WITH_ROT==TRUE \n";  // DEBUG!!!!!
     }
 
-    E0 = E;
+  E0 = E;
   }
+
+  
   auto grow_en = hrt_t::now();
   dur_t grow_dur = grow_en - grow_st;
   logger->info("* GROW_DUR = {:.2e} ms", grow_dur.count());
@@ -232,10 +241,12 @@ auto asci_grow_with_rot_legacy(
       ham_gen.form_rdms(wfn.begin(), wfn.end(), wfn.begin(), wfn.end(),
                         X_local.data(), ordm.data());
       std::vector<double> tmp_rot(norb * norb, 0.);
+      std::vector<double> comp(norb * norb, 0.);
       ham_gen.rotate_hamiltonian_ordm(ordm.data(), tmp_rot.data());
       blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                  norb, norb, norb, 1.0, tmp_rot.data(), norb, orb_rot.data(),
-                 norb, 0.0, orb_rot.data(), norb);
+                 norb, 0.0, comp.data(), norb);
+      orb_rot = std::move(comp);
       ham_gen.SetJustSingles(false);
       // Rediagonalize
       E0 = selected_ci_diag(

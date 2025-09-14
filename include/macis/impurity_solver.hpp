@@ -40,6 +40,7 @@ struct impurity_params {
   size_t* norb;
   size_t* n_imp;
   size_t* nbands;
+  bool * spin_dep;
 
   double* nel;
   // double* delta_CFS;
@@ -66,8 +67,13 @@ struct impurity_params {
 
   double* E_core;
   double* E;
+  double* E_inactive;
   std::vector<double>* T;
   std::vector<double>* V;
+  std::vector<double>* F_inactive;
+  std::vector<double>* T_active;
+  std::vector<double>* Td_active;
+  std::vector<double>* V_active;
   bool* just_singles;
 };
 
