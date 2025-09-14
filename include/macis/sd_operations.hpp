@@ -70,6 +70,24 @@ std::bitset<N> canonical_hf_determinant(uint32_t nalpha, uint32_t nbeta,
   return alpha | beta;
 }
 
+
+template <size_t N>
+std::bitset<N> hf_determinant_byocc( uint32_t nalpha, uint32_t nbeta, const std::vector<double> &orb_occs ) {
+  static_assert( (N%2) == 0, "N Must Be Even");
+  // First, find the sorted indices for the orbital occupations
+  std::vector<size_t> idx( orb_occs.size() );
+  std::iota(idx.begin(), idx.end(), 0);
+  std::stable_sort(idx.begin(), idx.end(),
+       [&orb_occs](size_t i1, size_t i2) {return orb_occs[i1] > orb_occs[i2];});
+  // Next, fill the electrons by occupation
+  std::bitset<N> alpha(0), beta(0);
+  for( size_t i = 0; i < nalpha; i++ )
+    alpha.flip( idx[i] );
+  for( size_t i = 0; i < nbeta; i++ )
+    beta.flip( idx[i] + N/2 );
+  return alpha | beta;
+}
+
 /**
  *  @brief Generate the list of (un)occupied orbitals for a paricular state.
  *
