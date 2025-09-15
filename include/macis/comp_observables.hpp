@@ -22,9 +22,9 @@ void Transform_2RDMs(const int norbs, const std::vector<double>& ordm_u,
   for(int o1 = 0; o1 < norbs; o1++)
     for(int v1 = 0; v1 < norbs; v1++)
       for(int e = 0; e < norbs; e++) {
-        trdm_uu[v1 + norbs * (e + norbs * (e + norbs * o1))] +=
+        trdm_uu[v1 + e * norbs + e * norbs * norbs +  o1 * norbs * norbs * norbs  ] +=
             ordm_u[v1 + norbs * o1];
-        trdm_dd[v1 + norbs * (e + norbs * (e + norbs * o1))] +=
+        trdm_dd[v1 + e * norbs + e * norbs * norbs +  o1 * norbs * norbs * norbs  ] +=
             ordm_d[v1 + norbs * o1];
       }
 }
@@ -291,9 +291,9 @@ class CompObservables {
           for(int c = 0; c < n_imp_; c++) 
             for(int d = 0; d < n_imp_; d++) {
               orb_db_occs +=
-                orb_rot_[a+i*n_active_]*orb_rot_[c+i*n_active_]*
+                orb_rot_[i+a*n_active_]*orb_rot_[i+c*n_active_]*
                 trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]*
-                orb_rot_[b+i*n_active_]*orb_rot_[d+i*n_active_];
+                orb_rot_[i+b*n_active_]*orb_rot_[i+d*n_active_];
               }
     return orb_db_occs / n_imp_;
   }
@@ -310,14 +310,14 @@ class CompObservables {
               for(size_t b = 0; b < n_imp_; b++) 
                 for(size_t c = 0; c < n_imp_; c ++) 
                   for(size_t d = 0; d < n_imp_; d++){
-                    sz_sz[site_j + site_i * n_sites_] +=
+                    sz_sz[site_i + site_j * n_sites_] +=
                        0.25 *
-                      orb_rot_[a+i*n_active_]*orb_rot_[c+j*n_active_]*
+                      orb_rot_[i+a*n_active_]*orb_rot_[j+c*n_active_]*
                       (  trdm_uu_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                        - trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                        - trdm_du_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                        + trdm_dd_[a + b * n_active_ + c * n_active2_ + d * n_active3_])
-                      *orb_rot_[b+i*n_active_]*orb_rot_[d+j*n_active_];
+                      *orb_rot_[i+b*n_active_]*orb_rot_[j+d*n_active_];
                     }
           }
         }
@@ -339,14 +339,14 @@ class CompObservables {
               for(size_t b = 0; b < n_imp_; b++)
                 for(size_t c = 0; c < n_imp_; c++) 
                   for(size_t d = 0; d < n_imp_; d++){
-                    tz_tz[site_j + site_i * n_sites_] +=
+                    tz_tz[site_i + site_j * n_sites_] +=
                         0.25 * sign *
-                      orb_rot_[a+i*n_active_]*orb_rot_[c+j*n_active_]*
+                      orb_rot_[i+a*n_active_]*orb_rot_[j+c*n_active_]*
                         (  trdm_uu_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                          + trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                          + trdm_du_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
                          + trdm_dd_[a + b * n_active_ + c * n_active2_ + d * n_active3_])*
-                        orb_rot_[b+i*n_active_]*orb_rot_[d+j*n_active_];
+                        orb_rot_[i+b*n_active_]*orb_rot_[j+d*n_active_];
                   }
           }
         }

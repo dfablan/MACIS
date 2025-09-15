@@ -320,8 +320,6 @@ int main(int argc, char** argv) {
       ofile_sz.precision(dbl::max_digits10);
       for(size_t i = 0; i < nsites; i++) {
         for(size_t j = 0; j < nsites; j++) {
-          std::cout << " sz_sz[" << i << "," << j
-                    << "] = " << sz_sz[j + i * nsites] << "\n";  // DEBUG
           ofile_sz << std::scientific << sz_sz[i + j * nsites] << "  ";
         }
         ofile_sz << std::endl;
@@ -338,7 +336,7 @@ int main(int argc, char** argv) {
       ofile_tz.precision(dbl::max_digits10);
       for(size_t i = 0; i < nsites; i++) {
         for(size_t j = 0; j < nsites; j++)
-          ofile_tz << std::scientific << tz_tz[j + i * nsites] << "  ";
+          ofile_tz << std::scientific << tz_tz[i + j * nsites] << "  ";
         ofile_tz << std::endl;
       }
       ofile_tz.close();

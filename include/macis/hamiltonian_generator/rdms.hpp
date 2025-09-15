@@ -121,7 +121,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   std::vector<double> S_imp(nimps);
   for(auto i = 0; i < nimps; ++i)
     for(auto j = 0; j < nimps; ++j)
-      nat_orbs_imp[j + i * nimps] = ordm[j + i * norb_];
+      nat_orbs_imp[i + j * nimps] = ordm[i + j * norb_];
   lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nimps, nimps,
                 nat_orbs_imp.data(), nimps, S_imp.data(), NULL, 1, NULL, 1);
 
@@ -129,17 +129,17 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   std::vector<double> S_bath(nbaths);
   for(auto i = 0; i < nbaths; ++i)
     for(auto j = 0; j < nbaths; ++j)
-      nat_orbs_bath[j + i * nbaths] = ordm[(j + nimps) + (i + nimps) * norb_];
+      nat_orbs_bath[i + j * nbaths] = ordm[(i + nimps) + (j + nimps) * norb_];
   lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nbaths, nbaths,
                 nat_orbs_bath.data(), nbaths, S_bath.data(), NULL, 1, NULL, 1);
 
   for(auto i = 0; i < nimps; ++i)
     for(auto j = 0; j < nimps; ++j)
-      natural_orbitals[j + i * norb_] = nat_orbs_imp[j + i * nimps];
+      natural_orbitals[i + j * norb_] = nat_orbs_imp[i + j * nimps];
   for(auto i = 0; i < nbaths; ++i)
     for(auto j = 0; j < nbaths; ++j)
-      natural_orbitals[(j + nimps) + (i + nimps) * norb_] =
-          nat_orbs_bath[j + i * nbaths];
+      natural_orbitals[(i + nimps) + (j + nimps) * norb_] =
+          nat_orbs_bath[i + j * nbaths];
 
   std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
       tmp2(norb3_ * norb_, 0.0);

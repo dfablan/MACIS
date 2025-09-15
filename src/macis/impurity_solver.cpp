@@ -28,10 +28,10 @@ auto evaluate_ordm(
   // Eigen::MatrixXd roto = orb_rot.adjoint() * o * orb_rot;
   std::vector<double> tmp (n_active*n_active, 0. );
   std::vector<double> comp( n_active * n_active, 0. );
-  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans,
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
             n_active, n_active, n_active, 1.0, active_ordm.data(), n_active,
             orb_rot.data(), n_active, 0.0, tmp.data(), n_active);
-  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans,
             n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
             tmp.data(), n_active, 0.0, comp.data(), n_active);
 
@@ -362,7 +362,7 @@ double SolveImpurityASCI_rot (void * params){
             //Copy impurity block (active_ordm is column-major)
             for(size_t ii = 0; ii < n_imp; ii++) {
                 for(size_t jj = 0; jj < n_imp; jj++) {
-                    ordm_i[jj + ii * n_imp] = active_ordm[jj + ii * n_active];
+                    ordm_i[ii + jj * n_imp] = active_ordm[ii + jj * n_active];
                 }
             }
             //Negate for descending eigenvalue order 
@@ -378,7 +378,7 @@ double SolveImpurityASCI_rot (void * params){
             //Copy bath block
             for(size_t ii = 0; ii < n_bath; ii++) {
                 for(size_t jj = 0; jj < n_bath; jj++) {
-                    ordm_b[jj + ii * n_bath] = active_ordm[(jj + n_imp) + (ii + n_imp) * n_active];
+                    ordm_b[ii + jj * n_bath] = active_ordm[(ii + n_imp) + (jj + n_imp) * n_active];
                 }
             }
             //Negate for descending eigenvalue order
@@ -409,7 +409,7 @@ double SolveImpurityASCI_rot (void * params){
             for (int i = 0; i < norb; i++)
               {
               for (int j = 0; j < norb; j++)
-                ofile_rot << std::scientific << orb_rot[j + i * n_active] << " ";
+                ofile_rot << std::scientific << orb_rot[i + j * n_active] << " ";
               ofile_rot << std::endl;
               } 
 
@@ -450,7 +450,7 @@ double SolveImpurityASCI_rot (void * params){
         for (int i = 0; i < n_active; i++)
           {
           for (int j = 0; j < n_active; j++)
-            ofile_ordm << std::scientific << active_ordm[j + i * n_active] << " ";
+            ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
           ofile_ordm << std::endl;
           } 
     }
