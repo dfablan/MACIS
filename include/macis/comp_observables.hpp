@@ -286,9 +286,9 @@ class CompObservables {
     double orb_db_occs = 0.0;
 
     for(int i = 0; i < n_imp_; i++)
-      for(int a = 0; a < n_imp_; a++) 
-        for(int b = 0; b < n_imp_; b++) 
-          for(int c = 0; c < n_imp_; c++) 
+      for(int a = 0; a < n_imp_; a++)
+        for(int b = 0; b < n_imp_; b++)
+          for(int c = 0; c < n_imp_; c++)
             for(int d = 0; d < n_imp_; d++) {
               orb_db_occs +=
                 orb_rot_[i+a*n_active_]*orb_rot_[i+c*n_active_]*
@@ -331,11 +331,11 @@ class CompObservables {
     for(size_t site_i = 0; site_i < n_sites_; site_i++) {
       for(size_t site_j = 0; site_j < n_sites_; site_j++) {
         for(size_t band_i = 0; band_i < n_bands_; band_i++) {
-        int i = site_i + n_sites_ * band_i;
+          int i = site_i + n_sites_ * band_i;
           for(size_t band_j = 0; band_j < n_bands_; band_j++) {
             int j = site_j + n_sites_ * band_j;
             double sign = (band_i == band_j) ? 1.0 : -1.0;
-            for(size_t a = 0; a < n_imp_; a++) 
+            for(size_t a = 0; a < n_imp_; a++)
               for(size_t b = 0; b < n_imp_; b++)
                 for(size_t c = 0; c < n_imp_; c++) 
                   for(size_t d = 0; d < n_imp_; d++){
