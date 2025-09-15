@@ -154,6 +154,7 @@ class CompObservables {
 
   std::vector<macis::wfn_t<nwfn_bits>> dets_;
   std::vector<double> C_;
+  std::vector<double> orb_rot_;
 
   std::vector<double> T_active;
   std::vector<double> V_active;
@@ -185,6 +186,7 @@ class CompObservables {
 
     dets_ = *(p->dets);
     C_ = *(p->C);
+    orb_rot_ = *(p->orb_rot);
 
     // Initialize RDMs
     ordm_u_.resize(n_active2_);
@@ -282,10 +284,17 @@ class CompObservables {
 
   double compute_double_occupancies() const {
     double orb_db_occs = 0.0;
-    for(int a = 0; a < n_imp_; a++) {
-      orb_db_occs +=
-          trdm_ud_[a + a * n_active_ + a * n_active2_ + a * n_active3_];
-    }
+
+    for(int i = 0; i < n_imp_; i++)
+      for(int a = 0; a < n_imp_; a++) 
+        for(int b = 0; b < n_imp_; b++) 
+          for(int c = 0; c < n_imp_; c++) 
+            for(int d = 0; d < n_imp_; d++) {
+              orb_db_occs +=
+                orb_rot_[a+i*n_active_]*orb_rot_[c+i*n_active_]*
+                trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]*
+                orb_rot_[b+i*n_active_]*orb_rot_[d+i*n_active_];
+              }
     return orb_db_occs / n_imp_;
   }
 
@@ -294,15 +303,22 @@ class CompObservables {
     for(size_t site_i = 0; site_i < n_sites_; site_i++) {
       for(size_t site_j = 0; site_j < n_sites_; site_j++) {
         for(size_t band_i = 0; band_i < n_bands_; band_i++) {
+          int i = site_i + n_sites_ * band_i;
           for(size_t band_j = 0; band_j < n_bands_; band_j++) {
-            int a = site_i + n_sites_ * band_i;
-            int b = site_j + n_sites_ * band_j;
-            sz_sz[site_i + site_j * n_sites_] +=
-                0.25 *
-                (trdm_uu_[a + a * n_active_ + b * n_active2_ + b * n_active3_] -
-                 trdm_ud_[a + a * n_active_ + b * n_active2_ + b * n_active3_] -
-                 trdm_du_[a + a * n_active_ + b * n_active2_ + b * n_active3_] +
-                 trdm_dd_[a + a * n_active_ + b * n_active2_ + b * n_active3_]);
+            int j = site_j + n_sites_ * band_j;
+            for(size_t a = 0; a < n_imp_; a++) 
+              for(size_t b = 0; b < n_imp_; b++) 
+                for(size_t c = 0; c < n_imp_; c ++) 
+                  for(size_t d = 0; d < n_imp_; d++){
+                    sz_sz[site_j + site_i * n_sites_] +=
+                       0.25 *
+                      orb_rot_[a+i*n_active_]*orb_rot_[c+j*n_active_]*
+                      (  trdm_uu_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                       - trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                       - trdm_du_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                       + trdm_dd_[a + b * n_active_ + c * n_active2_ + d * n_active3_])
+                      *orb_rot_[b+i*n_active_]*orb_rot_[d+j*n_active_];
+                    }
           }
         }
       }
@@ -315,16 +331,23 @@ class CompObservables {
     for(size_t site_i = 0; site_i < n_sites_; site_i++) {
       for(size_t site_j = 0; site_j < n_sites_; site_j++) {
         for(size_t band_i = 0; band_i < n_bands_; band_i++) {
+        int i = site_i + n_sites_ * band_i;
           for(size_t band_j = 0; band_j < n_bands_; band_j++) {
-            int a = site_i + n_sites_ * band_i;
-            int b = site_j + n_sites_ * band_j;
+            int j = site_j + n_sites_ * band_j;
             double sign = (band_i == band_j) ? 1.0 : -1.0;
-            tz_tz[site_i + site_j * n_sites_] +=
-                0.25 * sign *
-                (trdm_uu_[a + a * n_active_ + b * n_active2_ + b * n_active3_] +
-                 trdm_ud_[a + a * n_active_ + b * n_active2_ + b * n_active3_] +
-                 trdm_du_[a + a * n_active_ + b * n_active2_ + b * n_active3_] +
-                 trdm_dd_[a + a * n_active_ + b * n_active2_ + b * n_active3_]);
+            for(size_t a = 0; a < n_imp_; a++) 
+              for(size_t b = 0; b < n_imp_; b++)
+                for(size_t c = 0; c < n_imp_; c++) 
+                  for(size_t d = 0; d < n_imp_; d++){
+                    tz_tz[site_j + site_i * n_sites_] +=
+                        0.25 * sign *
+                      orb_rot_[a+i*n_active_]*orb_rot_[c+j*n_active_]*
+                        (  trdm_uu_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                         + trdm_ud_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                         + trdm_du_[a + b * n_active_ + c * n_active2_ + d * n_active3_]
+                         + trdm_dd_[a + b * n_active_ + c * n_active2_ + d * n_active3_])*
+                        orb_rot_[b+i*n_active_]*orb_rot_[d+j*n_active_];
+                  }
           }
         }
       }

@@ -4,6 +4,41 @@
 
 namespace macis {
 
+auto evaluate_ordm(
+  std::vector<macis::wfn_t<nwfn_bits>> &dets,
+  std::vector<double> &X_local,
+  macis::DoubleLoopHamiltonianGenerator<nwfn_bits> &ham_gen,
+  std::vector<double> &orb_rot
+) {
+  // Get Parameters
+  size_t n_active = sqrt(orb_rot.size());
+
+  // Compute the 1-rdm
+  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_st = dets.begin();
+  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_en = dets.end();
+  
+  std::vector<double> active_ordm(n_active * n_active);
+  std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
+
+  ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), X_local.data(), 
+  macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+  macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+
+  // Rotate the 1-RDM back to original basis
+  // Eigen::MatrixXd roto = orb_rot.adjoint() * o * orb_rot;
+  std::vector<double> tmp (n_active*n_active, 0. );
+  std::vector<double> comp( n_active * n_active, 0. );
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans,
+            n_active, n_active, n_active, 1.0, active_ordm.data(), n_active,
+            orb_rot.data(), n_active, 0.0, tmp.data(), n_active);
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+            n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
+            tmp.data(), n_active, 0.0, comp.data(), n_active);
+
+  return comp;
+}
+  
+// template <size_t nwfn_bits>
 double SolveImpurityED (void * params){
 
 
@@ -36,7 +71,6 @@ double SolveImpurityED (void * params){
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
-    std::vector<double> active_ordmd(n_active * n_active);
     std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
 
     double E0 = 0 ;
@@ -67,6 +101,7 @@ double SolveImpurityED (void * params){
     return E0;
 }
 
+// template <size_t nwfn_bits>
 double SolveImpurityASCI (void * params){
 
 
@@ -99,7 +134,6 @@ double SolveImpurityASCI (void * params){
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
-    std::vector<double> active_ordmd(n_active * n_active);
     std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
 
     std::cout << "-------------------------------Entering SolverImpurityASCI-------------------------------" << std::endl;
@@ -196,6 +230,7 @@ double SolveImpurityASCI (void * params){
     return E0;
 }
 
+// template <size_t nwfn_bits>
 double SolveImpurityASCI_rot (void * params){
 
     using clock_type = std::chrono::high_resolution_clock;
@@ -236,7 +271,6 @@ double SolveImpurityASCI_rot (void * params){
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
-    std::vector<double> active_ordmd(n_active * n_active);
     std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
 
     std::cout << "-------------------------------Entering SolverImpurityASCI_rot (Legacy algorithm)-------------------------------" << std::endl;
@@ -249,36 +283,6 @@ double SolveImpurityASCI_rot (void * params){
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
 
-    // if(asci_wfn_fname.size()) 
-    // {
-    //   // Read wave function from standard file
-    //   // console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
-    //   std::cout<<"Reading Guess Wavefunction From "<< asci_wfn_fname << std::endl;
-    //   macis::read_wavefunction(asci_wfn_fname, dets, C_local);
-    //   // std::cout << dets[0].to_ullong() << std::endl;
-    //   if(compute_asci_E0) 
-    //   {
-    //     // console->info("*  Calculating E0");
-    //     std::cout<<"*  Calculating E0 \n";
-    //     E0 = 0;
-    //     for(auto ii = 0; ii < dets.size(); ++ii) 
-    //     {
-    //       double tmp = 0.0;
-    //       for(auto jj = 0; jj < dets.size(); ++jj) 
-    //       {
-    //         tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C_local[jj];
-    //       }
-    //       E0 += C_local[ii] * tmp;
-    //     }
-    //   }  
-    //   else 
-    //   {
-    //     // console->info("*  Reading E0");
-    //     std::cout<<"*  Reading E0 \n";
-    //     E0 = asci_E0 - E_core - E_inactive;
-    //   }
-    // } 
-    // else 
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
       std::cout<<"Generating HF Guess for ASCI \n";
@@ -335,18 +339,22 @@ double SolveImpurityASCI_rot (void * params){
           else
           {
             auto orbrot_st = clock_type::now();
+            //Generate RDMs
             ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
                 macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
                 macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+            //Reset auxiliary vectors
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
+            //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
+            //Update rotation matrix 
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                       n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
                       orb_rot.data(), n_active, 0.0, comp.data(), n_active);
-
             orb_rot = std::move(comp);
-            {
+            
+            {//Generate new HF determinant in rotated basis
             size_t n_bath = n_active - n_imp;
             //Impurity block
             std::vector<double> ordm_i(n_imp * n_imp);
@@ -396,7 +404,7 @@ double SolveImpurityASCI_rot (void * params){
             hf_det = macis::hf_determinant_byocc<nwfn_bits>(nalpha, nbeta, orb_occs);
             }
           
-            std::ofstream ofile_rot( "orb_rot.dat");
+            std::ofstream ofile_rot( "rot_matrix_" + std::to_string(iorb) + ".dat");
             ofile_rot.precision(std::numeric_limits<double>::max_digits10);
             for (int i = 0; i < norb; i++)
               {
@@ -417,12 +425,14 @@ double SolveImpurityASCI_rot (void * params){
         }
       }
 
-
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
-    ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
-    macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
-    macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+    if (asci_settings.nrots == 0)
+      ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
+      macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+      macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+    else
+      active_ordm = evaluate_ordm( dets, C_local, ham_gen, orb_rot );
 
     // Occupation numbers
     // std::vector<double> occs(n_active, 1);
@@ -448,6 +458,7 @@ double SolveImpurityASCI_rot (void * params){
     *(p->occs) = occs;
     *(p->C) = C_local;
     *(p->dets) = dets;
+    *(p->orb_rot) = orb_rot;
 
           
     return E0;
@@ -484,7 +495,6 @@ double SolveImpurityCheapASCI (void * params){
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
     std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
-    std::vector<double> active_ordmd(n_active * n_active);
 
     std::cout << "-------------------------------Entering SolverImpurityCheapASCI-------------------------------" << std::endl;
 

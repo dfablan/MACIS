@@ -200,6 +200,8 @@ int main(int argc, char** argv) {
 
   double nel;
   std::vector<double> occs(n_active, 0);
+  std::vector<double> orb_rot(n_active * n_active);
+  for(size_t i = 0; i < n_active; ++i) orb_rot[i * n_active + i] = 1.0;
   double E0 = 0.0;
 
   // Copy integrals into active subsets
@@ -248,6 +250,7 @@ int main(int argc, char** argv) {
   params.compute_asci_E0 = &compute_asci_E0;
   params.asci_E0 = &asci_E0;
   params.E_inactive = &E_inactive;
+  params.orb_rot = &orb_rot;
 
   {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
@@ -301,7 +304,7 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz){
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
