@@ -304,7 +304,7 @@ int main(int argc, char** argv) {
               << std::endl;
   }
 
-  if(compute_db_occs or compute_sz_sz or compute_tz_tz){
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
