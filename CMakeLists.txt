@@ -21,6 +21,9 @@ endif()
 
 add_subdirectory(src)
 
+# Main executables
+add_subdirectory(main)
+
 # Tests
 include(CTest)
 if(BUILD_TESTING)
