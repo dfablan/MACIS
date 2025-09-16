@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
             << " impurity orbitals\n"
             << std::endl;
 
-  if(compute_db_occs) {
+  if(compute_db_occs and asci_settings.nrots == 0) {
     double db_occs = 0;
     db_occs = macis::Comp_db_occs(&params);
     std::cout << "  * Double occupancy (test function) = " << db_occs

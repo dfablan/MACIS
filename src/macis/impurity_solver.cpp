@@ -25,13 +25,13 @@ auto evaluate_ordm(
   macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
 
   // Rotate the 1-RDM back to original basis
-  // Eigen::MatrixXd roto = orb_rot.adjoint() * o * orb_rot;
+  // Eigen::MatrixXd roto = orb_rot * o * orb_rot.adjoint();
   std::vector<double> tmp (n_active*n_active, 0. );
   std::vector<double> comp( n_active * n_active, 0. );
-  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans,
             n_active, n_active, n_active, 1.0, active_ordm.data(), n_active,
             orb_rot.data(), n_active, 0.0, tmp.data(), n_active);
-  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans,
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
             n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
             tmp.data(), n_active, 0.0, comp.data(), n_active);
 
@@ -348,7 +348,7 @@ double SolveImpurityASCI_rot (void * params){
             comp.assign( n_active * n_active, 0. );
             //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
-            //Update rotation matrix 
+            //Update rotation matrix orb_rot = tmp_rot * orb_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                       n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
                       orb_rot.data(), n_active, 0.0, comp.data(), n_active);
