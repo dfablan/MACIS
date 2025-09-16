@@ -4,6 +4,41 @@
 
 namespace macis {
 
+auto evaluate_ordm(
+  std::vector<macis::wfn_t<nwfn_bits>> &dets,
+  std::vector<double> &X_local,
+  macis::DoubleLoopHamiltonianGenerator<nwfn_bits> &ham_gen,
+  std::vector<double> &orb_rot
+) {
+  // Get Parameters
+  size_t n_active = sqrt(orb_rot.size());
+
+  // Compute the 1-rdm
+  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_st = dets.begin();
+  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_en = dets.end();
+  
+  std::vector<double> active_ordm(n_active * n_active);
+  std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
+
+  ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), X_local.data(), 
+  macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+  macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+
+  // Rotate the 1-RDM back to original basis
+  // Eigen::MatrixXd roto = orb_rot * o * orb_rot.adjoint();
+  std::vector<double> tmp (n_active*n_active, 0. );
+  std::vector<double> comp( n_active * n_active, 0. );
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans,
+            n_active, n_active, n_active, 1.0, active_ordm.data(), n_active,
+            orb_rot.data(), n_active, 0.0, tmp.data(), n_active);
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+            n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
+            tmp.data(), n_active, 0.0, comp.data(), n_active);
+
+  return comp;
+}
+  
+// template <size_t nwfn_bits>
 double SolveImpurityED (void * params){
 
 
@@ -77,6 +112,7 @@ double SolveImpurityED (void * params){
     return E0;
 }
 
+// template <size_t nwfn_bits>
 double SolveImpurityASCI (void * params){
 
 
@@ -207,6 +243,7 @@ double SolveImpurityASCI (void * params){
     return E0;
 }
 
+// template <size_t nwfn_bits>
 double SolveImpurityASCI_rot (void * params){
 
     using clock_type = std::chrono::high_resolution_clock;
@@ -244,6 +281,15 @@ double SolveImpurityASCI_rot (void * params){
     std::vector<double> V_active = *(p->V_active);
     std::vector<double> F_inactive = *(p->F_inactive);
     double E_inactive = *(p->E_inactive);
+    std::vector<double> tmp_rot( n_active * n_active, 0. );
+    std::vector<double> comp( n_active * n_active, 0. );
+    std::vector<double>orb_rot(n_active * n_active);
+    for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
+
+    std::vector<double> T_active = *(p->T_active);
+    std::vector<double> V_active = *(p->V_active);
+    std::vector<double> F_inactive = *(p->F_inactive);
+    double E_inactive = *(p->E_inactive);
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -260,44 +306,48 @@ double SolveImpurityASCI_rot (void * params){
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
 
-    // if(asci_wfn_fname.size()) 
-    // {
-    //   // Read wave function from standard file
-    //   // console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
-    //   std::cout<<"Reading Guess Wavefunction From "<< asci_wfn_fname << std::endl;
-    //   macis::read_wavefunction(asci_wfn_fname, dets, C_local);
-    //   // std::cout << dets[0].to_ullong() << std::endl;
-    //   if(compute_asci_E0) 
-    //   {
-    //     // console->info("*  Calculating E0");
-    //     std::cout<<"*  Calculating E0 \n";
-    //     E0 = 0;
-    //     for(auto ii = 0; ii < dets.size(); ++ii) 
-    //     {
-    //       double tmp = 0.0;
-    //       for(auto jj = 0; jj < dets.size(); ++jj) 
-    //       {
-    //         tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C_local[jj];
-    //       }
-    //       E0 += C_local[ii] * tmp;
-    //     }
-    //   }  
-    //   else 
-    //   {
-    //     // console->info("*  Reading E0");
-    //     std::cout<<"*  Reading E0 \n";
-    //     E0 = asci_E0 - E_core - E_inactive;
-    //   }
-    // } 
-    // else 
+    if(asci_wfn_fname.size()) 
+    {
+      // Read wave function from standard file
+      // console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
+      std::cout<<"Reading Guess Wavefunction From "<< asci_wfn_fname << std::endl;
+      macis::read_wavefunction(asci_wfn_fname, dets, C_local);
+      // std::cout << dets[0].to_ullong() << std::endl;
+      if(compute_asci_E0) 
+      {
+        // console->info("*  Calculating E0");
+        std::cout<<"*  Calculating E0 \n";
+        E0 = 0;
+        for(auto ii = 0; ii < dets.size(); ++ii) 
+        {
+          double tmp = 0.0;
+          for(auto jj = 0; jj < dets.size(); ++jj) 
+          {
+            tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C_local[jj];
+          }
+          E0 += C_local[ii] * tmp;
+        }
+      }  
+      else 
+      {
+        // console->info("*  Reading E0");
+        std::cout<<"*  Reading E0 \n";
+        E0 = asci_E0 - E_core - E_inactive;
+      }
+    } 
+    else 
+    {
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
       std::cout<<"Generating HF Guess for ASCI \n";
       macis::wfn_t<nwfn_bits> hf_det = macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta);
       dets = {hf_det};
+      macis::wfn_t<nwfn_bits> hf_det = macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta);
+      dets = {hf_det};
       // std::cout << dets[0].to_ullong() << std::endl;
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
       C_local = {1.0};
+      std::vector<double> orb_occs(n_active,0.0);
       std::vector<double> orb_occs(n_active,0.0);
     
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
@@ -308,8 +358,22 @@ double SolveImpurityASCI_rot (void * params){
     //==============PERFORM THE ASCI CALCULATION=========
     {
 
+
       for (size_t iorb = 0; iorb <= asci_settings.nrots; iorb++)
       {
+
+          std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
+
+          //Starting with HF
+          dets.clear();
+          dets = {hf_det};
+          C_local = {1.0};
+          E0 = ham_gen.matrix_element(dets[0], dets[0]);
+          std::cout<<"ASCI E0 = "<< E0 << std::endl;
+          std::cout<<"ASCI E_core = "<< E_core << std::endl;
+          std::cout<<"ASCI E_inactive = "<< E_inactive << std::endl;
+          std::cout<<"ASCI EHF = "<< E0 + E_core + E_inactive << std::endl;
+          std::cout<<"|HF> = " << macis::to_canonical_string(hf_det) << std::endl;
 
           std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
 
@@ -342,17 +406,98 @@ double SolveImpurityASCI_rot (void * params){
 
           std::cout<<"\n* @ Macro It. " << iorb+1 << " EASCI: " << E0 << std::endl;
 
+          std::cout<<"\n* @ Macro It. " << iorb+1 << " EASCI: " << E0 << std::endl;
+
           if (iorb == asci_settings.nrots) break;
           else
           {
             auto orbrot_st = clock_type::now();
+            //Generate RDMs
             ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
                 macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
                 macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+
+            //print ordm DEBUG
+            std::ofstream ofile_ordm( "ordm_" + std::to_string(iorb) + ".dat");
+            ofile_ordm.precision(std::numeric_limits<double>::max_digits10);
+            for (int i = 0; i < norb; i++)
+              {
+              for (int j = 0; j < norb; j++)
+                ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
+              ofile_ordm << std::endl;
+              } 
+
+              
+            //Reset auxiliary vectors
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
+            //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
+            //Update rotation matrix orb_rot = tmp_rot * orb_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+                      n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
+                      orb_rot.data(), n_active, 0.0, comp.data(), n_active);
+            orb_rot = std::move(comp);
+            
+            {//Generate new HF determinant in rotated basis
+            size_t n_bath = n_active - n_imp;
+            //Impurity block
+            std::vector<double> ordm_i(n_imp * n_imp);
+            std::vector<double> eigvals_i(n_imp);
+            //Copy impurity block (active_ordm is column-major)
+            for(size_t ii = 0; ii < n_imp; ii++) {
+                for(size_t jj = 0; jj < n_imp; jj++) {
+                    ordm_i[ii + jj * n_imp] = active_ordm[ii + jj * n_active];
+                }
+            }
+            //Negate for descending eigenvalue order 
+            for(auto& x : ordm_i) x *= -1.0;
+            //Diagonalize impurity block
+            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_imp, ordm_i.data(),
+                         n_imp, eigvals_i.data());
+            //Restore sign of eigenvalues
+            for(auto& x : eigvals_i) x *= -1.0;
+            //Bath block
+            std::vector<double> ordm_b(n_bath * n_bath);
+            std::vector<double> eigvals_b(n_bath);
+            //Copy bath block
+            for(size_t ii = 0; ii < n_bath; ii++) {
+                for(size_t jj = 0; jj < n_bath; jj++) {
+                    ordm_b[ii + jj * n_bath] = active_ordm[(ii + n_imp) + (jj + n_imp) * n_active];
+                }
+            }
+            //Negate for descending eigenvalue order
+            for(auto& x : ordm_b) x *= -1.0;
+            // Diagonalize bath block
+            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_bath, ordm_b.data(),
+                         n_bath, eigvals_b.data());
+            // Restore sign of eigenvalues
+            for(auto& x : eigvals_b) x *= -1.0;
+            // Store eigenvalues (already in descending order due to sign flip)
+            for(size_t ii = 0; ii < n_imp; ii++) {
+                orb_occs[ii] = eigvals_i[ii];
+            }
+            for(size_t ii = n_imp; ii < n_active; ii++) {
+                orb_occs[ii] = eigvals_b[ii - n_imp];
+            }
+            std::cout << "* Impurity and bath 1-RDM eigenvalues: " << std::endl;
+            std::cout << "  ";
+            for(size_t ii = 0; ii < n_active; ii++) {
+                std::cout << " " << orb_occs[ii];
+            }
+            std::cout << std::endl;
+            hf_det = macis::hf_determinant_byocc<nwfn_bits>(nalpha, nbeta, orb_occs);
+            }
+          
+            std::ofstream ofile_rot( "rot_matrix_" + std::to_string(iorb) + ".dat");
+            ofile_rot.precision(std::numeric_limits<double>::max_digits10);
+            for (int i = 0; i < norb; i++)
+              {
+              for (int j = 0; j < norb; j++)
+                ofile_rot << std::scientific << orb_rot[i + j * n_active] << " ";
+              ofile_rot << std::endl;
+              } 
+
                       n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
                       orb_rot.data(), n_active, 0.0, comp.data(), n_active);
 
@@ -426,14 +571,18 @@ double SolveImpurityASCI_rot (void * params){
                      duration_type(orbrot_en - orbrot_st).count() << std::endl;
           }
         }
+        }
       }
 
 
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
-    ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
-    macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
-    macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+    if (asci_settings.nrots == 0)
+      ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
+      macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+      macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+    else
+      active_ordm = evaluate_ordm( dets, C_local, ham_gen, orb_rot );
 
     // Occupation numbers
     // std::vector<double> occs(n_active, 1);
@@ -459,6 +608,7 @@ double SolveImpurityASCI_rot (void * params){
     *(p->occs) = occs;
     *(p->C) = C_local;
     *(p->dets) = dets;
+    *(p->orb_rot) = orb_rot;
 
           
     return E0;

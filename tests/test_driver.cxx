@@ -121,19 +121,21 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.NBANDS", nbands, size_t);
   size_t nsites = n_imp / nbands;
 
+  size_t nbands = 1;
+  OPT_KEYWORD("CI.NBANDS", nbands, size_t);
+  size_t nsites = n_imp / nbands;
+
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);
   OPT_KEYWORD("CI.FCIDUMP_OUT", fci_out_fname, std::string);
+
   bool compute_db_occs = false;
   bool compute_sz_sz = false;
   bool compute_tz_tz = false;
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
-  std::cout << "db_occs_flag = " << compute_db_occs << "\n";
-  std::cout << "sz_sz_flag = " << compute_sz_sz << "\n";
-  std::cout << "tz_tz_flag = " << compute_tz_tz << "\n";
 
   if(n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
@@ -215,6 +217,8 @@ int main(int argc, char** argv) {
 
   double nel;
   std::vector<double> occs(n_active, 0);
+  std::vector<double> orb_rot(n_active * n_active);
+  for(size_t i = 0; i < n_active; ++i) orb_rot[i * n_active + i] = 1.0;
   double E0 = 0.0;
 
   // Copy integrals into active subsets
@@ -274,6 +278,8 @@ int main(int argc, char** argv) {
   params.asci_E0 = &asci_E0;
   params.spin_dep = &spin_dep;
   params.E_inactive = &E_inactive;
+  params.E_inactive = &E_inactive;
+  params.orb_rot = &orb_rot;
 
   {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
@@ -324,14 +330,14 @@ int main(int argc, char** argv) {
             << " impurity orbitals\n"
             << std::endl;
 
-  if(compute_db_occs) {
+  if(compute_db_occs and asci_settings.nrots == 0) {
     double db_occs = 0;
     db_occs = macis::Comp_db_occs(&params);
     std::cout << "  * Double occupancy (test function) = " << db_occs
               << std::endl;
   }
 
-  if(compute_db_occs or compute_sz_sz or compute_tz_tz and !spin_dep) {
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables obs(&params);
     if(compute_db_occs) {
@@ -347,8 +353,6 @@ int main(int argc, char** argv) {
       ofile_sz.precision(dbl::max_digits10);
       for(size_t i = 0; i < nsites; i++) {
         for(size_t j = 0; j < nsites; j++) {
-          std::cout << " sz_sz[" << i << "," << j
-                    << "] = " << sz_sz[i + j * nsites] << "\n";  // DEBUG
           ofile_sz << std::scientific << sz_sz[i + j * nsites] << "  ";
         }
         ofile_sz << std::endl;
