@@ -121,10 +121,6 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.NBANDS", nbands, size_t);
   size_t nsites = n_imp / nbands;
 
-  size_t nbands = 1;
-  OPT_KEYWORD("CI.NBANDS", nbands, size_t);
-  size_t nsites = n_imp / nbands;
-
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);

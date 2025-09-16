@@ -273,23 +273,15 @@ double SolveImpurityASCI_rot (void * params){
 
 
     std::vector<double> tmp_rot( n_active * n_active, 0. );
-    std::vector<double> comp( n_active * n_active, 0. );
-    std::vector<double>orb_rot(n_active * n_active);
-    for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
-
     std::vector<double> T_active = *(p->T_active);
     std::vector<double> V_active = *(p->V_active);
     std::vector<double> F_inactive = *(p->F_inactive);
     double E_inactive = *(p->E_inactive);
-    std::vector<double> tmp_rot( n_active * n_active, 0. );
     std::vector<double> comp( n_active * n_active, 0. );
+
     std::vector<double>orb_rot(n_active * n_active);
     for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
 
-    std::vector<double> T_active = *(p->T_active);
-    std::vector<double> V_active = *(p->V_active);
-    std::vector<double> F_inactive = *(p->F_inactive);
-    double E_inactive = *(p->E_inactive);
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -342,12 +334,9 @@ double SolveImpurityASCI_rot (void * params){
       std::cout<<"Generating HF Guess for ASCI \n";
       macis::wfn_t<nwfn_bits> hf_det = macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta);
       dets = {hf_det};
-      macis::wfn_t<nwfn_bits> hf_det = macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta);
-      dets = {hf_det};
       // std::cout << dets[0].to_ullong() << std::endl;
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
       C_local = {1.0};
-      std::vector<double> orb_occs(n_active,0.0);
       std::vector<double> orb_occs(n_active,0.0);
     
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
@@ -361,19 +350,6 @@ double SolveImpurityASCI_rot (void * params){
 
       for (size_t iorb = 0; iorb <= asci_settings.nrots; iorb++)
       {
-
-          std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
-
-          //Starting with HF
-          dets.clear();
-          dets = {hf_det};
-          C_local = {1.0};
-          E0 = ham_gen.matrix_element(dets[0], dets[0]);
-          std::cout<<"ASCI E0 = "<< E0 << std::endl;
-          std::cout<<"ASCI E_core = "<< E_core << std::endl;
-          std::cout<<"ASCI E_inactive = "<< E_inactive << std::endl;
-          std::cout<<"ASCI EHF = "<< E0 + E_core + E_inactive << std::endl;
-          std::cout<<"|HF> = " << macis::to_canonical_string(hf_det) << std::endl;
 
           std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
 
@@ -498,68 +474,6 @@ double SolveImpurityASCI_rot (void * params){
               ofile_rot << std::endl;
               } 
 
-                      n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
-                      orb_rot.data(), n_active, 0.0, comp.data(), n_active);
-
-            orb_rot = std::move(comp);
-            {
-            size_t n_bath = n_active - n_imp;
-            //Impurity block
-            std::vector<double> ordm_i(n_imp * n_imp);
-            std::vector<double> eigvals_i(n_imp);
-            //Copy impurity block (active_ordm is column-major)
-            for(size_t ii = 0; ii < n_imp; ii++) {
-                for(size_t jj = 0; jj < n_imp; jj++) {
-                    ordm_i[jj + ii * n_imp] = active_ordm[jj + ii * n_active];
-                }
-            }
-            //Negate for descending eigenvalue order 
-            for(auto& x : ordm_i) x *= -1.0;
-            //Diagonalize impurity block
-            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_imp, ordm_i.data(),
-                         n_imp, eigvals_i.data());
-            //Restore sign of eigenvalues
-            for(auto& x : eigvals_i) x *= -1.0;
-            //Bath block
-            std::vector<double> ordm_b(n_bath * n_bath);
-            std::vector<double> eigvals_b(n_bath);
-            //Copy bath block
-            for(size_t ii = 0; ii < n_bath; ii++) {
-                for(size_t jj = 0; jj < n_bath; jj++) {
-                    ordm_b[jj + ii * n_bath] = active_ordm[(jj + n_imp) + (ii + n_imp) * n_active];
-                }
-            }
-            //Negate for descending eigenvalue order
-            for(auto& x : ordm_b) x *= -1.0;
-            // Diagonalize bath block
-            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_bath, ordm_b.data(),
-                         n_bath, eigvals_b.data());
-            // Restore sign of eigenvalues
-            for(auto& x : eigvals_b) x *= -1.0;
-            // Store eigenvalues (already in descending order due to sign flip)
-            for(size_t ii = 0; ii < n_imp; ii++) {
-                orb_occs[ii] = eigvals_i[ii];
-            }
-            for(size_t ii = n_imp; ii < n_active; ii++) {
-                orb_occs[ii] = eigvals_b[ii - n_imp];
-            }
-            std::cout << "* Impurity and bath 1-RDM eigenvalues: " << std::endl;
-            std::cout << "  ";
-            for(size_t ii = 0; ii < n_active; ii++) {
-                std::cout << " " << orb_occs[ii];
-            }
-            std::cout << std::endl;
-            hf_det = macis::hf_determinant_byocc<nwfn_bits>(nalpha, nbeta, orb_occs);
-            }
-          
-            std::ofstream ofile_rot( "orb_rot.dat");
-            ofile_rot.precision(std::numeric_limits<double>::max_digits10);
-            for (int i = 0; i < norb; i++)
-              {
-              for (int j = 0; j < norb; j++)
-                ofile_rot << std::scientific << orb_rot[j + i * n_active] << " ";
-              ofile_rot << std::endl;
-              } 
             // ham_gen.SetJustSingles( false );
             // Rediagonalize
             // E0 = selected_ci_diag( dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,
