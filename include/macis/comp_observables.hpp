@@ -215,7 +215,6 @@ class CompObservables {
                                   n_active_, n_active_),
         macis::rank4_span<double>(trdm_dd_.data(), n_active_, n_active_,
                                   n_active_, n_active_));
-    std::cout << " RDMs computed\n" << std::endl;  // DEBUG
 
     {  // Possible bug fix
       for(int i = 0; i < n_active4_; i++) {
@@ -228,58 +227,9 @@ class CompObservables {
 
     Transform_2RDMs(n_active_, ordm_u_, ordm_d_, trdm_uu_, trdm_ud_, trdm_du_,
                     trdm_dd_);
-    std::cout << " 2-RDMs transformed\n" << std::endl;
 
     std::cout << " Constructor done\n" << std::endl;  // DEBUG
 
-    // {
-    // std::cout << "ordm_u\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << ordm_u_[i + j*n_active_] << " " ;
-    //   }
-    // std::cout <<  std::endl; // DEBUG
-    // }
-    // std::cout << "\nordm_d\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << ordm_d_[i + j*n_active_] << " " ;
-    //   }
-    //   std::cout <<  std::endl; // DEBUG
-    // }
-    // std::cout << "\n trdm_uu\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << trdm_uu_[i + i*n_active_ + j*n_active2_ + j*n_active3_]
-    //     << " " ;
-    //   }
-    //   std::cout <<  std::endl; // DEBUG
-    // }
-    // std::cout << "\n trdm_dd\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << trdm_dd_[i + i*n_active_ + j*n_active2_ + j*n_active3_]
-    //     << " " ;
-    //   }
-    //   std::cout <<  std::endl; // DEBUG
-    // }
-    // std::cout << "\n trdm_ud\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << trdm_ud_[i + i*n_active_ + j*n_active2_ + j*n_active3_]
-    //     << " " ;
-    //   }
-    //   std::cout <<  std::endl; // DEBUG
-    // }
-    // std::cout << "\n trdm_du\n" << std::endl; // DEBUG
-    // for(int i=0; i<n_imp_; i++){
-    //   for(int j=0; j<n_imp_; j++){
-    //     std::cout << trdm_du_[i + i*n_active_ + j*n_active2_ + j*n_active3_]
-    //     << " " ;
-    //   }
-    //   std::cout <<  std::endl; // DEBUG
-    // }
-    // }
   }
 
   double compute_double_occupancies() const {

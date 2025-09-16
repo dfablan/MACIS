@@ -327,8 +327,6 @@ int main(int argc, char** argv) {
       ofile_sz.close();
     }
     if(compute_tz_tz) {
-      std::cout << " Entering class function for tz_tz\n"
-                << std::endl;  // DEBUG
       std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file

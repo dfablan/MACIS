@@ -49,8 +49,6 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   auto grow_st = hrt_t::now();
 
   while(wfn.size() < asci_settings.ntdets_max) {
-    std::cout << "=====Starting ASCI Growth Iteration!!!!===== " << iter++
-              << "\n";  // DEBUG!!!!!
     size_t ndets_new =
         std::min(std::max(asci_settings.ntdets_min,
                           wfn.size() * asci_settings.grow_factor),
@@ -71,9 +69,6 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
     if(asci_settings.grow_with_rot and
        wfn.size() >= asci_settings.rot_size_start) {
       auto grow_rot_st = hrt_t::now();
-
-      std::cout
-          << "Performing Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
 
       // Only do rotation on root rank
       if(!world_rank) {

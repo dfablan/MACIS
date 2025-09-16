@@ -24,6 +24,18 @@ auto evaluate_ordm(
   macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
   macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
 
+  // {
+  //   //print ordm DEBUG
+  //   std::ofstream ofile_ordm( "active_ordm_rotated.dat");
+  //   ofile_ordm.precision(std::numeric_limits<double>::max_digits10);
+  //   for (int i = 0; i < n_active; i++)
+  //     {
+  //     for (int j = 0; j < n_active; j++)
+  //       ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
+  //     ofile_ordm << std::endl;
+  //     } 
+  // }
+
   // Rotate the 1-RDM back to original basis
   // Eigen::MatrixXd roto = orb_rot * o * orb_rot.adjoint();
   std::vector<double> tmp (n_active*n_active, 0. );
@@ -339,22 +351,13 @@ double SolveImpurityASCI_rot (void * params){
           else
           {
             auto orbrot_st = clock_type::now();
+            active_ordm.assign( n_active * n_active, 0. );
+            active_trdm.assign( n_active * n_active * n_active * n_active, 0. );
             //Generate RDMs
             ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
                 macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
                 macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
 
-            //print ordm DEBUG
-            std::ofstream ofile_ordm( "ordm_" + std::to_string(iorb) + ".dat");
-            ofile_ordm.precision(std::numeric_limits<double>::max_digits10);
-            for (int i = 0; i < norb; i++)
-              {
-              for (int j = 0; j < norb; j++)
-                ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
-              ofile_ordm << std::endl;
-              } 
-
-              
             //Reset auxiliary vectors
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
@@ -465,6 +468,16 @@ double SolveImpurityASCI_rot (void * params){
             ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
           ofile_ordm << std::endl;
           } 
+    }
+    {
+      std::ofstream ofile_rot( "rot_matrix.dat");
+      ofile_rot.precision(std::numeric_limits<double>::max_digits10);
+      for (int i = 0; i < norb; i++)
+      {
+        for (int j = 0; j < norb; j++)
+          ofile_rot << std::scientific << orb_rot[i + j * n_active] << " ";
+        ofile_rot << std::endl;
+      }
     }
 
     *(p->occs) = occs;
