@@ -343,6 +343,18 @@ double SolveImpurityASCI_rot (void * params){
             ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
                 macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
                 macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+
+            //print ordm DEBUG
+            std::ofstream ofile_ordm( "ordm_" + std::to_string(iorb) + ".dat");
+            ofile_ordm.precision(std::numeric_limits<double>::max_digits10);
+            for (int i = 0; i < norb; i++)
+              {
+              for (int j = 0; j < norb; j++)
+                ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
+              ofile_ordm << std::endl;
+              } 
+
+              
             //Reset auxiliary vectors
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
