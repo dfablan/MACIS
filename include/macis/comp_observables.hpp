@@ -229,7 +229,6 @@ class CompObservables {
                     trdm_dd_);
 
     std::cout << " Constructor done\n" << std::endl;  // DEBUG
-
   }
 
   double compute_double_occupancies() const {
