@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);
   OPT_KEYWORD("CI.FCIDUMP_OUT", fci_out_fname, std::string);
-  
+
   bool compute_db_occs = false;
   bool compute_sz_sz = false;
   bool compute_tz_tz = false;
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   std::vector<double> orb_rot(n_active * n_active);
   for(size_t i = 0; i < n_active; ++i) orb_rot[i * n_active + i] = 1.0;
   double E0 = 0.0;
-  
+
   // Copy integrals into active subsets
   std::vector<double> T_active(n_active * n_active);
   std::vector<double> Td_active(n_active * n_active);
