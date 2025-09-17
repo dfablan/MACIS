@@ -17,7 +17,7 @@
 
 namespace macis {
 
-double Mu_vs_n(double x, void * params);
+double Mu_vs_n(double x, void *params);
 
 /**
  * @brief Cost function to find the root for. The solution will optimize the
