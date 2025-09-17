@@ -280,7 +280,8 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("DOP.METHOD", method_name, std::string);
 
     std::cout << "Electron filling parameters \n";
-    std::cout << std::setprecision(3) << nel_target << " electrons per orbital \n";
+    std::cout << std::setprecision(3) << nel_target
+              << " electrons per orbital \n";
     std::cout << std::setprecision(2) << nel_target * n_imp << " electrons in "
               << std::setprecision(1) << n_imp << " orbitals \n";
 
@@ -388,19 +389,17 @@ int main(int argc, char** argv) {
       std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
       std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
-      macis::util::write_matrix(sz_sz.data(), nsites, nsites,
-                               "sz_sz.dat", true);
+      macis::util::write_matrix(sz_sz.data(), nsites, nsites, "sz_sz.dat",
+                                true);
     }
     if(compute_tz_tz) {
       std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
-      macis::util::write_matrix(tz_tz.data(), nsites, nsites,
-                               "tauz_tauz.dat", true);
+      macis::util::write_matrix(tz_tz.data(), nsites, nsites, "tauz_tauz.dat",
+                                true);
     }
   }
-
-
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);

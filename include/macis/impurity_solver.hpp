@@ -10,6 +10,7 @@
 #include <macis/util/detail/rdm_files.hpp>
 #include <macis/util/fcidump.hpp>
 #include <macis/util/fock_matrices.hpp>
+#include <macis/util/general_io.hpp>
 #include <macis/util/memory.hpp>
 #include <macis/util/moller_plesset.hpp>
 #include <macis/util/mpi.hpp>
@@ -17,7 +18,6 @@
 #include <macis/wavefunction_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
-#include <macis/util/general_io.hpp>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
