@@ -55,6 +55,7 @@ struct impurity_params {
   bool* print;
   double* init_shift;
   bool* cheap_mode;
+  double* delta_CFS;
 
   std::string* ci_exp;
   std::string* asci_wfn_fname;

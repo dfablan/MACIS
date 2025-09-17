@@ -59,6 +59,17 @@
         "streambuf": "cpp",
         "text_encoding": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "cstring": "cpp",
+        "condition_variable": "cpp",
+        "list": "cpp",
+        "source_location": "cpp",
+        "mutex": "cpp",
+        "semaphore": "cpp",
+        "shared_mutex": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp",
+        "cinttypes": "cpp",
+        "typeindex": "cpp"
     }
 }

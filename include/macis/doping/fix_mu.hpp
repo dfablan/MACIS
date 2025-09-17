@@ -17,6 +17,8 @@
 
 namespace macis {
 
+double Mu_vs_n(double x, void * params);
+
 /**
  * @brief Cost function to find the root for. The solution will optimize the
  * chemical potential mu to fix the number of particles.

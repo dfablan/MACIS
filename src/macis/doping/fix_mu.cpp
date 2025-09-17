@@ -11,13 +11,15 @@ namespace macis {
     double nel_target = *(p->nel_target);
     size_t norb = *(p->norb);
     size_t n_imp = *(p->n_imp);
+    size_t nbands = *(p->nbands);
+    size_t nsites = n_imp / nbands;
 
-    // double delta_CFS = *(p->delta_CFS);
-    // if (delta_CFS != 0.0 && nbands != 2)
-    // {
-        // std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
-        // delta_CFS = 0.0; // Reset to zero to avoid issues
-    // }
+    double delta_CFS = *(p->delta_CFS);
+    if (delta_CFS != 0.0 && nbands != 2)
+    {
+        std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
+        delta_CFS = 0.0; // Reset to zero to avoid issues
+    }
 
     std::string ci_exp = *(p->ci_exp);
 
@@ -26,29 +28,29 @@ namespace macis {
     double curr_nel_per_spin = 0.0;
     std::vector<double> occs;
 
-    // if( nbands == 2 && delta_CFS != 0.0 )
-    // {
-        // // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-        // for(int i = 0; i < nimp; i++) 
-        // {
-            // if( i / nsites == 0 )
-            // {
-                // // For the first site of each band, we add mu
-                // p -> ints -> update(i,i,mu-delta_CFS/2.0);
-            // }
-            // else if( i / nsites == 1 )
-            // {
-                // // For the second site of each band, we add mu + delta_CFS
-                // p -> ints -> update(i,i,mu + delta_CFS/2.0);
-            // }
-            // else
-            // {
-                // std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-                // throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
-            // }
-        // }
-    // }
-    // else
+    if( nbands == 2 && delta_CFS != 0.0 )
+    {
+        // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+        for(int i = 0; i < n_imp; i++) 
+        {
+            if( i / nsites == 0 )
+            {
+                // For the first band, we add mu - delta_CFS
+                p -> T -> at(i*norb+i) = mu - delta_CFS/2.0;
+            }
+            else if( i / nsites == 1 )
+            {
+                // For the second band, we add mu + delta_CFS
+                p -> T -> at(i*norb+i) = mu + delta_CFS/2.0 ;
+            }
+            else
+            {
+                std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+                throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
+            }
+        }
+    }
+    else
     {
         // If delta_CFS is zero, we just update the diagonal elements with mu
         for(int i = 0; i < n_imp; i++)
@@ -97,7 +99,16 @@ namespace macis {
 
     size_t norb = *(p->norb);
     size_t n_imp = *(p->n_imp);
+    size_t nbands = *(p->nbands);
+    size_t nsites = n_imp / nbands;
+    double delta_CFS = *(p->delta_CFS);
     double nel_target = *(p->nel_target);
+    
+    if (delta_CFS != 0.0 && nbands != 2)
+    {
+      std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
+      delta_CFS = 0.0; // Reset to zero to avoid issues
+    }
     
     std::string ci_exp = *(p->ci_exp);
     
@@ -105,24 +116,42 @@ namespace macis {
     double mu = x;  
     double curr_nel_per_spin = 0.0;
 
-
-
-    for(int i = 0; i < n_imp; i++) 
+    if (delta_CFS != 0.0 && nbands == 2)
     {
-     p->T->at(i*norb+i) = mu;
+      // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+      for(int i = 0; i < n_imp; i++) 
+      {
+        if( i / nsites == 0 )
+        {
+          // For the first band, we add mu - delta_CFS
+          p -> T -> at(i*norb+i) = mu - delta_CFS/2.0;
+        }
+        else if( i / nsites == 1 )
+        {
+          // For the second band, we add mu + delta_CFS
+          p -> T -> at(i*norb+i) = mu + delta_CFS/2.0 ;
+        }
+        else
+        {
+          std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+          throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
+        }
+      }
+    }
+    else
+    {
+         // If delta_CFS is zero, we just update the diagonal elements with mu
+        for(int i = 0; i < n_imp; i++) 
+        {
+         p->T->at(i*norb+i) = mu;
+        }
     }
 
-
-
-    // std::vector<double> * T_ptr = p->T;
-    // for(int i = 0; i < norb; i++) {
-    //     std::cout << "T_diagonal_" << i << " = " << T_ptr->at(i+norb*i) << std::endl;
-    // }
-
-    // CAN I AVOID DEFINING THIS HERE? 
     std::vector<double> occs = *(p->occs);
-    // curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
-    // std::cout<< "Total number of electrons = "<< 2*curr_nel_per_spin << std::endl;
+
+    bool cheap_mode = *(p->cheap_mode);
+    if(cheap_mode)
+      ci_exp = "ASCI_cheap";
 
 // IMPLEMENT DIRECT CHOICE FROM INPUT FILE
     double E;
@@ -130,9 +159,18 @@ namespace macis {
     {
         E = SolveImpurityED(p);
     }
-    else 
+    else if (ci_exp == "ASCI")
     {
         E = SolveImpurityASCI_rot(p);
+    }
+    else if (ci_exp == "ASCI_cheap")
+    {
+        E = SolveImpurityCheapASCI(p);
+    }
+    else 
+    {
+        std::cout << "Error in Mu_Cost_f! Invalid ci_exp: " << ci_exp << std::endl;
+        throw( std::runtime_error( "Error in Mu_Cost_f! Invalid ci_exp" ) );
     }
 
     occs = *(p->occs);
