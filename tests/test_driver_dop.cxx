@@ -6,6 +6,7 @@
 
 #include <iomanip>
 #include <iostream>
+#include <macis/comp_observables.hpp>
 #include <macis/doping/fix_mu.hpp>
 #include <macis/gf/gf.hpp>
 #include <map>
@@ -103,10 +104,21 @@ int main(int argc, char** argv) {
   size_t n_imp = norb;
   OPT_KEYWORD("CI.NIMP", n_imp, size_t);
 
+  size_t nbands = 1;
+  OPT_KEYWORD("CI.NBANDS", nbands, size_t);
+  size_t nsites = n_imp / nbands;
+
   // Misc optional files
   std::string rdm_fname, fci_out_fname;
   OPT_KEYWORD("CI.RDMFILE", rdm_fname, std::string);
   OPT_KEYWORD("CI.FCIDUMP_OUT", fci_out_fname, std::string);
+  
+  bool compute_db_occs = false;
+  bool compute_sz_sz = false;
+  bool compute_tz_tz = false;
+  OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
+  OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
+  OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
 
   if(n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
@@ -188,7 +200,31 @@ int main(int argc, char** argv) {
 
   double nel_target;
   std::vector<double> occs(n_active, 0);
+  std::vector<double> orb_rot(n_active * n_active);
+  for(size_t i = 0; i < n_active; ++i) orb_rot[i * n_active + i] = 1.0;
   double E0 = 0.0;
+  
+  // Copy integrals into active subsets
+  std::vector<double> T_active(n_active * n_active);
+  std::vector<double> Td_active(n_active * n_active);
+  std::vector<double> V_active(n_active * n_active * n_active * n_active);
+
+  // Compute active-space Hamiltonian and inactive Fock matrix
+  std::vector<double> F_inactive(norb2);
+  std::vector<double> Fd_inactive(norb2);
+  macis::active_hamiltonian(NumOrbital(norb), NumActive(n_active),
+                            NumInactive(n_inactive), T.data(), norb, V.data(),
+                            norb, F_inactive.data(), norb, T_active.data(),
+                            n_active, V_active.data(), n_active);
+
+  console->debug("FINACTIVE_SUM = {:.12f}", vec_sum(F_inactive));
+  console->debug("VACTIVE_SUM   = {:.12f}", vec_sum(V_active));
+  console->debug("TACTIVE_SUM   = {:.12f}", vec_sum(T_active));
+
+  // Compute Inactive energy
+  auto E_inactive = macis::inactive_energy(NumInactive(n_inactive), T.data(),
+                                           norb, F_inactive.data(), norb);
+  console->info("E(inactive) = {:.12f}", E_inactive);
 
   macis::impurity_params params;
   params.nbeta = &nbeta;
