@@ -317,15 +317,15 @@ int main(int argc, char** argv) {
       std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
       // print to file
-      macis::util::write_matrix(sz_sz.data(), nsites, nsites,
-                               "sz_sz.dat", true);
+      macis::util::write_matrix(sz_sz.data(), nsites, nsites, "sz_sz.dat",
+                                true);
     }
     if(compute_tz_tz) {
       std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
-      macis::util::write_matrix(tz_tz.data(), nsites, nsites,
-                               "tauz_tauz.dat", true);
+      macis::util::write_matrix(tz_tz.data(), nsites, nsites, "tauz_tauz.dat",
+                                true);
     }
   }
 
