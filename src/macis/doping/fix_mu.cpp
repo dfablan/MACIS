@@ -3,6 +3,89 @@
 
 namespace macis {
 
+  double Mu_vs_n(double x, void * params)
+  {
+
+    struct impurity_params *p = static_cast<impurity_params*> (params);
+
+    double nel_target = *(p->nel_target);
+    size_t norb = *(p->norb);
+    size_t n_imp = *(p->n_imp);
+
+    // double delta_CFS = *(p->delta_CFS);
+    // if (delta_CFS != 0.0 && nbands != 2)
+    // {
+        // std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
+        // delta_CFS = 0.0; // Reset to zero to avoid issues
+    // }
+
+    std::string ci_exp = *(p->ci_exp);
+
+    // Solve the impurity problem
+    double mu = x;  
+    double curr_nel_per_spin = 0.0;
+    std::vector<double> occs;
+
+    // if( nbands == 2 && delta_CFS != 0.0 )
+    // {
+        // // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+        // for(int i = 0; i < nimp; i++) 
+        // {
+            // if( i / nsites == 0 )
+            // {
+                // // For the first site of each band, we add mu
+                // p -> ints -> update(i,i,mu-delta_CFS/2.0);
+            // }
+            // else if( i / nsites == 1 )
+            // {
+                // // For the second site of each band, we add mu + delta_CFS
+                // p -> ints -> update(i,i,mu + delta_CFS/2.0);
+            // }
+            // else
+            // {
+                // std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+                // throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
+            // }
+        // }
+    // }
+    // else
+    {
+        // If delta_CFS is zero, we just update the diagonal elements with mu
+        for(int i = 0; i < n_imp; i++)
+        {
+            p->T->at(i*norb+i) = mu;
+        }
+    }
+
+    double E;
+    if (ci_exp == "ED")
+    {
+        E = SolveImpurityED(p);
+    }
+    else 
+    {
+        E = SolveImpurityASCI_rot(p);
+    }
+
+    occs = *(p->occs);
+    *(p->E) = E;
+
+    std::cout << "the current value of mu is " << mu << std::endl;
+    std::cout << "the detailed values of the occupations are " << std::endl;
+    for (int i = 0; i < n_imp; i++)
+    {
+        std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+    }
+
+
+    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+n_imp, 0.0);
+    //curr_nel = 2.0*curr_nel/nimp;
+    curr_nel_per_spin = curr_nel_per_spin/n_imp;
+
+    return curr_nel_per_spin;
+
+  }
+
   double Mu_Cost_f (double x, void * params)
   {
 
@@ -14,7 +97,7 @@ namespace macis {
 
     size_t norb = *(p->norb);
     size_t n_imp = *(p->n_imp);
-    double nel = *(p->nel);
+    double nel_target = *(p->nel_target);
     
     std::string ci_exp = *(p->ci_exp);
     
@@ -49,7 +132,7 @@ namespace macis {
     }
     else 
     {
-        E = SolveImpurityASCI(p);
+        E = SolveImpurityASCI_rot(p);
     }
 
     occs = *(p->occs);
@@ -58,9 +141,9 @@ namespace macis {
     curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+*(p->n_imp), 0.0);
 
     // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
-    // std::cout<< "Goal number of electrons = "<< nel << std::endl;
+    // std::cout<< "Goal number of electrons = "<< nel_target << std::endl;
 
-    double err = curr_nel_per_spin - nel;
+    double err = curr_nel_per_spin - nel_target;
 
     // std::cout<< "err = "<< err << std::endl;
     // std::cout << "x = " << x << std::endl;
@@ -248,7 +331,7 @@ namespace macis {
 
     double abs_tol = *(params -> abs_tol);
     size_t maxiter = *(params->maxiter);
-    bool print = *(params->nel);
+    bool print = *(params->nel_target);
 
     // double abs_tol;
     // abs_tol =  1.E-4; 
@@ -328,7 +411,7 @@ namespace macis {
 
     double abs_tol = *(params -> abs_tol);
     size_t maxiter = *(params->maxiter);
-    bool print = *(params->nel);
+    bool print = *(params->nel_target);
     double init_shift = *(params->init_shift);
 
     // double abs_tol;

@@ -26,15 +26,8 @@ auto evaluate_ordm(
 
   // {
   //   //print ordm DEBUG
-  //   std::ofstream ofile_ordm( "active_ordm_rotated.dat");
-  //   ofile_ordm.precision(std::numeric_limits<double>::max_digits10);
-  //   for (int i = 0; i < n_active; i++)
-  //     {
-  //     for (int j = 0; j < n_active; j++)
-  //       ofile_ordm << std::scientific << active_ordm[i + j * n_active] << " ";
-  //     ofile_ordm << std::endl;
-  //     } 
-  // }
+      //  macis::util::write_matrix(active_ordm.data(), n_active, n_active,
+      //                            "active_ordm_rotated.dat", true);
 
   // Rotate the 1-RDM back to original basis
   // Eigen::MatrixXd roto = orb_rot * o * orb_rot.adjoint();
@@ -419,14 +412,8 @@ double SolveImpurityASCI_rot (void * params){
             hf_det = macis::hf_determinant_byocc<nwfn_bits>(nalpha, nbeta, orb_occs);
             }
           
-            std::ofstream ofile_rot( "rot_matrix_" + std::to_string(iorb) + ".dat");
-            ofile_rot.precision(std::numeric_limits<double>::max_digits10);
-            for (int i = 0; i < norb; i++)
-              {
-              for (int j = 0; j < norb; j++)
-                ofile_rot << std::scientific << orb_rot[i + j * n_active] << " ";
-              ofile_rot << std::endl;
-              } 
+            macis::util::write_matrix(orb_rot.data(), n_active, n_active,
+                                     "rot_matrix_" + std::to_string(iorb) + ".dat", true);
 
             // Rediagonalize
             // E0 = selected_ci_diag( dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,

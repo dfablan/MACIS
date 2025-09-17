@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
   if(not print_diis) spdlog::null_logger_mt("diis");
   spdlog::null_logger_mt("asci_search");
 
-  double nel;
+  double nel_target;
   std::vector<double> occs(n_active, 0);
   double E0 = 0.0;
 
@@ -200,6 +200,9 @@ int main(int argc, char** argv) {
   params.E_core = &E_core;
   params.V = &V;
   params.T = &T;
+  params.V_active = &V_active;
+  params.T_active = &T_active;
+  params.F_inactive = &F_inactive;
   params.mcscf_settings = &mcscf_settings;
   params.asci_settings = &asci_settings;
   params.dets = &dets;
@@ -209,13 +212,15 @@ int main(int argc, char** argv) {
   params.asci_wfn_fname = &asci_wfn_fname;
   params.compute_asci_E0 = &compute_asci_E0;
   params.asci_E0 = &asci_E0;
+  params.E_inactive = &E_inactive;
+  params.orb_rot = &orb_rot;
 
   bool doping = false;
   OPT_KEYWORD("CI.DOPING", doping, bool);
 
-  OPT_KEYWORD("DOP.NELECTRONS", nel, double);
+  OPT_KEYWORD("DOP.NELECTRONS", nel_target, double);
 
-  if(doping && nel / n_imp == 1)
+  if(doping && nel_target / n_imp == 1)
     std::cout
         << "WARNING: Doping routines were called but half-filling was asked \n";
   std::cout << "Doping =" << doping << std::endl;
@@ -239,8 +244,8 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("DOP.METHOD", method_name, std::string);
 
     std::cout << "Electron filling parameters \n";
-    std::cout << std::setprecision(3) << nel << " electrons per orbital \n";
-    std::cout << std::setprecision(2) << nel * n_imp << " electrons in "
+    std::cout << std::setprecision(3) << nel_target << " electrons per orbital \n";
+    std::cout << std::setprecision(2) << nel_target * n_imp << " electrons in "
               << std::setprecision(1) << n_imp << " orbitals \n";
 
     params.dstep = &dstep;
@@ -249,7 +254,7 @@ int main(int argc, char** argv) {
     params.print = &print_doping;
     params.init_shift = &init_shift;
     params.ci_exp = &ciexp_str;
-    params.nel = &nel;
+    params.nel_target = &nel_target;
 
     double mu_fixed;
 
@@ -335,6 +340,31 @@ int main(int argc, char** argv) {
   std::cout << "Total number of electrons = " << curr_nel << " in " << n_imp
             << " impurity orbitals\n"
             << std::endl;
+
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
+    using dbl = std::numeric_limits<double>;
+    macis::CompObservables obs(&params);
+    if(compute_db_occs) {
+      double db_occs = obs.compute_double_occupancies();
+      std::cout << "  * Double occupancy = " << db_occs << std::endl;
+    }
+    if(compute_sz_sz) {
+      std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
+      std::vector<double> sz_sz(nsites * nsites, 0.0);
+      sz_sz = obs.compute_sz_sz_correlations();
+      macis::util::write_matrix(sz_sz.data(), nsites, nsites,
+                               "sz_sz.dat", true);
+    }
+    if(compute_tz_tz) {
+      std::vector<double> tz_tz(nsites * nsites, 0.0);
+      tz_tz = obs.compute_tz_tz_correlations();
+      // print to file
+      macis::util::write_matrix(tz_tz.data(), nsites, nsites,
+                               "tauz_tauz.dat", true);
+    }
+  }
+
+
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);

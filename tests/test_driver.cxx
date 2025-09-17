@@ -8,6 +8,7 @@
 #include <iostream>
 #include <macis/comp_observables.hpp>
 #include <macis/gf/gf.hpp>
+#include <macis/util/general_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -198,7 +199,7 @@ int main(int argc, char** argv) {
   if(not print_diis) spdlog::null_logger_mt("diis");
   if(not print_asci_search) spdlog::null_logger_mt("asci_search");
 
-  double nel;
+  double nel_target;
   std::vector<double> occs(n_active, 0);
   std::vector<double> orb_rot(n_active * n_active);
   for(size_t i = 0; i < n_active; ++i) orb_rot[i * n_active + i] = 1.0;
@@ -316,28 +317,15 @@ int main(int argc, char** argv) {
       std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
       // print to file
-      std::ofstream ofile_sz("sz_sz.dat");
-      ofile_sz.precision(dbl::max_digits10);
-      for(size_t i = 0; i < nsites; i++) {
-        for(size_t j = 0; j < nsites; j++) {
-          ofile_sz << std::scientific << sz_sz[i + j * nsites] << "  ";
-        }
-        ofile_sz << std::endl;
-      }
-      ofile_sz.close();
+      macis::util::write_matrix(sz_sz.data(), nsites, nsites,
+                               "sz_sz.dat", true);
     }
     if(compute_tz_tz) {
       std::vector<double> tz_tz(nsites * nsites, 0.0);
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
-      std::ofstream ofile_tz("tauz_tauz.dat");
-      ofile_tz.precision(dbl::max_digits10);
-      for(size_t i = 0; i < nsites; i++) {
-        for(size_t j = 0; j < nsites; j++)
-          ofile_tz << std::scientific << tz_tz[i + j * nsites] << "  ";
-        ofile_tz << std::endl;
-      }
-      ofile_tz.close();
+      macis::util::write_matrix(tz_tz.data(), nsites, nsites,
+                               "tauz_tauz.dat", true);
     }
   }
 

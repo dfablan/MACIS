@@ -15,6 +15,7 @@
 #include <macis/wavefunction_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
+#include <macis/util/general_io.hpp>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -41,7 +42,7 @@ struct impurity_params {
   size_t* n_imp;
   size_t* nbands;
 
-  double* nel;
+  double* nel_target;
   // double* delta_CFS;
   std::vector<double>* orb_rot;
 
