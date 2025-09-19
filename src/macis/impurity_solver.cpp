@@ -4,19 +4,20 @@
 
 namespace macis {
 
+template <size_t N>
 auto evaluate_ordm(
-  std::vector<macis::wfn_t<nwfn_bits>> &dets,
+  std::vector<macis::wfn_t<N>> &dets,
   std::vector<double> &X_local,
-  macis::DoubleLoopHamiltonianGenerator<nwfn_bits> &ham_gen,
+  macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
   std::vector<double> &orb_rot
 ) {
   // Get Parameters
   size_t n_active = sqrt(orb_rot.size());
 
   // Compute the 1-rdm
-  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_st = dets.begin();
-  typename std::vector<macis::wfn_t<nwfn_bits>>::iterator det_en = dets.end();
-  
+  typename std::vector<macis::wfn_t<N>>::iterator det_st = dets.begin();
+  typename std::vector<macis::wfn_t<N>>::iterator det_en = dets.end();
+
   std::vector<double> active_ordm(n_active * n_active);
   std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
 
@@ -43,33 +44,39 @@ auto evaluate_ordm(
   return comp;
 }
   
-// template <size_t nwfn_bits>
+template <size_t N>
 double SolveImpurityED (void * params){
 
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-    size_t norb = * (p->norb);
-    size_t n_active = * (p->n_active);
-    size_t nalpha = * (p->nalpha);
-    size_t nbeta = * (p->nbeta);
-    size_t n_inactive = * (p->n_inactive);
-    std::vector<double> T = * (p->T);
-    std::vector<double> V = *(p->V);
-    size_t n_imp = *(p->n_imp);
-    double E_core = *(p->E_core);
-    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
-    macis::ASCISettings asci_settings = *(p->asci_settings);
+    size_t& norb =  (p->norb);
+    size_t& n_active =  (p->n_active);
+    size_t& nalpha =  (p->nalpha);
+    size_t& nbeta =  (p->nbeta);
+    size_t& n_inactive =  (p->n_inactive);
+    std::vector<double>& T =  (p->T);
+    std::vector<double>& V =  (p->V);
+    size_t& n_imp =  (p->n_imp);
+    double& E_core =  (p->E_core);
+    macis::MCSCFSettings& mcscf_settings =  (p->mcscf_settings);
+    macis::ASCISettings& asci_settings =  (p->asci_settings);
 
+    // std::vector<macis::wfn_t<N>> dets;
+    // std::vector<double> C_local;  
+    // std::vector<double> occs(n_active, 0);
 
-    std::vector<macis::wfn_t<nwfn_bits>> dets;
-    std::vector<double> C_local;  
-    std::vector<double> occs(n_active, 0);
+    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    dets.clear();
+    std::vector<double>& C_local = (p->C);
+    C_local.clear();
+    std::vector<double>& occs = (p->occs);
+    occs.assign(n_active, 0);
 
-    std::vector<double> T_active = *(p->T_active);
-    std::vector<double> V_active = *(p->V_active);
-    std::vector<double> F_inactive = *(p->F_inactive);
-    double E_inactive = *(p->E_inactive);
+    std::vector<double>& T_active = (p->T_active);
+    std::vector<double>& V_active = (p->V_active);
+    std::vector<double>& F_inactive = (p->F_inactive);
+    double& E_inactive = (p->E_inactive);
 
     std::cout << "-------------------------------Entering SolverImpurityED-------------------------------" << std::endl;
 
@@ -80,7 +87,7 @@ double SolveImpurityED (void * params){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
     E0 = macis::CASRDMFunctor<generator_t>::rdms(
           mcscf_settings, NumOrbital(n_active), nalpha, nbeta,
@@ -96,46 +103,41 @@ double SolveImpurityED (void * params){
       occs[i] = active_ordm[i + i * n_active]*1./2; 
     }
 
-    *(p->occs) = occs;
-    *(p->C) = C_local;
-    *(p->dets) = dets;
-
-
-
-    
     return E0;
 }
 
-// template <size_t nwfn_bits>
+template <size_t N>
 double SolveImpurityASCI (void * params){
 
-
     // struct impurity_params *p = (struct impurity_params *)params;
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-    bool compute_asci_E0 = *(p->compute_asci_E0);
-    double asci_E0 = *(p->asci_E0);
-    std::string asci_wfn_fname = *(p->asci_wfn_fname);
-    size_t norb = *(p->norb);
-    size_t n_active =* (p->n_active);
-    size_t nalpha = *(p->nalpha);
-    size_t nbeta = *(p->nbeta);
-    size_t n_inactive = *(p->n_inactive);
-    std::vector<double> T = *(p->T);
-    std::vector<double> V = *(p->V);
-    size_t n_imp = *(p->n_imp);
-    double E_core = *(p->E_core);
-    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
-    macis::ASCISettings asci_settings = *(p->asci_settings);
+    bool& compute_asci_E0 = (p->compute_asci_E0);
+    double& asci_E0 = (p->asci_E0);
+    std::string& asci_wfn_fname = (p->asci_wfn_fname);
+    size_t& norb = (p->norb);
+    size_t& n_active = (p->n_active);
+    size_t& nalpha = (p->nalpha);
+    size_t& nbeta = (p->nbeta);
+    size_t& n_inactive = (p->n_inactive);
+    std::vector<double>& T = (p->T);
+    std::vector<double>& V = (p->V);
+    size_t& n_imp = (p->n_imp);
+    double& E_core = (p->E_core);
+    macis::MCSCFSettings& mcscf_settings = (p->mcscf_settings);
+    macis::ASCISettings& asci_settings = (p->asci_settings);
 
-    std::vector<double> occs(n_active, 0);
-    std::vector<double> C_local;
-    std::vector<macis::wfn_t<nwfn_bits>> dets;
+    std::vector<double>& occs = (p->occs);
+    occs.assign(n_active, 0);
+    std::vector<double>& C_local = (p->C);
+    C_local.clear();
+    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    dets.clear();
 
-    std::vector<double> T_active = *(p->T_active);
-    std::vector<double> V_active = *(p->V_active);
-    std::vector<double> F_inactive = *(p->F_inactive);
-    double E_inactive = *(p->E_inactive);
+    std::vector<double>& T_active = (p->T_active);
+    std::vector<double>& V_active = (p->V_active);
+    std::vector<double>& F_inactive = (p->F_inactive);
+    double& E_inactive = (p->E_inactive);
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -145,7 +147,7 @@ double SolveImpurityASCI (void * params){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
@@ -185,7 +187,7 @@ double SolveImpurityASCI (void * params){
     // HF Guess
     // console->info("Generating HF Guess for ASCI");
     std::cout<<"Generating HF Guess for ASCI \n";
-    dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
+    dets = {macis::canonical_hf_determinant<N>(nalpha, nalpha)};
     // std::cout << dets[0].to_ullong() << std::endl;
     E0 = ham_gen.matrix_element(dets[0], dets[0]);
     C_local = {1.0};
@@ -227,52 +229,51 @@ double SolveImpurityASCI (void * params){
       // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    *(p->occs) = occs;
-    *(p->C) = C_local;
-    *(p->dets) = dets;
-
-          
     return E0;
 }
 
-// template <size_t nwfn_bits>
+template <size_t N>
 double SolveImpurityASCI_rot (void * params){
 
     using clock_type = std::chrono::high_resolution_clock;
     using duration_type = std::chrono::duration<double, std::milli>;
 
     // struct impurity_params *p = (struct impurity_params *)params;
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-    bool compute_asci_E0 = *(p->compute_asci_E0);
-    double asci_E0 = *(p->asci_E0);
-    std::string asci_wfn_fname = *(p->asci_wfn_fname);
-    size_t norb = *(p->norb);
-    size_t n_active =* (p->n_active);
-    size_t nalpha = *(p->nalpha);
-    size_t nbeta = *(p->nbeta);
-    size_t n_inactive = *(p->n_inactive);
-    std::vector<double> T = *(p->T);
-    std::vector<double> V = *(p->V);
-    size_t n_imp = *(p->n_imp);
-    double E_core = *(p->E_core);
-    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
-    macis::ASCISettings asci_settings = *(p->asci_settings);
+    bool& compute_asci_E0 = (p->compute_asci_E0);
+    double& asci_E0 = (p->asci_E0);
+    std::string& asci_wfn_fname = (p->asci_wfn_fname);
+    size_t& norb = (p->norb);
+    size_t& n_active = (p->n_active);
+    size_t& nalpha = (p->nalpha);
+    size_t& nbeta = (p->nbeta);
+    size_t& n_inactive = (p->n_inactive);
+    std::vector<double>& T = (p->T);
+    std::vector<double>& V = (p->V);
+    size_t& n_imp = (p->n_imp);
+    double& E_core = (p->E_core);
+    macis::MCSCFSettings& mcscf_settings = (p->mcscf_settings);
+    macis::ASCISettings& asci_settings = (p->asci_settings);
 
-    std::vector<double> occs(n_active, 0);
-    std::vector<double> C_local;
-    std::vector<macis::wfn_t<nwfn_bits>> dets;
-
+    std::vector<double>& occs = (p->occs);
+    occs.assign(n_active, 0);
+    std::vector<double>& C_local = (p->C);
+    C_local.clear();
+    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    dets.clear();
 
     std::vector<double> tmp_rot( n_active * n_active, 0. );
     std::vector<double> comp( n_active * n_active, 0. );
-    std::vector<double>orb_rot(n_active * n_active);
+
+    std::vector<double>& orb_rot = (p->orb_rot);
+    orb_rot.assign( n_active * n_active, 0. );
     for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
 
-    std::vector<double> T_active = *(p->T_active);
-    std::vector<double> V_active = *(p->V_active);
-    std::vector<double> F_inactive = *(p->F_inactive);
-    double E_inactive = *(p->E_inactive);
+    std::vector<double>& T_active = (p->T_active);
+    std::vector<double>& V_active = (p->V_active);
+    std::vector<double>& F_inactive = (p->F_inactive);
+    double& E_inactive = (p->E_inactive);
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -282,7 +283,7 @@ double SolveImpurityASCI_rot (void * params){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
@@ -291,7 +292,7 @@ double SolveImpurityASCI_rot (void * params){
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
       std::cout<<"Generating HF Guess for ASCI \n";
-      macis::wfn_t<nwfn_bits> hf_det = macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta);
+      macis::wfn_t<N> hf_det = macis::canonical_hf_determinant<N>(nalpha, nbeta);
       dets = {hf_det};
       // std::cout << dets[0].to_ullong() << std::endl;
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
@@ -409,7 +410,7 @@ double SolveImpurityASCI_rot (void * params){
                 std::cout << " " << orb_occs[ii];
             }
             std::cout << std::endl;
-            hf_det = macis::hf_determinant_byocc<nwfn_bits>(nalpha, nbeta, orb_occs);
+            hf_det = macis::hf_determinant_byocc<N>(nalpha, nbeta, orb_occs);
             }
           
             macis::util::write_matrix(orb_rot.data(), n_active, n_active,
@@ -466,43 +467,41 @@ double SolveImpurityASCI_rot (void * params){
         ofile_rot << std::endl;
       }
     }
-
-    *(p->occs) = occs;
-    *(p->C) = C_local;
-    *(p->dets) = dets;
-    *(p->orb_rot) = orb_rot;
-
           
     return E0;
 }
 
+template <size_t N>
 double SolveImpurityCheapASCI (void * params){
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-    bool compute_asci_E0 = *(p->compute_asci_E0);
-    double asci_E0 = *(p->asci_E0);
-    std::string asci_wfn_fname = *(p->asci_wfn_fname);
-    size_t norb = *(p->norb);
-    size_t n_active =* (p->n_active);
-    size_t nalpha = *(p->nalpha);
-    size_t nbeta = *(p->nbeta);
-    size_t n_inactive = *(p->n_inactive);
-    std::vector<double> T = *(p->T);
-    std::vector<double> V = *(p->V);
-    size_t n_imp = *(p->n_imp);
-    double E_core = *(p->E_core);
-    macis::MCSCFSettings mcscf_settings = *(p->mcscf_settings);
-    macis::ASCISettings asci_settings = *(p->asci_settings);
+    bool& compute_asci_E0 = (p->compute_asci_E0);
+    double& asci_E0 = (p->asci_E0);
+    std::string& asci_wfn_fname = (p->asci_wfn_fname);
+    size_t& norb = (p->norb);
+    size_t& n_active = (p->n_active);
+    size_t& nalpha =  (p->nalpha);
+    size_t& nbeta =  (p->nbeta);
+    size_t& n_inactive =  (p->n_inactive);
+    std::vector<double>& T =  (p->T);
+    std::vector<double>& V =  (p->V);
+    size_t& n_imp =  (p->n_imp);
+    double& E_core =  (p->E_core);
+    macis::MCSCFSettings& mcscf_settings =  (p->mcscf_settings);
+    macis::ASCISettings& asci_settings =  (p->asci_settings);
 
-    std::vector<macis::wfn_t<nwfn_bits>> dets;
-    std::vector<double> C_local;
-    std::vector<double> occs(n_active,0);
+    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    dets.clear();
+    std::vector<double>& C_local = (p->C);
+    C_local.clear();
+    std::vector<double>& occs = (p->occs);
+    occs.assign(n_active, 0);
 
-    std::vector<double> T_active = *(p->T_active);
-    std::vector<double> V_active = *(p->V_active);
-    std::vector<double> F_inactive = *(p->F_inactive);
-    double E_inactive = *(p->E_inactive);
+    std::vector<double>& T_active = (p->T_active);
+    std::vector<double>& V_active = (p->V_active);
+    std::vector<double>& F_inactive = (p->F_inactive);
+    double& E_inactive = (p->E_inactive);
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -512,7 +511,7 @@ double SolveImpurityCheapASCI (void * params){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
@@ -535,13 +534,21 @@ double SolveImpurityCheapASCI (void * params){
       // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    *(p->occs) = occs;
-    *(p->C) = C_local;
-    *(p->dets) = dets;
 
-          
     return E0;
 }
 
+
+// Explicit template instantiations for commonly used template parameter
+template auto evaluate_ordm<64>(
+  std::vector<macis::wfn_t<64>> &dets,
+  std::vector<double> &X_local,
+  macis::DoubleLoopHamiltonianGenerator<64> &ham_gen,
+  std::vector<double> &orb_rot
+);
+template double SolveImpurityED<64>(void * params);
+template double SolveImpurityASCI<64>(void * params);
+template double SolveImpurityASCI_rot<64>(void * params);
+template double SolveImpurityCheapASCI<64>(void * params);
 
 } // namespace macis

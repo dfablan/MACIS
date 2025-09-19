@@ -29,29 +29,31 @@ void Transform_2RDMs(const int norbs, const std::vector<double>& ordm_u,
       }
 }
 
-double Comp_db_occs(void* params) {
-  struct impurity_params* p = static_cast<impurity_params*>(params);
 
-  size_t n_active = *(p->n_active);
+template<size_t N>
+double Comp_db_occs(void* params) {
+  struct impurity_params<N>* p = static_cast<impurity_params<N>*>(params);
+
+  size_t& n_active = (p->n_active);
   size_t n_active2 = n_active * n_active;
   size_t n_active3 = n_active2 * n_active;
   size_t n_active4 = n_active3 * n_active;
-  size_t n_imp = *(p->n_imp);
+  size_t& n_imp = (p->n_imp);
   size_t n_imp2 = n_imp * n_imp;
   size_t n_imp3 = n_imp2 * n_imp;
   size_t n_imp4 = n_imp3 * n_imp;
-  size_t norb = *(p->norb);
+  size_t& norb = (p->norb);
   size_t norb2 = norb * norb;
-  size_t n_inactive = *(p->n_inactive);
-  macis::ASCISettings asci_settings = *(p->asci_settings);
+  size_t& n_inactive = (p->n_inactive);
+  macis::ASCISettings& asci_settings = (p->asci_settings);
 
-  std::vector<double> T = *(p->T);
-  std::vector<double> V = *(p->V);
+  std::vector<double>& T = (p->T);
+  std::vector<double>& V = (p->V);
 
-  std::vector<macis::wfn_t<nwfn_bits>> dets = *(p->dets);
-  std::vector<double> C_local = *(p->C);
+  std::vector<macis::wfn_t<N>>& dets = (p->dets);
+  std::vector<double>& C_local = (p->C);
 
-  using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+  using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
   // Copy integrals into active subsets
   std::vector<double> T_active(n_active * n_active);
@@ -132,61 +134,61 @@ double Comp_db_occs(void* params) {
 
 }  // close Comp_db_occs
 
+template<size_t N>
 class CompObservables {
  private:
-  size_t norb_;
-  size_t n_imp_;
-  size_t n_bands_;
+  size_t& norb_;
+  size_t& n_imp_;
+  size_t& n_bands_;
   size_t n_sites_;
   size_t n_sites2_;
   size_t n_imp2_;
   size_t n_imp3_;
   size_t n_imp4_;
-  size_t n_active_;
+  size_t& n_active_;
   size_t n_active2_;
   size_t n_active3_;
   size_t n_active4_;
-  size_t n_inactive_;
+  size_t& n_inactive_;
   size_t norb2_;
 
   std::vector<double> ordm_u_, ordm_d_;
   std::vector<double> trdm_uu_, trdm_dd_, trdm_ud_, trdm_du_;
 
-  std::vector<macis::wfn_t<nwfn_bits>> dets_;
-  std::vector<double> C_;
-  std::vector<double> orb_rot_;
+  std::vector<macis::wfn_t<N>>& dets_;
+  std::vector<double>& C_;
+  std::vector<double>& orb_rot_;
 
-  std::vector<double> T_active;
-  std::vector<double> V_active;
-  std::vector<double> F_inactive;
+  std::vector<double>& T_active;
+  std::vector<double>& V_active;
+  std::vector<double>& F_inactive;
 
  public:
-  CompObservables(void* params) {
-    struct impurity_params* p = static_cast<impurity_params*>(params);
+  CompObservables(void* params) 
+    : norb_((static_cast<impurity_params<N>*>(params))->norb),
+      n_imp_((static_cast<impurity_params<N>*>(params))->n_imp),
+      n_bands_((static_cast<impurity_params<N>*>(params))->nbands),
+      n_active_((static_cast<impurity_params<N>*>(params))->n_active),
+      n_inactive_((static_cast<impurity_params<N>*>(params))->n_inactive),
+      dets_((static_cast<impurity_params<N>*>(params))->dets),
+      C_((static_cast<impurity_params<N>*>(params))->C),
+      orb_rot_((static_cast<impurity_params<N>*>(params))->orb_rot),
+      T_active((static_cast<impurity_params<N>*>(params))->T_active),
+      V_active((static_cast<impurity_params<N>*>(params))->V_active),
+      F_inactive((static_cast<impurity_params<N>*>(params))->F_inactive)
+  {
+    struct impurity_params<N>* p = static_cast<impurity_params<N>*>(params);
 
     // Initialize dimensions
-    norb_ = *(p->norb);
-    n_imp_ = *(p->n_imp);
-    n_bands_ = *(p->nbands);
     n_sites_ = n_imp_ / n_bands_;
     n_sites2_ = n_sites_ * n_sites_;
     n_imp2_ = n_imp_ * n_imp_;
     n_imp3_ = n_imp2_ * n_imp_;
     n_imp4_ = n_imp3_ * n_imp_;
-    n_active_ = *(p->n_active);
     n_active2_ = n_active_ * n_active_;
     n_active3_ = n_active2_ * n_active_;
     n_active4_ = n_active3_ * n_active_;
-    n_inactive_ = *(p->n_inactive);
     norb2_ = norb_ * norb_;
-
-    T_active = *(p->T_active);
-    V_active = *(p->V_active);
-    F_inactive = *(p->F_inactive);
-
-    dets_ = *(p->dets);
-    C_ = *(p->C);
-    orb_rot_ = *(p->orb_rot);
 
     // Initialize RDMs
     ordm_u_.resize(n_active2_);
@@ -197,7 +199,7 @@ class CompObservables {
     trdm_du_.resize(n_active4_);
 
     // Build generator and compute RDMs
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<nwfn_bits>;
+    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
     generator_t ham_gen(
         macis::matrix_span<double>(T_active.data(), n_active_, n_active_),
         macis::rank4_span<double>(V_active.data(), n_active_, n_active_,

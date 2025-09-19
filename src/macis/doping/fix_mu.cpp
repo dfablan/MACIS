@@ -3,25 +3,28 @@
 
 namespace macis {
 
+  template <size_t N>
   double Mu_vs_n(double x, void * params)
   {
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-    double nel_target = *(p->nel_target);
-    size_t norb = *(p->norb);
-    size_t n_imp = *(p->n_imp);
-    size_t nbands = *(p->nbands);
-    size_t nsites = n_imp / nbands;
+    double& nel_target = (p->nel_target);
+    size_t& norb = (p->norb);
+    size_t& n_imp = (p->n_imp);
+    size_t& nbands = (p->nbands);
+    size_t nsites = (n_imp / nbands);
 
-    double delta_CFS = *(p->delta_CFS);
+    double& delta_CFS = (p->delta_CFS);
     if (delta_CFS != 0.0 && nbands != 2)
     {
         std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
         delta_CFS = 0.0; // Reset to zero to avoid issues
     }
 
-    std::string ci_exp = *(p->ci_exp);
+    CIExpansion& ci_exp = (p->ci_exp);
+
+    std::vector<double>& T = (p->T);
 
     // Solve the impurity problem
     double mu = x;  
@@ -36,12 +39,12 @@ namespace macis {
             if( i / nsites == 0 )
             {
                 // For the first band, we add mu - delta_CFS
-                p -> T -> at(i*norb+i) = mu - delta_CFS/2.0;
+                T.at(i*norb+i) = mu - delta_CFS/2.0;
             }
             else if( i / nsites == 1 )
             {
                 // For the second band, we add mu + delta_CFS
-                p -> T -> at(i*norb+i) = mu + delta_CFS/2.0 ;
+                T.at(i*norb+i) = mu + delta_CFS/2.0 ;
             }
             else
             {
@@ -55,22 +58,21 @@ namespace macis {
         // If delta_CFS is zero, we just update the diagonal elements with mu
         for(int i = 0; i < n_imp; i++)
         {
-            p->T->at(i*norb+i) = mu;
+            T.at(i*norb+i) = mu;
         }
     }
 
     double E;
-    if (ci_exp == "ED")
+    if (ci_exp == CIExpansion::CAS)
     {
-        E = SolveImpurityED(p);
+        E = SolveImpurityED<N>(p);
     }
     else 
     {
-        E = SolveImpurityASCI_rot(p);
+        E = SolveImpurityASCI<N>(p);
     }
 
-    occs = *(p->occs);
-    *(p->E) = E;
+   (p->E) = E;
 
     std::cout << "the current value of mu is " << mu << std::endl;
     std::cout << "the detailed values of the occupations are " << std::endl;
@@ -88,30 +90,32 @@ namespace macis {
 
   }
 
+  template <size_t N>
   double Mu_Cost_f (double x, void * params)
   {
 
 // CAN I AVOID DEFINING THIS HERE? AND USING DIRECTLY SOMETHING LIKE params->norb?
 //  struct impurity_params *p = (struct impurity_params *)params;
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
 
 
-    size_t norb = *(p->norb);
-    size_t n_imp = *(p->n_imp);
-    size_t nbands = *(p->nbands);
+    size_t& norb = (p->norb);
+    size_t& n_imp = (p->n_imp);
+    size_t& nbands = (p->nbands);
     size_t nsites = n_imp / nbands;
-    double delta_CFS = *(p->delta_CFS);
-    double nel_target = *(p->nel_target);
-    
+    double& delta_CFS = (p->delta_CFS);
+    double& nel_target = (p->nel_target);
+
     if (delta_CFS != 0.0 && nbands != 2)
     {
       std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
       delta_CFS = 0.0; // Reset to zero to avoid issues
     }
-    
-    std::string ci_exp = *(p->ci_exp);
-    
+
+    CIExpansion& ci_exp = (p->ci_exp);
+    std::vector<double>& T = (p->T);
+
     // Solve the impurity problem
     double mu = x;  
     double curr_nel_per_spin = 0.0;
@@ -124,12 +128,12 @@ namespace macis {
         if( i / nsites == 0 )
         {
           // For the first band, we add mu - delta_CFS
-          p -> T -> at(i*norb+i) = mu - delta_CFS/2.0;
+          T.at(i*norb+i) = mu - delta_CFS/2.0;
         }
         else if( i / nsites == 1 )
         {
           // For the second band, we add mu + delta_CFS
-          p -> T -> at(i*norb+i) = mu + delta_CFS/2.0 ;
+          T.at(i*norb+i) = mu + delta_CFS/2.0 ;
         }
         else
         {
@@ -143,40 +147,39 @@ namespace macis {
          // If delta_CFS is zero, we just update the diagonal elements with mu
         for(int i = 0; i < n_imp; i++) 
         {
-         p->T->at(i*norb+i) = mu;
+         T.at(i*norb+i) = mu;
         }
     }
 
-    std::vector<double> occs = *(p->occs);
+    std::vector<double>& occs = (p->occs);
 
-    bool cheap_mode = *(p->cheap_mode);
+    bool& cheap_mode = (p->cheap_mode);
     if(cheap_mode)
-      ci_exp = "ASCI_cheap";
+      ci_exp = CIExpansion::ASCI_cheap;
 
 // IMPLEMENT DIRECT CHOICE FROM INPUT FILE
     double E;
-    if (ci_exp == "CAS")
+    if (ci_exp == CIExpansion::CAS)
     {
-        E = SolveImpurityED(p);
+        E = SolveImpurityED<N>(p);
     }
-    else if (ci_exp == "ASCI")
+    else if (ci_exp == CIExpansion::ASCI)
     {
-        E = SolveImpurityASCI_rot(p);
+        E = SolveImpurityASCI<N>(p);
     }
-    else if (ci_exp == "ASCI_cheap")
+    else if (ci_exp == CIExpansion::ASCI_cheap)
     {
-        E = SolveImpurityCheapASCI(p);
+        E = SolveImpurityCheapASCI<N>(p);
     }
     else 
     {
-        std::cout << "Error in Mu_Cost_f! Invalid ci_exp: " << ci_exp << std::endl;
+        std::cout << "Error in Mu_Cost_f! Invalid ci_exp." << std::endl;
         throw( std::runtime_error( "Error in Mu_Cost_f! Invalid ci_exp" ) );
     }
 
-    occs = *(p->occs);
-    *(p->E) = E;
+    (p->E) = E;
 
-    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+*(p->n_imp), 0.0);
+    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0);
 
     // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
     // std::cout<< "Goal number of electrons = "<< nel_target << std::endl;
@@ -189,34 +192,35 @@ namespace macis {
     return err;
   }
 
+  template <size_t N>
   double Mu_Cost_df(double x, void * params)
   {
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
     //  struct impurity_params *p = (struct impurity_params *)params;
      double mu = x;
-     double dstep = *p->dstep;
+     double& dstep = p->dstep;
      double dmu = mu + dstep;
      
-     double fdx = Mu_Cost_f(dmu, p);
-     double f   = Mu_Cost_f( mu, p);
-    
-     
+     double fdx = Mu_Cost_f<N>(dmu, p);
+     double f   = Mu_Cost_f<N>( mu, p);
+
      return (fdx - f) / dstep;
   }
 
+  template <size_t N>
   void Mu_Cost_fdf(double x, void * params, double *f , double *df)
   {
 
-    struct impurity_params *p = static_cast<impurity_params*> (params);
+    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
     // struct impurity_params *p = (struct impurity_params *)params;
-    double dstep = *(p->dstep);
+    double& dstep = p->dstep;
     double mu = x;
     double dmu = mu + dstep;
-    double fdx = Mu_Cost_f(dmu, p);
-    
-    *f  = Mu_Cost_f(mu, p);
+    double fdx = Mu_Cost_f<N>(dmu, p);
+
+    *f  = Mu_Cost_f<N>(mu, p);
     *df = (fdx - *f)/dstep;
 
 
@@ -304,10 +308,11 @@ namespace macis {
     }
   }
 
-  void ProposeInitBracket_MuED( impurity_params *params, double &x_lo, double &x_hi )
+  template <size_t N>
+  void ProposeInitBracket_MuED( impurity_params<N> *params, double &x_lo, double &x_hi )
   {
     // Try mu = 0, then try to bracket a zero by changing signs.
-    double f0 = Mu_Cost_f( 0., params );
+    double f0 = Mu_Cost_f<N>( 0., params );
     double step = 0.1;
     bool done = false;
     int max_tries = 100, curr_try = 0;
@@ -326,7 +331,7 @@ namespace macis {
       {
         curr_try++;
         curr_x = double(curr_try) * step;
-        double f = Mu_Cost_f( curr_x, params );
+        double f = Mu_Cost_f<N>( curr_x, params );
         if( f < 0. )
         {
           done = true;
@@ -345,7 +350,7 @@ namespace macis {
       {
         curr_try++;
         curr_x = double(curr_try) * step;
-        double f = Mu_Cost_f( curr_x, params );
+        double f = Mu_Cost_f<N>( curr_x, params );
         if( f > 0. )
         {
           done = true;
@@ -363,13 +368,14 @@ namespace macis {
   } 
 
   // Version using derivatives!
-  double Fix_Mu_der(const std::string &method_name, double &init_mu, impurity_params * params)
+  template <size_t N>
+  double Fix_Mu_der(const std::string &method_name, double &init_mu, impurity_params<N> * params)
   {
 
 
-    double abs_tol = *(params -> abs_tol);
-    size_t maxiter = *(params->maxiter);
-    bool print = *(params->nel_target);
+    double& abs_tol = (params -> abs_tol);
+    size_t& maxiter = (params->maxiter);
+    bool& print = (params->print_doping);
 
     // double abs_tol;
     // abs_tol =  1.E-4; 
@@ -391,9 +397,9 @@ namespace macis {
 
     // GSL root function
     gsl_function_fdf f;
-    f.f = &Mu_Cost_f;
-    f.df = &Mu_Cost_df;
-    f.fdf = &Mu_Cost_fdf;
+    f.f = &Mu_Cost_f<N>;
+    f.df = &Mu_Cost_df<N>;
+    f.fdf = &Mu_Cost_fdf<N>;
     f.params   = params;
 
 
@@ -442,15 +448,16 @@ namespace macis {
     }
 
 
-  double Fix_Mu_noder(const std::string &method_name, double &init_mu, impurity_params * params)
+  template <size_t N>
+  double Fix_Mu_noder(const std::string &method_name, double &init_mu, impurity_params<N> * params)
   {
     
     // Optimization parameters
 
-    double abs_tol = *(params -> abs_tol);
-    size_t maxiter = *(params->maxiter);
-    bool print = *(params->nel_target);
-    double init_shift = *(params->init_shift);
+    double& abs_tol = (params -> abs_tol);
+    size_t& maxiter = (params->maxiter);
+    bool& print = (params->print_doping);
+    double& init_shift = (params->init_shift);
 
     // double abs_tol;
     // abs_tol =  1.E-4; 
@@ -470,13 +477,13 @@ namespace macis {
 
     // GSL root function
     gsl_function f;
-    f.function = &Mu_Cost_f;
+    f.function = &Mu_Cost_f<N>;
     f.params   = params;
 
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
     double x_lo = mu0-std::abs(init_shift), x_hi = mu0+std::abs(init_shift);
-    ProposeInitBracket_MuED( params, x_lo, x_hi );
+    ProposeInitBracket_MuED<N>( params, x_lo, x_hi );
 
     // std::cout<< "f(" << x_lo << ") =" << f.function(x_lo,params) << std::endl;
     // std::cout<< "f(" << x_hi << ") =" << f.function(x_hi,params) << std::endl;
@@ -518,5 +525,13 @@ namespace macis {
       gsl_root_fsolver_free (s);
       return res_mu; 
     }
+
+// Explicit template instantiations for commonly used template parameter
+template double Mu_vs_n<64>(double x, void * params);
+template double Mu_Cost_f<64>(double x, void *params);
+template double Mu_Cost_df<64>(double x, void *params);
+template void Mu_Cost_fdf<64>(double x, void *params, double *f, double *df);
+template double Fix_Mu_der<64>(const std::string &method_name, double &init_mu, impurity_params<64> *params);
+template double Fix_Mu_noder<64>(const std::string &method_name, double &init_mu, impurity_params<64> *params);
 
 } // namespace macis

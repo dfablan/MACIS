@@ -27,7 +27,7 @@ using macis::NumInactive;
 using macis::NumOrbital;
 using macis::NumVirtual;
 
-constexpr size_t nwfn_bits = 64;
+enum class CIExpansion { CAS, ASCI, ASCI_cheap };
 
 namespace macis {
 
@@ -35,57 +35,61 @@ namespace macis {
  * @brief Structure to hold the parameters of the impurity problem.
  */
 
+template <size_t N>
 struct impurity_params {
-  size_t* n_active;
-  size_t* nbeta;
-  size_t* nalpha;
-  size_t* n_inactive;
-  size_t* norb;
-  size_t* n_imp;
-  size_t* nbands;
+  size_t n_active;
+  size_t nbeta;
+  size_t nalpha;
+  size_t n_inactive;
+  size_t norb;
+  size_t n_imp;
+  size_t nbands;
 
-  double* nel_target;
-  // double* delta_CFS;
-  std::vector<double>* orb_rot;
+  double nel_target;
+  std::vector<double> orb_rot;
 
-  double* dstep;
-  double* abs_tol;
-  size_t* maxiter;
-  size_t* mu_cost_counter;
-  bool* print;
-  double* init_shift;
-  bool* cheap_mode;
-  double* delta_CFS;
+  double dstep;
+  double abs_tol;
+  size_t maxiter;
+  size_t mu_cost_counter;
+  bool print_doping;
+  double init_shift;
+  bool cheap_mode;
+  double delta_CFS;
 
-  std::string* ci_exp;
-  std::string* asci_wfn_fname;
-  bool* compute_asci_E0;
-  double* asci_E0;
+  CIExpansion ci_exp;
+  std::string asci_wfn_fname;
+  bool compute_asci_E0;
+  double asci_E0;
 
-  macis::MCSCFSettings* mcscf_settings;
-  macis::ASCISettings* asci_settings;
-  std::vector<double>* occs;
-  std::vector<double>* C;
-  std::vector<macis::wfn_t<nwfn_bits>>* dets;
+  macis::MCSCFSettings mcscf_settings;
+  macis::ASCISettings asci_settings;
+  std::vector<double> occs;
+  std::vector<double> C;
+  std::vector<macis::wfn_t<N>> dets;
 
-  double* E_core;
-  double* E;
-  double* E_inactive;
-  std::vector<double>* T;
-  std::vector<double>* V;
-  std::vector<double>* F_inactive;
-  std::vector<double>* T_active;
-  std::vector<double>* Td_active;
-  std::vector<double>* V_active;
-  bool* just_singles;
+  double E_core;
+  double E;
+  double E_inactive;
+  std::vector<double> T;
+  std::vector<double> V;
+  std::vector<double> F_inactive;
+  std::vector<double> T_active;
+  std::vector<double> Td_active;
+  std::vector<double> V_active;
+  bool just_singles;
 };
 
+template <size_t N>
 double SolveImpurityED(void* params);
 
+template <size_t N>
 double SolveImpurityASCI(void* params);
 
+template <size_t N>
 double SolveImpurityASCI_rot(void* params);
 
+template <size_t N>
 double SolveImpurityCheapASCI(void* params);
 
 }  // namespace macis
