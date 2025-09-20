@@ -45,10 +45,7 @@ auto evaluate_ordm(
 }
   
 template <size_t N>
-double SolveImpurityED (void * params){
-
-
-    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
+double SolveImpurityED (impurity_params<N>* p){
 
     size_t& norb =  (p->norb);
     size_t& n_active =  (p->n_active);
@@ -107,10 +104,7 @@ double SolveImpurityED (void * params){
 }
 
 template <size_t N>
-double SolveImpurityASCI (void * params){
-
-    // struct impurity_params *p = (struct impurity_params *)params;
-    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
+double SolveImpurityASCI (impurity_params<N>* p){
 
     bool& compute_asci_E0 = (p->compute_asci_E0);
     double& asci_E0 = (p->asci_E0);
@@ -233,13 +227,10 @@ double SolveImpurityASCI (void * params){
 }
 
 template <size_t N>
-double SolveImpurityASCI_rot (void * params){
+double SolveImpurityASCI_rot (impurity_params<N>* p){
 
     using clock_type = std::chrono::high_resolution_clock;
     using duration_type = std::chrono::duration<double, std::milli>;
-
-    // struct impurity_params *p = (struct impurity_params *)params;
-    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
     bool& compute_asci_E0 = (p->compute_asci_E0);
     double& asci_E0 = (p->asci_E0);
@@ -472,9 +463,7 @@ double SolveImpurityASCI_rot (void * params){
 }
 
 template <size_t N>
-double SolveImpurityCheapASCI (void * params){
-
-    struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
+double SolveImpurityCheapASCI (impurity_params<N>* p){
 
     bool& compute_asci_E0 = (p->compute_asci_E0);
     double& asci_E0 = (p->asci_E0);
@@ -546,9 +535,9 @@ template auto evaluate_ordm<64>(
   macis::DoubleLoopHamiltonianGenerator<64> &ham_gen,
   std::vector<double> &orb_rot
 );
-template double SolveImpurityED<64>(void * params);
-template double SolveImpurityASCI<64>(void * params);
-template double SolveImpurityASCI_rot<64>(void * params);
-template double SolveImpurityCheapASCI<64>(void * params);
+template double SolveImpurityED<64>(impurity_params<64>* p);
+template double SolveImpurityASCI<64>(impurity_params<64>* p);
+template double SolveImpurityASCI_rot<64>(impurity_params<64>* p);
+template double SolveImpurityCheapASCI<64>(impurity_params<64>* p);
 
 } // namespace macis

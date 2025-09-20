@@ -81,15 +81,15 @@ struct impurity_params {
 };
 
 template <size_t N>
-double SolveImpurityED(void* params);
+double SolveImpurityED(impurity_params<N>* params);
 
 template <size_t N>
-double SolveImpurityASCI(void* params);
+double SolveImpurityASCI(impurity_params<N>* params);
 
 template <size_t N>
-double SolveImpurityASCI_rot(void* params);
+double SolveImpurityASCI_rot(impurity_params<N>* params);
 
 template <size_t N>
-double SolveImpurityCheapASCI(void* params);
+double SolveImpurityCheapASCI(impurity_params<N>* params);
 
 }  // namespace macis

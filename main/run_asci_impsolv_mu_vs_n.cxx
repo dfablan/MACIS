@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
                                            norb, F_inactive.data(), norb);
   console->info("E(inactive) = {:.12f}", E_inactive);
 
-  macis::impurity_params params;
+  macis::impurity_params<nwfn_bits> params;
   params.nbeta = &nbeta;
   params.nalpha = &nalpha;
   params.n_active = &n_active;
