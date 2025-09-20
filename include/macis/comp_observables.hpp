@@ -29,10 +29,8 @@ void Transform_2RDMs(const int norbs, const std::vector<double>& ordm_u,
       }
 }
 
-
-template<size_t N>
+template <size_t N>
 double Comp_db_occs(impurity_params<N>* p) {
-
   size_t& n_active = (p->n_active);
   size_t n_active2 = n_active * n_active;
   size_t n_active3 = n_active2 * n_active;
@@ -133,7 +131,7 @@ double Comp_db_occs(impurity_params<N>* p) {
 
 }  // close Comp_db_occs
 
-template<size_t N>
+template <size_t N>
 class CompObservables {
  private:
   size_t& norb_;
@@ -163,19 +161,18 @@ class CompObservables {
   std::vector<double>& F_inactive;
 
  public:
-  CompObservables(impurity_params<N>* p) 
-    : norb_(p->norb),
-      n_imp_(p->n_imp),
-      n_bands_(p->nbands),
-      n_active_(p->n_active),
-      n_inactive_(p->n_inactive),
-      dets_(p->dets),
-      C_(p->C),
-      orb_rot_(p->orb_rot),
-      T_active(p->T_active),
-      V_active(p->V_active),
-      F_inactive(p->F_inactive)
-  {
+  CompObservables(impurity_params<N>* p)
+      : norb_(p->norb),
+        n_imp_(p->n_imp),
+        n_bands_(p->nbands),
+        n_active_(p->n_active),
+        n_inactive_(p->n_inactive),
+        dets_(p->dets),
+        C_(p->C),
+        orb_rot_(p->orb_rot),
+        T_active(p->T_active),
+        V_active(p->V_active),
+        F_inactive(p->F_inactive) {
     // struct impurity_params<N>* p = static_cast<impurity_params<N>*>(params);
 
     // Initialize dimensions
