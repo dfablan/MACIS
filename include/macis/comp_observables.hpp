@@ -21,7 +21,7 @@ void Transform_2RDMs(const int norbs, const std::vector<double>& ordm_u,
 template<size_t N>
 double Comp_db_occs(impurity_params<N>& p);
 
-template<size_t N>
+template <size_t N>
 class CompObservables {
  private:
   size_t& norb_;
