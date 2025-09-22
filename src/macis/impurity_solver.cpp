@@ -45,35 +45,35 @@ auto evaluate_ordm(
 }
   
 template <size_t N>
-double SolveImpurityED (impurity_params<N>* p){
+double SolveImpurityED (impurity_params<N>& p){
 
-    size_t& norb =  (p->norb);
-    size_t& n_active =  (p->n_active);
-    size_t& nalpha =  (p->nalpha);
-    size_t& nbeta =  (p->nbeta);
-    size_t& n_inactive =  (p->n_inactive);
-    std::vector<double>& T =  (p->T);
-    std::vector<double>& V =  (p->V);
-    size_t& n_imp =  (p->n_imp);
-    double& E_core =  (p->E_core);
-    macis::MCSCFSettings& mcscf_settings =  (p->mcscf_settings);
-    macis::ASCISettings& asci_settings =  (p->asci_settings);
+    size_t& norb =  p.norb;
+    size_t& n_active =  p.n_active;
+    size_t& nalpha =  p.nalpha;
+    size_t& nbeta =  p.nbeta;
+    size_t& n_inactive =  p.n_inactive;
+    std::vector<double>& T =  p.T;
+    std::vector<double>& V =  p.V;
+    size_t& n_imp =  p.n_imp;
+    double& E_core =  p.E_core;
+    macis::MCSCFSettings& mcscf_settings =  p.mcscf_settings;
+    macis::ASCISettings& asci_settings =  p.asci_settings;
 
     // std::vector<macis::wfn_t<N>> dets;
     // std::vector<double> C_local;  
     // std::vector<double> occs(n_active, 0);
 
-    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    std::vector<macis::wfn_t<N>>& dets = p.dets;
     dets.clear();
-    std::vector<double>& C_local = (p->C);
+    std::vector<double>& C_local = p.C;
     C_local.clear();
-    std::vector<double>& occs = (p->occs);
+    std::vector<double>& occs = p.occs;
     occs.assign(n_active, 0);
 
-    std::vector<double>& T_active = (p->T_active);
-    std::vector<double>& V_active = (p->V_active);
-    std::vector<double>& F_inactive = (p->F_inactive);
-    double& E_inactive = (p->E_inactive);
+    std::vector<double>& T_active = p.T_active;
+    std::vector<double>& V_active = p.V_active;
+    std::vector<double>& F_inactive = p.F_inactive;
+    double& E_inactive = p.E_inactive;
 
     std::cout << "-------------------------------Entering SolverImpurityED-------------------------------" << std::endl;
 
@@ -104,34 +104,34 @@ double SolveImpurityED (impurity_params<N>* p){
 }
 
 template <size_t N>
-double SolveImpurityASCI (impurity_params<N>* p){
+double SolveImpurityASCI (impurity_params<N>& p){
 
-    bool& compute_asci_E0 = (p->compute_asci_E0);
-    double& asci_E0 = (p->asci_E0);
-    std::string& asci_wfn_fname = (p->asci_wfn_fname);
-    size_t& norb = (p->norb);
-    size_t& n_active = (p->n_active);
-    size_t& nalpha = (p->nalpha);
-    size_t& nbeta = (p->nbeta);
-    size_t& n_inactive = (p->n_inactive);
-    std::vector<double>& T = (p->T);
-    std::vector<double>& V = (p->V);
-    size_t& n_imp = (p->n_imp);
-    double& E_core = (p->E_core);
-    macis::MCSCFSettings& mcscf_settings = (p->mcscf_settings);
-    macis::ASCISettings& asci_settings = (p->asci_settings);
+    bool& compute_asci_E0 = p.compute_asci_E0;
+    double& asci_E0 = p.asci_E0;
+    std::string& asci_wfn_fname = p.asci_wfn_fname;
+    size_t& norb = p.norb;
+    size_t& n_active = p.n_active;
+    size_t& nalpha = p.nalpha;
+    size_t& nbeta = p.nbeta;
+    size_t& n_inactive = p.n_inactive;
+    std::vector<double>& T = p.T;
+    std::vector<double>& V = p.V;
+    size_t& n_imp = p.n_imp;
+    double& E_core = p.E_core;
+    macis::MCSCFSettings& mcscf_settings = p.mcscf_settings;
+    macis::ASCISettings& asci_settings = p.asci_settings;
 
-    std::vector<double>& occs = (p->occs);
+    std::vector<double>& occs = p.occs;
     occs.assign(n_active, 0);
-    std::vector<double>& C_local = (p->C);
+    std::vector<double>& C_local = p.C;
     C_local.clear();
-    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    std::vector<macis::wfn_t<N>>& dets = p.dets;
     dets.clear();
 
-    std::vector<double>& T_active = (p->T_active);
-    std::vector<double>& V_active = (p->V_active);
-    std::vector<double>& F_inactive = (p->F_inactive);
-    double& E_inactive = (p->E_inactive);
+    std::vector<double>& T_active = p.T_active;
+    std::vector<double>& V_active = p.V_active;
+    std::vector<double>& F_inactive = p.F_inactive;
+    double& E_inactive = p.E_inactive;
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -227,44 +227,44 @@ double SolveImpurityASCI (impurity_params<N>* p){
 }
 
 template <size_t N>
-double SolveImpurityASCI_rot (impurity_params<N>* p){
+double SolveImpurityASCI_rot (impurity_params<N>& p){
 
     using clock_type = std::chrono::high_resolution_clock;
     using duration_type = std::chrono::duration<double, std::milli>;
 
-    bool& compute_asci_E0 = (p->compute_asci_E0);
-    double& asci_E0 = (p->asci_E0);
-    std::string& asci_wfn_fname = (p->asci_wfn_fname);
-    size_t& norb = (p->norb);
-    size_t& n_active = (p->n_active);
-    size_t& nalpha = (p->nalpha);
-    size_t& nbeta = (p->nbeta);
-    size_t& n_inactive = (p->n_inactive);
-    std::vector<double>& T = (p->T);
-    std::vector<double>& V = (p->V);
-    size_t& n_imp = (p->n_imp);
-    double& E_core = (p->E_core);
-    macis::MCSCFSettings& mcscf_settings = (p->mcscf_settings);
-    macis::ASCISettings& asci_settings = (p->asci_settings);
+    bool& compute_asci_E0 = p.compute_asci_E0;
+    double& asci_E0 = p.asci_E0;
+    std::string& asci_wfn_fname = p.asci_wfn_fname;
+    size_t& norb = p.norb;
+    size_t& n_active = p.n_active;
+    size_t& nalpha = p.nalpha;
+    size_t& nbeta = p.nbeta;
+    size_t& n_inactive = p.n_inactive;
+    std::vector<double>& T = p.T;
+    std::vector<double>& V = p.V;
+    size_t& n_imp = p.n_imp;
+    double& E_core = p.E_core;
+    macis::MCSCFSettings& mcscf_settings = p.mcscf_settings;
+    macis::ASCISettings& asci_settings = p.asci_settings;
 
-    std::vector<double>& occs = (p->occs);
+    std::vector<double>& occs = p.occs;
     occs.assign(n_active, 0);
-    std::vector<double>& C_local = (p->C);
+    std::vector<double>& C_local = p.C;
     C_local.clear();
-    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    std::vector<macis::wfn_t<N>>& dets = p.dets;
     dets.clear();
 
     std::vector<double> tmp_rot( n_active * n_active, 0. );
     std::vector<double> comp( n_active * n_active, 0. );
 
-    std::vector<double>& orb_rot = (p->orb_rot);
+    std::vector<double>& orb_rot = p.orb_rot;
     orb_rot.assign( n_active * n_active, 0. );
     for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
 
-    std::vector<double>& T_active = (p->T_active);
-    std::vector<double>& V_active = (p->V_active);
-    std::vector<double>& F_inactive = (p->F_inactive);
-    double& E_inactive = (p->E_inactive);
+    std::vector<double>& T_active = p.T_active;
+    std::vector<double>& V_active = p.V_active;
+    std::vector<double>& F_inactive = p.F_inactive;
+    double& E_inactive = p.E_inactive;
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -463,34 +463,34 @@ double SolveImpurityASCI_rot (impurity_params<N>* p){
 }
 
 template <size_t N>
-double SolveImpurityCheapASCI (impurity_params<N>* p){
+double SolveImpurityCheapASCI (impurity_params<N>& p){
 
-    bool& compute_asci_E0 = (p->compute_asci_E0);
-    double& asci_E0 = (p->asci_E0);
-    std::string& asci_wfn_fname = (p->asci_wfn_fname);
-    size_t& norb = (p->norb);
-    size_t& n_active = (p->n_active);
-    size_t& nalpha =  (p->nalpha);
-    size_t& nbeta =  (p->nbeta);
-    size_t& n_inactive =  (p->n_inactive);
-    std::vector<double>& T =  (p->T);
-    std::vector<double>& V =  (p->V);
-    size_t& n_imp =  (p->n_imp);
-    double& E_core =  (p->E_core);
-    macis::MCSCFSettings& mcscf_settings =  (p->mcscf_settings);
-    macis::ASCISettings& asci_settings =  (p->asci_settings);
+    bool& compute_asci_E0 = p.compute_asci_E0;
+    double& asci_E0 = p.asci_E0;
+    std::string& asci_wfn_fname = p.asci_wfn_fname;
+    size_t& norb = p.norb;
+    size_t& n_active = p.n_active;
+    size_t& nalpha =  p.nalpha;
+    size_t& nbeta =  p.nbeta;
+    size_t& n_inactive =  p.n_inactive;
+    std::vector<double>& T =  p.T;
+    std::vector<double>& V =  p.V;
+    size_t& n_imp =  p.n_imp;
+    double& E_core =  p.E_core;
+    macis::MCSCFSettings& mcscf_settings =  p.mcscf_settings;
+    macis::ASCISettings& asci_settings =  p.asci_settings;
 
-    std::vector<macis::wfn_t<N>>& dets = (p->dets);
+    std::vector<macis::wfn_t<N>>& dets =  p.dets;
     dets.clear();
-    std::vector<double>& C_local = (p->C);
+    std::vector<double>& C_local = p.C;
     C_local.clear();
-    std::vector<double>& occs = (p->occs);
+    std::vector<double>& occs = p.occs;
     occs.assign(n_active, 0);
 
-    std::vector<double>& T_active = (p->T_active);
-    std::vector<double>& V_active = (p->V_active);
-    std::vector<double>& F_inactive = (p->F_inactive);
-    double& E_inactive = (p->E_inactive);
+    std::vector<double>& T_active = p.T_active;
+    std::vector<double>& V_active = p.V_active;
+    std::vector<double>& F_inactive = p.F_inactive;
+    double& E_inactive = p.E_inactive;
 
     // Storage for active RDMs
     std::vector<double> active_ordm(n_active * n_active);
@@ -535,9 +535,9 @@ template auto evaluate_ordm<64>(
   macis::DoubleLoopHamiltonianGenerator<64> &ham_gen,
   std::vector<double> &orb_rot
 );
-template double SolveImpurityED<64>(impurity_params<64>* p);
-template double SolveImpurityASCI<64>(impurity_params<64>* p);
-template double SolveImpurityASCI_rot<64>(impurity_params<64>* p);
-template double SolveImpurityCheapASCI<64>(impurity_params<64>* p);
+template double SolveImpurityED<64>(impurity_params<64>& p);
+template double SolveImpurityASCI<64>(impurity_params<64>& p);
+template double SolveImpurityASCI_rot<64>(impurity_params<64>& p);
+template double SolveImpurityCheapASCI<64>(impurity_params<64>& p);
 
 } // namespace macis

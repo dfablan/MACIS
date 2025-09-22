@@ -65,11 +65,11 @@ namespace macis {
     double E;
     if (ci_exp == CIExpansion::CAS)
     {
-        E = SolveImpurityED<N>(p);
+        E = SolveImpurityED<N>(*p);
     }
     else 
     {
-        E = SolveImpurityASCI<N>(p);
+        E = SolveImpurityASCI<N>(*p);
     }
 
    (p->E) = E;
@@ -161,15 +161,15 @@ namespace macis {
     double E;
     if (ci_exp == CIExpansion::CAS)
     {
-        E = SolveImpurityED<N>(p);
+        E = SolveImpurityED<N>(*p);
     }
     else if (ci_exp == CIExpansion::ASCI)
     {
-        E = SolveImpurityASCI<N>(p);
+        E = SolveImpurityASCI<N>(*p);
     }
     else if (ci_exp == CIExpansion::ASCI_cheap)
     {
-        E = SolveImpurityCheapASCI<N>(p);
+        E = SolveImpurityCheapASCI<N>(*p);
     }
     else 
     {
