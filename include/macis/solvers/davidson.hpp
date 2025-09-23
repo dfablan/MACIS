@@ -11,12 +11,12 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <lobpcgxx/lobpcg.hpp>
 #include <macis/util/mpi.hpp>
 #include <random>
-#include <cstdlib>
 #include <sparsexx/matrix_types/csr_matrix.hpp>
 
 #ifdef MACIS_ENABLE_MPI
@@ -256,7 +256,7 @@ inline void p_gram_schmidt(int64_t N_local, int64_t K, const double* V_old,
   // Normalize
   double dot = blas::dot(N_local, V_new, 1, V_new, 1);
   dot = allreduce(dot, MPI_SUM, comm);
-  
+
   // DEBUG: Check for invalid dot product
   if(!std::isfinite(dot) || dot <= 0) {
     auto logger = spdlog::get("davidson");
@@ -278,7 +278,7 @@ inline void p_gram_schmidt(int64_t N_local, int64_t K, const double* V_old,
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_real_distribution<double> dis(-1.0, 1.0);
-        
+
         for(int64_t i = 0; i < N_local; ++i) {
           V_new[i] += 1e-12 * dis(gen);
         }
@@ -288,12 +288,13 @@ inline void p_gram_schmidt(int64_t N_local, int64_t K, const double* V_old,
         logger->warn("Applied random perturbation, new norm^2 = {}", dot);
       }
     }
-    // 
+    //
     if(!std::isfinite(dot) || dot <= 0) {
-      throw std::runtime_error("Gram-Schmidt normalization failed: invalid norm");
+      throw std::runtime_error(
+          "Gram-Schmidt normalization failed: invalid norm");
     }
   }
-  
+
   double nrm = std::sqrt(dot);
   blas::scal(N_local, 1. / nrm, V_new, 1);
 }
@@ -323,20 +324,21 @@ inline void p_rayleigh_ritz(int64_t N_local, int64_t K, const double* X,
         break;
       }
     }
-    
+
     if(is_degenerate && K > 1) {
       // For degenerate case, use the diagonal value as eigenvalue
       // and identity matrix as eigenvectors
-      std::cout << "Degenerate Subspace Detected in Rayleigh-Ritz(RR)!" << std::endl;
+      std::cout << "Degenerate Subspace Detected in Rayleigh-Ritz(RR)!"
+                << std::endl;
       for(int64_t i = 0; i < K; ++i) {
         W[i] = first_diag;
         for(int64_t j = 0; j < K; ++j) {
           C[i * K + j] = (i == j) ? 1.0 : 0.0;
         }
       }
-    } else 
-    {
-      auto info = lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
+    } else {
+      auto info =
+          lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
       if(info != 0) {
         // LAPACK failed, try fallback
         for(int64_t i = 0; i < K; ++i) {
@@ -347,7 +349,7 @@ inline void p_rayleigh_ritz(int64_t N_local, int64_t K, const double* X,
         }
       }
     }
-    
+
     // Validate results
     for(int64_t i = 0; i < K; ++i) {
       if(!std::isfinite(W[i])) {
