@@ -94,7 +94,8 @@ int main(int argc, char** argv) {
   // Set up active space
   params.n_inactive = 0;
   OPT_KEYWORD("CI.NINACTIVE", params.n_inactive, size_t);
-  if(params.n_inactive >= params.norb) throw std::runtime_error("NINACTIVE >= NORB");
+  if(params.n_inactive >= params.norb)
+    throw std::runtime_error("NINACTIVE >= NORB");
 
   params.n_active = params.norb - params.n_inactive;
   OPT_KEYWORD("CI.NACTIVE", params.n_active, size_t);
@@ -123,17 +124,23 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
 
-  if(params.n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
+  if(params.n_active > nwfn_bits / 2)
+    throw std::runtime_error("Not Enough Bits");
 
   // MCSCF Settings
-  OPT_KEYWORD("MCSCF.MAX_MACRO_ITER",  params.mcscf_settings.max_macro_iter, size_t);
-  OPT_KEYWORD("MCSCF.MAX_ORB_STEP",    params.mcscf_settings.max_orbital_step, double);
-  OPT_KEYWORD("MCSCF.MCSCF_ORB_TOL",   params.mcscf_settings.orb_grad_tol_mcscf, double);
-  OPT_KEYWORD("MCSCF.ENABLE_DIIS",     params.mcscf_settings.enable_diis, bool);
-  OPT_KEYWORD("MCSCF.DIIS_START_ITER", params.mcscf_settings.diis_start_iter, size_t);
-  OPT_KEYWORD("MCSCF.DIIS_NKEEP",      params.mcscf_settings.diis_nkeep, size_t);
-  OPT_KEYWORD("MCSCF.CI_RES_TOL",      params.mcscf_settings.ci_res_tol, double);
-  OPT_KEYWORD("MCSCF.CI_MAX_SUB",      params.mcscf_settings.ci_max_subspace, size_t);
+  OPT_KEYWORD("MCSCF.MAX_MACRO_ITER", params.mcscf_settings.max_macro_iter,
+              size_t);
+  OPT_KEYWORD("MCSCF.MAX_ORB_STEP", params.mcscf_settings.max_orbital_step,
+              double);
+  OPT_KEYWORD("MCSCF.MCSCF_ORB_TOL", params.mcscf_settings.orb_grad_tol_mcscf,
+              double);
+  OPT_KEYWORD("MCSCF.ENABLE_DIIS", params.mcscf_settings.enable_diis, bool);
+  OPT_KEYWORD("MCSCF.DIIS_START_ITER", params.mcscf_settings.diis_start_iter,
+              size_t);
+  OPT_KEYWORD("MCSCF.DIIS_NKEEP", params.mcscf_settings.diis_nkeep, size_t);
+  OPT_KEYWORD("MCSCF.CI_RES_TOL", params.mcscf_settings.ci_res_tol, double);
+  OPT_KEYWORD("MCSCF.CI_MAX_SUB", params.mcscf_settings.ci_max_subspace,
+              size_t);
   OPT_KEYWORD("MCSCF.CI_MATEL_TOL", params.mcscf_settings.ci_matel_tol, double);
 
   OPT_KEYWORD("MCSCF.CI_NSTATES", params.mcscf_settings.ci_nstates, size_t);
@@ -148,16 +155,20 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.HAM_EL_TOL", params.asci_settings.h_el_tol, double);
   OPT_KEYWORD("ASCI.RV_PRUNE_TOL", params.asci_settings.rv_prune_tol, double);
   OPT_KEYWORD("ASCI.PAIR_MAX_LIM", params.asci_settings.pair_size_max, size_t);
-  OPT_KEYWORD("ASCI.GROW_FACTOR",  params.asci_settings.grow_factor, int);
-  OPT_KEYWORD("ASCI.MAX_REFINE_ITER", params.asci_settings.max_refine_iter, size_t);
+  OPT_KEYWORD("ASCI.GROW_FACTOR", params.asci_settings.grow_factor, int);
+  OPT_KEYWORD("ASCI.MAX_REFINE_ITER", params.asci_settings.max_refine_iter,
+              size_t);
 
-  OPT_KEYWORD("ASCI.REFINE_ETOL",     params.asci_settings.refine_energy_tol, double);
-  OPT_KEYWORD("ASCI.GROW_WITH_ROT",   params.asci_settings.grow_with_rot, bool);
-  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY", params.asci_settings.grow_with_rot_legacy,
-              bool);
+  OPT_KEYWORD("ASCI.REFINE_ETOL", params.asci_settings.refine_energy_tol,
+              double);
+  OPT_KEYWORD("ASCI.GROW_WITH_ROT", params.asci_settings.grow_with_rot, bool);
+  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY",
+              params.asci_settings.grow_with_rot_legacy, bool);
   OPT_KEYWORD("ASCI.NROTS", params.asci_settings.nrots, size_t);
-  OPT_KEYWORD("ASCI.ROT_SIZE_START", params.asci_settings.rot_size_start, size_t);
-  OPT_KEYWORD("ASCI.CONSTRAINT_LVL", params.asci_settings.constraint_level, int);
+  OPT_KEYWORD("ASCI.ROT_SIZE_START", params.asci_settings.rot_size_start,
+              size_t);
+  OPT_KEYWORD("ASCI.CONSTRAINT_LVL", params.asci_settings.constraint_level,
+              int);
   OPT_KEYWORD("ASCI.WFN_FILE", params.asci_wfn_fname, std::string);
   OPT_KEYWORD("ASCI.WFN_OUT_FILE", asci_wfn_out_fname, std::string);
   if(input.containsData("ASCI.E0_WFN")) {
@@ -174,8 +185,8 @@ int main(int argc, char** argv) {
     console->info("  * FCIDUMP = {}", fcidump_fname);
     if(fci_out_fname.size())
       console->info("  * FCIDUMP_OUT = {}", fci_out_fname);
-    console->debug("READ {} 1-body integrals and {} 2-body integrals", params.T.size(),
-                   params.V.size());
+    console->debug("READ {} 1-body integrals and {} 2-body integrals",
+                   params.T.size(), params.V.size());
     console->info("ECORE = {:.12f}", params.E_core);
     console->debug("TSUM  = {:.12f}", vec_sum(params.T));
     console->debug("VSUM  = {:.12f}", vec_sum(params.V));
@@ -234,8 +245,6 @@ int main(int argc, char** argv) {
 
   double E0 = 0.0;
 
-
-
   {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
@@ -249,7 +258,8 @@ int main(int argc, char** argv) {
         E0 = macis::SolveImpurityASCI<nwfn_bits>(params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
-        macis::write_wavefunction(asci_wfn_out_fname, params.n_active, params.dets, params.C);
+        macis::write_wavefunction(asci_wfn_out_fname, params.n_active,
+                                  params.dets, params.C);
       }
     }
 
@@ -276,9 +286,10 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
 
   double curr_nel =
-      2 * std::accumulate(params.occs.begin(), params.occs.begin() + params.n_imp, 0.0);
-  std::cout << "Total number of electrons = " << curr_nel << " in " << params.n_imp
-            << " impurity orbitals\n"
+      2 * std::accumulate(params.occs.begin(),
+                          params.occs.begin() + params.n_imp, 0.0);
+  std::cout << "Total number of electrons = " << curr_nel << " in "
+            << params.n_imp << " impurity orbitals\n"
             << std::endl;
 
   if(compute_db_occs and params.asci_settings.nrots == 0) {
@@ -329,8 +340,10 @@ int main(int argc, char** argv) {
 
     // Generate the Hamiltonian Generator
     macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
-        macis::matrix_span<double>(params.T_active.data(), params.n_active, params.n_active),
-        macis::rank4_span<double>(params.V_active.data(), params.n_active, params.n_active, params.n_active,
+        macis::matrix_span<double>(params.T_active.data(), params.n_active,
+                                   params.n_active),
+        macis::rank4_span<double>(params.V_active.data(), params.n_active,
+                                  params.n_active, params.n_active,
                                   params.n_active));
 
     // MCSCF Settings
@@ -392,18 +405,18 @@ int main(int argc, char** argv) {
     // GS vector
     std::vector<int> todelete_p;
     std::vector<int> todelete_h;
-    Eigen::VectorXd psi0 =
-        Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(params.C.data(), params.C.size());
+    Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
+        params.C.data(), params.C.size());
 
     // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true, ws, params.occs,
-                                gf_settings);
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true,
+                                ws, params.occs, gf_settings);
 
     GF = GF_tmp;
 
     // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false, ws,
-                                params.occs, gf_settings);
+    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
+                                ws, params.occs, gf_settings);
 
     if(todelete_h != todelete_p)
       throw std::runtime_error("Error: todelete_h != todelete_p");
