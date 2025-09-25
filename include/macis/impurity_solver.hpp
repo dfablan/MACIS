@@ -4,6 +4,7 @@
 #include <iostream>
 #include <macis/asci/grow.hpp>
 #include <macis/asci/refine.hpp>
+#include <macis/gf/gf.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
 #include <macis/hamiltonian_generator/sd_build.hpp>
 #include <macis/util/cas.hpp>
@@ -18,7 +19,6 @@
 #include <macis/wavefunction_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
-#include <macis/gf/gf.hpp>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -238,15 +238,15 @@ auto evaluate_ordm(
 
 
 template <size_t N>
-double SolveImpurityED(impurity_params<N>& params);
+double SolveImpurityED(impurity_params<N> &params);
 
 template <size_t N>
-double SolveImpurityASCI(impurity_params<N>& params);
+double SolveImpurityASCI(impurity_params<N> &params);
 
 template <size_t N>
-double SolveImpurityASCI_rot(impurity_params<N>& params);
+double SolveImpurityASCI_rot(impurity_params<N> &params);
 
 template <size_t N>
-double SolveImpurityCheapASCI(impurity_params<N>& params);
+double SolveImpurityCheapASCI(impurity_params<N> &params);
 
 }  // namespace macis
