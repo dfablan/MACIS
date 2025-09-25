@@ -258,7 +258,7 @@ inline void p_gram_schmidt(int64_t N_local, int64_t K, const double* V_old,
   dot = allreduce(dot, MPI_SUM, comm);
 
   // DEBUG: Check for invalid dot product
-  //if(!std::isfinite(dot) || dot <= 0) {
+  // if(!std::isfinite(dot) || dot <= 0) {
   //  auto logger = spdlog::get("davidson");
   //  if(logger) {
   //    logger->error("Invalid norm in p_gram_schmidt: dot = {}", dot);
@@ -315,49 +315,49 @@ inline void p_rayleigh_ritz(int64_t N_local, int64_t K, const double* X,
 
   // Do local diagonalization on rank-0
   if(!world_rank) {
-      lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
+    lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
     // Check for degenerate matrix before diagonalization DEBUG
-    //bool is_degenerate = true;
-    //double first_diag = C[0];
-    //for(int64_t i = 1; i < K; ++i) {
+    // bool is_degenerate = true;
+    // double first_diag = C[0];
+    // for(int64_t i = 1; i < K; ++i) {
     //  if(std::abs(C[i * K + i] - first_diag) > 1e-12) {
     //    is_degenerate = false;
     //    break;
     //  }
     //}
 
-    //if(is_degenerate && K > 1) {
-    //  // For degenerate case, use the diagonal value as eigenvalue
-    //  // and identity matrix as eigenvectors
-    //  std::cout << "Degenerate Subspace Detected in Rayleigh-Ritz(RR)!"
-    //            << std::endl;
-    //  for(int64_t i = 0; i < K; ++i) {
-    //    W[i] = first_diag;
-    //    for(int64_t j = 0; j < K; ++j) {
-    //      C[i * K + j] = (i == j) ? 1.0 : 0.0;
-    //    }
-    //  }
-    //} else {
-    //  auto info =
-    //      lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
-    //  if(info != 0) {
-    //    // LAPACK failed, try fallback
-    //    for(int64_t i = 0; i < K; ++i) {
-    //      W[i] = C[i * K + i];  // Use diagonal elements
-    //      for(int64_t j = 0; j < K; ++j) {
-    //        C[i * K + j] = (i == j) ? 1.0 : 0.0;
-    //      }
-    //    }
-    //  }
-    //}
+    // if(is_degenerate && K > 1) {
+    //   // For degenerate case, use the diagonal value as eigenvalue
+    //   // and identity matrix as eigenvectors
+    //   std::cout << "Degenerate Subspace Detected in Rayleigh-Ritz(RR)!"
+    //             << std::endl;
+    //   for(int64_t i = 0; i < K; ++i) {
+    //     W[i] = first_diag;
+    //     for(int64_t j = 0; j < K; ++j) {
+    //       C[i * K + j] = (i == j) ? 1.0 : 0.0;
+    //     }
+    //   }
+    // } else {
+    //   auto info =
+    //       lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
+    //   if(info != 0) {
+    //     // LAPACK failed, try fallback
+    //     for(int64_t i = 0; i < K; ++i) {
+    //       W[i] = C[i * K + i];  // Use diagonal elements
+    //       for(int64_t j = 0; j < K; ++j) {
+    //         C[i * K + j] = (i == j) ? 1.0 : 0.0;
+    //       }
+    //     }
+    //   }
+    // }
 
     //// Validate results
-    //for(int64_t i = 0; i < K; ++i) {
-    //  if(!std::isfinite(W[i])) {
-    //    // Emergency fallback - use first diagonal element
-    //    W[i] = first_diag;
-    //  }
-    //}
+    // for(int64_t i = 0; i < K; ++i) {
+    //   if(!std::isfinite(W[i])) {
+    //     // Emergency fallback - use first diagonal element
+    //     W[i] = first_diag;
+    //   }
+    // }
   }
 
   // Broadcast results
