@@ -18,6 +18,7 @@
 #include <macis/wavefunction_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
+#include <macis/gf/gf.hpp>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -79,6 +80,22 @@ struct impurity_params {
   std::vector<double> V_active;
   bool just_singles;
 };
+
+template <size_t N>
+auto evaluate_GF(
+  const double EASCI,
+  macis::impurity_params<N>& p,
+  const macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
+  macis::GFSettings &gf_settings
+) -> std::vector<std::vector<std::complex<double>>>;
+
+template <size_t N>
+auto evaluate_ordm(
+  std::vector<macis::wfn_t<N>> &dets,
+  std::vector<double> &X_local,
+  macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
+  std::vector<double> &orb_rot
+) -> std::vector<double>;
 
 template <size_t N>
 double SolveImpurityED(impurity_params<N>& params);

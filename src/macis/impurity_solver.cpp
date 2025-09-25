@@ -4,6 +4,78 @@
 
 namespace macis {
 
+  template <size_t N>
+  auto evaluate_GF(
+  const double EASCI,
+  macis::impurity_params<N>& p,
+  const macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
+  macis::GFSettings &gf_settings
+) {
+    // Frequency grid
+    std::vector<std::complex<double>> ws(gf_settings.nws,
+                                         std::complex<double>(0., 0.));
+
+    for(int i = 0; i < gf_settings.nws; i++)
+      if(gf_settings.imag_freq) {
+        //  MATSUBARA GRID
+        ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
+      } else {
+        std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
+        std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
+        ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
+      }
+
+    // GF vector
+    std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
+        std::vector<std::complex<double>>(p.n_active * p.n_active,
+                                          std::complex<double>(0., 0.)));
+    std::vector<std::vector<std::complex<double>>> GF_tmp( gf_settings.nws,
+        std::vector<std::complex<double>>(p.n_active * p.n_active,
+                                          std::complex<double>(0., 0.)));
+
+    // GS vector
+    std::vector<int> todelete_p;
+    std::vector<int> todelete_h;
+    Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
+        p.C.data(), p.C.size());
+
+    // Evaluate particle GF
+    macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true,
+                                ws, p.occs, gf_settings);
+    GF = GF_tmp;
+
+    // Evaluate hole GF
+    macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, false,
+                                ws, p.occs, gf_settings);
+
+    if(todelete_h != todelete_p)
+      std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
+
+    GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
+
+    // Rotate the GF back to original basis
+    // for( int iw = 0; iw < GF.size(); iw++)
+    // {
+    //  Eigen::MatrixXcd G = Eigen::MatrixXcd::Zero( GF[0].size(), GF[0][0].size());
+    //  for( int j = 0; j < GF[iw].size(); j++)
+    //    for( int k = 0; k < GF[iw][j].size(); k++)
+    //      G(j, k) = GF[iw][j][k];
+    //  Eigen::MatrixXd rotMat = Eigen::MatrixXd::Identity( GF[0].size(), GF[0][0].size() );
+    //  rotMat.block(0,0,imp_rot.rows(), imp_rot.cols()) = imp_rot; 
+    //  Eigen::MatrixXcd rotG  = rotMat.adjoint() * G * rotMat;
+    //  for( int j = 0; j < GF[iw].size(); j++)
+    //    for( int k = 0; k < GF[iw][j].size(); k++)
+    //      GF[iw][j][k] = rotG(j, k);
+    // }
+
+    if(gf_settings.writeGF_singlef)
+      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+
+
+    return GF;
+}
+
+
 template <size_t N>
 auto evaluate_ordm(
   std::vector<macis::wfn_t<N>> &dets,
@@ -48,6 +120,7 @@ template <size_t N>
 double SolveImpurityED (impurity_params<N>& p){
 
     size_t& norb =  p.norb;
+    double& asci_E0 = p.asci_E0;
     size_t& n_active =  p.n_active;
     size_t& nalpha =  p.nalpha;
     size_t& nbeta =  p.nbeta;
@@ -276,6 +349,24 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
 
     using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
 
+    //DEBUG print integrals
+    // std::cout << "T_active integrals: " << std::endl;
+    // for (int i = 0; i < n_active; i++) {
+    //   for (int j = 0; j < n_active; j++) {
+    //     std::cout << T_active[i + j * n_active] << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+
+    // std::cout << "V_active integrals: " << std::endl;
+    // for (int i = 0; i < n_active; i++) {
+    //   for (int j = 0; j < n_active; j++) {
+    //     std::cout << V_active[i + i * n_active + j * n_active * n_active + j * n_active * n_active * n_active] << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+
+
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
@@ -432,10 +523,13 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     // std::vector<double> occs(n_active, 1);
     for(int i = 0; i < n_active; i++) {
       occs[i] = active_ordm[i + i * n_active]*1./2;   //number of electrons in orbital i per spin
-      // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+      std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    bool print_ordm = true;
+    double curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0); //DEBUG
+    std::cout << "* Number of electrons on impurity (per spin) = " << curr_nel_per_spin << std::endl;
+
+    bool print_ordm = false;
     if (print_ordm)
     {
         std::ofstream ofile_ordm( "active_ordm.dat");
@@ -458,7 +552,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         ofile_rot << std::endl;
       }
     }
-          
+
     return E0;
 }
 
@@ -481,7 +575,6 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
     macis::ASCISettings& asci_settings =  p.asci_settings;
 
     std::vector<macis::wfn_t<N>>& dets =  p.dets;
-    dets.clear();
     std::vector<double>& C_local = p.C;
     C_local.clear();
     std::vector<double>& occs = p.occs;
@@ -523,7 +616,6 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
       // std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-
     return E0;
 }
 
@@ -534,6 +626,12 @@ template auto evaluate_ordm<64>(
   std::vector<double> &X_local,
   macis::DoubleLoopHamiltonianGenerator<64> &ham_gen,
   std::vector<double> &orb_rot
+);
+template auto evaluate_GF<64>(
+  const double EASCI,
+  macis::impurity_params<64>& p,
+  const macis::DoubleLoopHamiltonianGenerator<64> &ham_gen,
+  macis::GFSettings &gf_settings
 );
 template double SolveImpurityED<64>(impurity_params<64>& p);
 template double SolveImpurityASCI<64>(impurity_params<64>& p);

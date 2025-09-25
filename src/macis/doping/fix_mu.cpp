@@ -98,8 +98,8 @@ namespace macis {
 //  struct impurity_params *p = (struct impurity_params *)params;
     struct impurity_params<N> *p = static_cast<impurity_params<N>*> (params);
 
-
-
+    size_t mu_cost_counter = (p->mu_cost_counter);
+    mu_cost_counter++;
     size_t& norb = (p->norb);
     size_t& n_imp = (p->n_imp);
     size_t& nbands = (p->nbands);
@@ -151,10 +151,20 @@ namespace macis {
         }
     }
 
+    macis::active_hamiltonian(
+        NumOrbital(norb), NumActive(p->n_active), 
+        NumInactive(p->n_inactive), T.data(), 
+        norb, p->V.data(), norb,
+        p->F_inactive.data(), norb,
+        p->T_active.data(), p->n_active, 
+        p->V_active.data(), p->n_active);
+
+
     std::vector<double>& occs = (p->occs);
+    occs.assign(n_imp, 0);
 
     bool& cheap_mode = (p->cheap_mode);
-    if(cheap_mode)
+    if(cheap_mode && mu_cost_counter > 1)
       ci_exp = CIExpansion::ASCI_cheap;
 
 // IMPLEMENT DIRECT CHOICE FROM INPUT FILE
@@ -165,7 +175,7 @@ namespace macis {
     }
     else if (ci_exp == CIExpansion::ASCI)
     {
-        E = SolveImpurityASCI<N>(*p);
+        E = SolveImpurityASCI_rot<N>(*p);
     }
     else if (ci_exp == CIExpansion::ASCI_cheap)
     {
@@ -184,10 +194,12 @@ namespace macis {
     // std::cout<< "Total number of electrons = "<< curr_nel << std::endl;
     // std::cout<< "Goal number of electrons = "<< nel_target << std::endl;
 
-    double err = curr_nel_per_spin - nel_target;
+    double err = 2*curr_nel_per_spin - nel_target;
 
     // std::cout<< "err = "<< err << std::endl;
     // std::cout << "x = " << x << std::endl;
+   std::cout << "Entered Mu_Cost_f for the " << mu_cost_counter << "th time: n(" << mu << ") = " << 2*curr_nel_per_spin << " . (err = " << err << ")" << std::endl;
+  (p->mu_cost_counter) = mu_cost_counter;
 
     return err;
   }
@@ -407,10 +419,19 @@ namespace macis {
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
 
+    std::cout << "------------------Initializing Root Solver----------------" << std::endl;
+    // if (test_residual)
+    //   std::cout << "test_residual (convergence check performed directly on n) = True"  << std::endl;
+    // else
+    //   std::cout << "test_residual (convergence check performed directly on n) = False"  << std::endl;
+    std::cout << "Initial Mu: mu0 =" << mu0 << std::endl;
+
     // Set the solver:
     T = SelectMuSolver_Type_der( method_name );
     s = gsl_root_fdfsolver_alloc (T);
     gsl_root_fdfsolver_set (s, &f, mu0);
+
+    std::cout << "------------------Performing Root search----------------" << std::endl;
 
     // Print header and initial point
     if( print )
@@ -458,6 +479,7 @@ namespace macis {
     size_t& maxiter = (params->maxiter);
     bool& print = (params->print_doping);
     double& init_shift = (params->init_shift);
+    double& nel_target = (params->nel_target);
 
     // double abs_tol;
     // abs_tol =  1.E-4; 
@@ -483,17 +505,34 @@ namespace macis {
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
     double x_lo = mu0-std::abs(init_shift), x_hi = mu0+std::abs(init_shift);
-    ProposeInitBracket_MuED<N>( params, x_lo, x_hi );
 
+    std::cout << "------------------Performing Initial Bracket Search----------------" << std::endl;
+    std::cout << "Initial bracket Mu in [" << x_lo << ", " << x_hi << "]" << std::endl;
+    std::cout << "Computing n(x_lo) and n(x_hi)... " << std::endl;
+    
+    //*(params->quiet) = true;
+    double f_lo = Mu_Cost_f<N>( x_lo, params );
+    double f_hi = Mu_Cost_f<N>( x_hi, params );
+    
+    if (f_hi*f_lo >0){
+      std::cout << "User-proposed bracket failed, trying to find a bracket containing n = " << nel_target << std::endl;
+      ProposeInitBracket_MuED<N>( params, x_lo, x_hi );
+    }
+    else{
+      std::cout << "Bracket found! | n(" << x_hi << ") < " << nel_target << " < n(" << x_lo << ")" << std::endl;
+    }
     // std::cout<< "f(" << x_lo << ") =" << f.function(x_lo,params) << std::endl;
     // std::cout<< "f(" << x_hi << ") =" << f.function(x_hi,params) << std::endl;
 
 
     // Set the solver:
+    std::cout << "------------------Initializing Root Solver----------------" << std::endl;
     T = SelectMuSolver_Type_noder( method_name );
     s = gsl_root_fsolver_alloc (T);
     gsl_root_fsolver_set (s, &f, x_lo, x_hi);
 
+
+    std::cout << "------------------Performing Root search----------------" << std::endl;
     // Print header and initial point
     if( print )
     {

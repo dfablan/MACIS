@@ -60,6 +60,7 @@ struct GFSettings {
   std::string w_scale = "lin";
   bool real_g = true;
   double beta = 1.;
+  bool imag_freq = true;
 };
 
 /**

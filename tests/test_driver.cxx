@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
     if(params.ci_exp == CIExpansion::CAS)
       E0 = macis::SolveImpurityED<nwfn_bits>(params);
     else {
-      if(params.asci_settings.grow_with_rot_legacy)
+      if(params.asci_settings.nrots > 0)
         E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
       else
         E0 = macis::SolveImpurityASCI<nwfn_bits>(params);

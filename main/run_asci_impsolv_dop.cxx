@@ -8,7 +8,6 @@
 #include <iostream>
 #include <macis/comp_observables.hpp>
 #include <macis/doping/fix_mu.hpp>
-#include <macis/gf/gf.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
@@ -220,11 +219,12 @@ int main(int argc, char** argv) {
   params.T_active.resize(params.n_active * params.n_active);
   params.Td_active.resize(params.n_active * params.n_active);
   params.V_active.resize(params.n_active * params.n_active * params.n_active *
-                         params.n_active);
+                        params.n_active);
+  params.F_inactive.resize(params.n_active * params.n_active);
+
+  // std::vector<double> Fd_inactive(norb2);
 
   // Compute active-space Hamiltonian and inactive Fock matrix
-  params.F_inactive.resize(norb2);
-  std::vector<double> Fd_inactive(norb2);
   macis::active_hamiltonian(NumOrbital(params.norb), NumActive(params.n_active),
                             NumInactive(params.n_inactive), params.T.data(),
                             params.norb, params.V.data(), params.norb,
@@ -286,10 +286,14 @@ int main(int argc, char** argv) {
 
     double mu_fixed;
 
-    if(deriv)
+    if(deriv){
+      std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
       mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
-    else
+    }
+    else{
+      std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
       mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+    }
 
     std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed
               << std::endl;
@@ -431,62 +435,14 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.NWS", gf_settings.nws, size_t);
     OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
     OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
-    bool imag_freq = true;
-    OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
-    std::vector<std::complex<double>> ws(gf_settings.nws,
-                                         std::complex<double>(0., 0.));
-
-    for(int i = 0; i < gf_settings.nws; i++)
-      if(imag_freq) {
-        //  MATSUBARA GRID
-        ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
-      } else {
-        std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
-        std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
-        ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
-      }
-
-    // GF vector
-    std::vector<std::vector<std::complex<double>>> GF(
-        gf_settings.nws,
-        std::vector<std::complex<double>>(params.n_active * params.n_active,
-                                          std::complex<double>(0., 0.)));
-    std::vector<std::vector<std::complex<double>>> GF_tmp(
-        gf_settings.nws,
+    OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
+  
+    std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,
                                           std::complex<double>(0., 0.)));
 
-    // Occupation numbers
-    // for(int i = 0; i < n_active; i++)
-    // {
-    // occs[i] = active_ordm[i + i * n_active]/2;
-    // occs[i] = occs[i]/2;
-    // std::cout << "occs[" << i << "] = " << std::setprecision(10)<< occs[i] <<
-    // std::endl;
-    // }
+    GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
-    // GS vector
-    std::vector<int> todelete_p;
-    std::vector<int> todelete_h;
-    Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
-        params.C.data(), params.C.size());
-
-    // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true,
-                                ws, params.occs, gf_settings);
-    GF = GF_tmp;
-
-    // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
-                                ws, params.occs, gf_settings);
-
-    if(todelete_h != todelete_p)
-      std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
-
-    GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
-
-    if(gf_settings.writeGF_singlef)
-      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
   }
 
   return 0;
