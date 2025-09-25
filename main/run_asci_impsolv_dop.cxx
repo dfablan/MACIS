@@ -405,7 +405,7 @@ int main(int argc, char** argv) {
         params.n_active);
 
     // Generate the Hamiltonian Generator
-    macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
+    macis::DoubleLoopHamiltonianGenerator <nwfn_bits> ham_gen(
         macis::matrix_span<double>(params.T_active.data(), params.n_active,
                                    params.n_active),
         macis::rank4_span<double>(params.V_active.data(), params.n_active,
