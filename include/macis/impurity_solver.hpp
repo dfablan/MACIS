@@ -164,31 +164,29 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
 
   // Rotate the GF back to original basis
 
-    size_t G_n_orbs = sqrt(GF[0].size());
-     
-    Eigen::MatrixXd rotMat = Eigen::MatrixXd::Identity( p.n_imp, p.n_imp );
-    for( int j = 0; j < p.n_imp ; j++)
-      for( int k = 0; k < p.n_imp; k++)
-         rotMat(j,k) = p.orb_rot[j + k * p.n_active]; 
+  size_t G_n_orbs = sqrt(GF[0].size());
 
-    for( int iw = 0; iw < gf_settings.nws ; iw++)
-    {
-     Eigen::MatrixXcd G = Eigen::MatrixXcd::Zero( p.n_imp, p.n_imp );
-     for( int j = 0; j < p.n_imp ; j++)
-       for( int k = 0; k < p.n_imp; k++){
-         G(j, k) = GF[iw][j + k * G_n_orbs];
-        }
-     
+  Eigen::MatrixXd rotMat = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+  for(int j = 0; j < p.n_imp; j++)
+    for(int k = 0; k < p.n_imp; k++)
+      rotMat(j, k) = p.orb_rot[j + k * p.n_active];
+
+  for(int iw = 0; iw < gf_settings.nws; iw++) {
+    Eigen::MatrixXcd G = Eigen::MatrixXcd::Zero(p.n_imp, p.n_imp);
+    for(int j = 0; j < p.n_imp; j++)
+      for(int k = 0; k < p.n_imp; k++) {
+        G(j, k) = GF[iw][j + k * G_n_orbs];
+      }
+
     //  Eigen::MatrixXcd rotG  = rotMat.adjoint() * G * rotMat;
-     Eigen::MatrixXcd rotG  = rotMat * G * rotMat.adjoint();
-     
-     for( int j = 0; j < p.n_imp; j++)
-       for( int k = 0; k < p.n_imp; k++)
-         GF[iw][j + k * G_n_orbs] = rotG(j, k);
-    }
+    Eigen::MatrixXcd rotG = rotMat * G * rotMat.adjoint();
 
-    if(gf_settings.writeGF_singlef)
-      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+    for(int j = 0; j < p.n_imp; j++)
+      for(int k = 0; k < p.n_imp; k++) GF[iw][j + k * G_n_orbs] = rotG(j, k);
+  }
+
+  if(gf_settings.writeGF_singlef)
+    macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
 
   return GF;
 }
