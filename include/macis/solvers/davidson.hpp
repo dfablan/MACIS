@@ -198,8 +198,9 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
   // Stagnation detection variables
   size_t stagnant_iter = 0;
   double prev_eigvalue = std::numeric_limits<double>::max();
-  const size_t max_stagnant_iter = 30; // Number of iterations to consider stagnation
-  const double stagnation_tol = 1e-13; // Tolerance for stagnation detection
+  const size_t max_stagnant_iter =
+      30;  // Number of iterations to consider stagnation
+  const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
   for(int64_t i = 1; i < max_m; ++i, ++iter) {
     const auto k = i + 1;  // Current subspace dimension after new vector
@@ -255,9 +256,15 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
       if(stagnant_iter >= max_stagnant_iter) {
-        logger->warn("  * WARNING: Davidson Stagnation Detected ({} iterations with < {:.1e} change in eigenvalue)", stagnant_iter, stagnation_tol);
-        logger->warn("    Current residual norm: {:.3e} may be best achievable. Convergence threshold = {:.3e}", res_nrm, tol);
-        if (res_nrm < 100*tol) {
+        logger->warn(
+            "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
+            "{:.1e} change in eigenvalue)",
+            stagnant_iter, stagnation_tol);
+        logger->warn(
+            "    Current residual norm: {:.3e} may be best achievable. "
+            "Convergence threshold = {:.3e}",
+            res_nrm, tol);
+        if(res_nrm < 100 * tol) {
           converged = true;
         }
         break;
@@ -442,9 +449,9 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
   // Stagnation detection variables
   double prev_eigvalue = std::numeric_limits<double>::max();
   size_t stagnant_iter = 0;
-  const size_t max_stagnant_iter = 30; // Number of iterations to consider stagnation
-  const double stagnation_tol = 1e-13; // Tolerance for stagnation detection
-
+  const size_t max_stagnant_iter =
+      30;  // Number of iterations to consider stagnation
+  const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
   for(int64_t i = 1; i < max_m; ++i, ++iter) {
     const auto k = i + 1;  // Current subspace dimension after new vector
@@ -505,9 +512,15 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
       if(stagnant_iter >= max_stagnant_iter) {
-        logger->warn("  * WARNING: Davidson Stagnation Detected ({} iterations with < {:.1e} change in eigenvalue)", stagnant_iter, stagnation_tol);
-        logger->warn("    Current residual norm: {:.3e} may be best achievable. Convergence threshold {:.3e}", res_nrm, tol);
-        if (res_nrm < 100*tol) {
+        logger->warn(
+            "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
+            "{:.1e} change in eigenvalue)",
+            stagnant_iter, stagnation_tol);
+        logger->warn(
+            "    Current residual norm: {:.3e} may be best achievable. "
+            "Convergence threshold {:.3e}",
+            res_nrm, tol);
+        if(res_nrm < 100 * tol) {
           converged = true;
         }
         break;
