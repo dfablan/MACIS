@@ -125,7 +125,7 @@ inline bool gram_schmidt(int64_t N, int64_t K, const double* V_old, int64_t LDV,
   auto nrm = blas::nrm2(N, V_new, 1);
   if(nrm < 1.E-12) return false;  // Linear Dependence Detected
   blas::scal(N, 1. / nrm, V_new, 1);
-  return true; // Success
+  return true;  // Success
 }
 
 template <typename Functor>
@@ -134,7 +134,7 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
   using hrt_t = std::chrono::high_resolution_clock;
   using dur_t = std::chrono::duration<double, std::milli>;
 
-  // Input validation 
+  // Input validation
   if(!X) throw std::runtime_error("Davidson: No Guess Provided");
   if(N <= 0) throw std::runtime_error("Davidson: Invalid Matrix Size");
   if(!D) throw std::runtime_error("Davidson: No Diagonal Provided");
@@ -142,7 +142,8 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
   // Check for NaN/Inf in diagonal and initial guess
   for(size_t i = 0; i < N; ++i) {
     if(!std::isfinite(D[i]))
-      throw std::runtime_error("Davidson: Non-finite Diagonal Element Detected");
+      throw std::runtime_error(
+          "Davidson: Non-finite Diagonal Element Detected");
     if(!std::isfinite(X[i]))
       throw std::runtime_error("Davidson: Non-finite Initial Guess Detected");
   }
@@ -172,25 +173,29 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
 
   // Copy AV(:,0) -> V(:,1) and orthogonalize wrt V(:,0)
   std::copy_n(AV.data(), N, V.data() + N);
-  if (!gram_schmidt(N, 1, V.data(), N, V.data() + N)) {
-    // throw std::runtime_error("Davidson: Linear Dependence Detected in Initial vectors from gram_schmidt");
-    logger->warn("  * WARNING: Linear Dependence Detected in Initial vectors from gram_schmidt. Attempting recovery...");
+  if(!gram_schmidt(N, 1, V.data(), N, V.data() + N)) {
+    // throw std::runtime_error("Davidson: Linear Dependence Detected in Initial
+    // vectors from gram_schmidt");
+    logger->warn(
+        "  * WARNING: Linear Dependence Detected in Initial vectors from "
+        "gram_schmidt. Attempting recovery...");
     // Attempt to recover by replacing with random vector
     std::random_device rd;
     std::mt19937 gen(rd());
     std::normal_distribution<double> dis(0, 1);
     for(size_t i = 0; i < N; ++i) V[i + N] = dis(gen);
     if(!gram_schmidt(N, 1, V.data(), N, V.data() + N)) {
-      throw std::runtime_error("Davidson: Linear Dependence Detected in Initial vectors from gram_schmidt after recovery attempt");
-    } else 
+      throw std::runtime_error(
+          "Davidson: Linear Dependence Detected in Initial vectors from "
+          "gram_schmidt after recovery attempt");
+    } else
       logger->info("  * Recovery successful.");
   }
-
 
   bool converged = false;
   size_t iter = 1;
 
-  //Stagnation detection variables
+  // Stagnation detection variables
   size_t stagnant_iter = 0;
   double prev_eigvalue = std::numeric_limits<double>::max();
   const size_t max_stagnant_iter = 30; // Number of iterations to consider stagnation
@@ -245,7 +250,7 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
       break;
     }
 
-    //Check for stagnation
+    // Check for stagnation
     double eig_change = std::abs(LAM[0] - prev_eigvalue);
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
@@ -258,7 +263,7 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
         break;
       }
     } else {
-      stagnant_iter = 0; // Reset stagnation counter
+      stagnant_iter = 0;  // Reset stagnation counter
     }
     prev_eigvalue = LAM[0];
 
@@ -285,7 +290,10 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
 
     // Project new vector out from old vectors
     if(!gram_schmidt(N, k, V.data(), N, R)) {
-      logger->warn("  * WARNING: Linear Dependence Detected at Iteration {}. Stopping early.", iter);
+      logger->warn(
+          "  * WARNING: Linear Dependence Detected at Iteration {}. Stopping "
+          "early.",
+          iter);
       converged = true;
       break;
     }
@@ -331,7 +339,7 @@ inline bool p_gram_schmidt(int64_t N_local, int64_t K, const double* V_old,
   if(nrm < 1.E-12) return false;  // Linear Dependence Detected
 
   blas::scal(N_local, 1. / nrm, V_new, 1);
-  return true; // Success
+  return true;  // Success
 }
 
 inline void p_rayleigh_ritz(int64_t N_local, int64_t K, const double* X,
@@ -350,7 +358,7 @@ inline void p_rayleigh_ritz(int64_t N_local, int64_t K, const double* X,
 
   // Do local diagonalization on rank-0
   if(!world_rank) {
-          lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
+    lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, K, C, LDC, W);
   }
 
   // Broadcast results
@@ -374,7 +382,8 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
   // Check for NaN/Inf in diagonal and initial guess
   for(size_t i = 0; i < N_local; ++i) {
     if(!std::isfinite(D_local[i]))
-      throw std::runtime_error("Davidson: Non-finite Diagonal Element Detected");
+      throw std::runtime_error(
+          "Davidson: Non-finite Diagonal Element Detected");
     if(!std::isfinite(X_local[i]))
       throw std::runtime_error("Davidson: Non-finite Initial Guess Detected");
   }
@@ -407,24 +416,30 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
 
   // Copy AV(:,0) -> V(:,1) and orthogonalize wrt V(:,0)
   std::copy_n(AV_local.data(), N_local, V_local.data() + N_local);
-  if(!p_gram_schmidt(N_local, 1, V_local.data(), N_local, V_local.data() + N_local,
-                 comm)) {
-    // throw std::runtime_error("Davidson: Linear Dependence Detected in Initial vectors from p_gram_schmidt");
-    logger->warn("  * WARNING: Linear Dependence Detected in Initial vectors from p_gram_schmidt. Attempting recovery...");
+  if(!p_gram_schmidt(N_local, 1, V_local.data(), N_local,
+                     V_local.data() + N_local, comm)) {
+    // throw std::runtime_error("Davidson: Linear Dependence Detected in Initial
+    // vectors from p_gram_schmidt");
+    logger->warn(
+        "  * WARNING: Linear Dependence Detected in Initial vectors from "
+        "p_gram_schmidt. Attempting recovery...");
     // Attempt to recover by replacing with random vector
     std::mt19937 gen(world_rank + 1);
     std::normal_distribution<double> dis(0, 1);
     for(size_t i = 0; i < N_local; ++i) V_local[i + N_local] = dis(gen);
-    if(!p_gram_schmidt(N_local, 1, V_local.data(), N_local, V_local.data() + N_local, comm)) {
-      throw std::runtime_error("Davidson: Linear Dependence Detected in Initial vectors from p_gram_schmidt after recovery attempt");
-    } else 
+    if(!p_gram_schmidt(N_local, 1, V_local.data(), N_local,
+                       V_local.data() + N_local, comm)) {
+      throw std::runtime_error(
+          "Davidson: Linear Dependence Detected in Initial vectors from "
+          "p_gram_schmidt after recovery attempt");
+    } else
       logger->info("  * Recovery successful.");
   }
 
   bool converged = false;
   int64_t iter = 1;
 
-  //Stagnation detection variables
+  // Stagnation detection variables
   double prev_eigvalue = std::numeric_limits<double>::max();
   size_t stagnant_iter = 0;
   const size_t max_stagnant_iter = 30; // Number of iterations to consider stagnation
@@ -485,7 +500,7 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
       break;
     }
 
-    //Check for stagnation in eigenvalue convergence
+    // Check for stagnation in eigenvalue convergence
     double eig_change = std::abs(LAM[0] - prev_eigvalue);
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
@@ -498,7 +513,7 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
         break;
       }
     } else {
-      stagnant_iter = 0; // Reset stagnation counter
+      stagnant_iter = 0;  // Reset stagnation counter
     }
     prev_eigvalue = LAM[0];
 
@@ -507,7 +522,7 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
 
     // Safety check for near-degeneracies in D
     int degenerate_count = 0;
-    
+
     for(auto j = 0; j < N_local; ++j) {
       // R_local[j] = -R_local[j] / (D_local[j] - LAM[0]);
       double denominator = D_local[j] - LAM[0];
@@ -521,15 +536,17 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
 
     size_t total_degenerate_count = 0;
     if(degenerate_count > 0) {
-      total_degenerate_count =
-          allreduce(degenerate_count, MPI_SUM, comm);
+      total_degenerate_count = allreduce(degenerate_count, MPI_SUM, comm);
       logger->warn("  * WARNING: {} near-degenerate diagonal elements detected",
                    total_degenerate_count);
     }
 
     // Project new vector out form old vectors
     if(!p_gram_schmidt(N_local, k, V_local.data(), N_local, R_local, comm)) {
-      logger->warn("  * WARNING: Linear Dependence Detected at Iteration {}. Stopping early.", iter);
+      logger->warn(
+          "  * WARNING: Linear Dependence Detected at Iteration {}. Stopping "
+          "early.",
+          iter);
       converged = true;
       break;
     }
