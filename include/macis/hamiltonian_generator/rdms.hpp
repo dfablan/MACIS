@@ -209,7 +209,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(double* rot_mat
 
   std::vector<double> natural_orbitals(norb2_, 0.);
 
-  //save rotation matrix
+  // save rotation matrix
   std::copy(rot_mat, rot_mat + norb2_, natural_orbitals.data());
 
   std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
