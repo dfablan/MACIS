@@ -202,15 +202,10 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 }
 
 template <size_t N>
-void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
-    const size_t nimps, double* rot_mat) {
+void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(double* rot_mat) {
   // assert nimp>0
-  if(nimps == 0)
-    throw std::runtime_error(
-        "Invalid number of impurities for rotate_hamiltonian_rotmat_imp_bath");
+
   assert(rot_mat != nullptr);
-  
-  const int nbaths = norb_ - nimps;
 
   std::vector<double> natural_orbitals(norb2_, 0.);
 

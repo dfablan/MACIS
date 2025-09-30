@@ -194,7 +194,7 @@ class HamiltonianGenerator {
   void rotate_hamiltonian_ordm(const double* ordm, double* rot_mat = nullptr);
   void rotate_hamiltonian_ordm_imp_bath(const double* ordm, const size_t nimps,
                                         double* rot_mat = nullptr);
-  void rotate_hamiltonian_rotmat_imp_bath(const size_t nimps, double* rot_mat);
+  void rotate_hamiltonian_rotmat_imp_bath( double* rot_mat);
 
   virtual void SetJustSingles(bool /*_js*/) {}
   virtual bool GetJustSingles() const { return false; }

@@ -200,6 +200,7 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
   double CompObservables<N>::compute_double_occupancies() const {
     double orb_db_occs = 0.0;
 
+    // db_occs = orb[i,a]orb[i,c] <c+a c+b c+b c+a> orb.T[b,i]orb.T[d,i]
     for(int i = 0; i < n_imp_; i++)
       for(int a = 0; a < n_imp_; a++)
         for(int b = 0; b < n_imp_; b++)
@@ -217,6 +218,7 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
   template<size_t N>
   std::vector<double> CompObservables<N>::compute_sz_sz_correlations() const {
     std::vector<double> sz_sz(n_sites2_, 0.0);
+    // sz_sz = 0.25 * orb[i,a]orb[j,c] <(n_a - n_d)_a (n_a - n_d)_c> orb.T[b,i]orb.T[d,j]
     for(size_t site_i = 0; site_i < n_sites_; site_i++) {
       for(size_t site_j = 0; site_j < n_sites_; site_j++) {
         for(size_t band_i = 0; band_i < n_bands_; band_i++) {

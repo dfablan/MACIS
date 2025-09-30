@@ -310,7 +310,20 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
           }
           E0 += E_inactive + E_core;
 
-
+            //DEBUG
+            // std::cout << "First few determinants:" << std::endl;
+            // for(int i = 0; i < std::min(4, static_cast<int>(dets.size())); i++) {
+            //   std::cout << "  det[" << i << "]: " << macis::to_canonical_string(dets[i]) << " (coeff: " << C_local[i] << ")" << std::endl;
+            // }
+            // std::cout << "\nMATRIX ELEMENTS (sample):" << std::endl;
+            //   std::cout << "  H[0,0] = " << ham_gen.matrix_element(dets[0], dets[0]) << std::endl;
+            //   if(dets.size() > 1) {
+            //     std::cout << "  H[0,1] = " << ham_gen.matrix_element(dets[0], dets[1]) << std::endl;
+            //     if(dets.size() > 2) {
+            //       std::cout << "  H[1,1] = " << ham_gen.matrix_element(dets[1], dets[1]) << std::endl;
+            //   }
+            // }
+          
           std::cout<<"\n* @ Macro It. " << iorb+1 << " EASCI: " << E0 << std::endl;
 
           if (iorb == asci_settings.nrots) break;
@@ -319,6 +332,9 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             auto orbrot_st = clock_type::now();
             active_ordm.assign( n_active * n_active, 0. );
             active_trdm.assign( n_active * n_active * n_active * n_active, 0. );
+            
+            
+
             //Generate RDMs
             ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
                 macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
@@ -329,10 +345,10 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             comp.assign( n_active * n_active, 0. );
             //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
-            //Update rotation matrix orb_rot = tmp_rot * orb_rot
+            //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-                      n_active, n_active, n_active, 1.0, tmp_rot.data(), n_active,
-                      orb_rot.data(), n_active, 0.0, comp.data(), n_active);
+                      n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
+                      tmp_rot.data(), n_active, 0.0, comp.data(), n_active);
             orb_rot = std::move(comp);
             
             {//Generate new HF determinant in rotated basis
@@ -442,7 +458,20 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         ofile_rot << std::endl;
       }
     }
-
+          
+            //DEBUG
+            // std::cout << "First few determinants:" << std::endl;
+            // for(int i = 0; i < std::min(4, static_cast<int>(dets.size())); i++) {
+            //   std::cout << "  det[" << i << "]: " << macis::to_canonical_string(dets[i]) << " (coeff: " << C_local[i] << ")" << std::endl;
+            // }
+            // std::cout << "\nMATRIX ELEMENTS (sample):" << std::endl;
+            //   std::cout << "  H[0,0] = " << ham_gen.matrix_element(dets[0], dets[0]) << std::endl;
+            //   if(dets.size() > 1) {
+            //     std::cout << "  H[0,1] = " << ham_gen.matrix_element(dets[0], dets[1]) << std::endl;
+            //     if(dets.size() > 2) {
+            //       std::cout << "  H[1,1] = " << ham_gen.matrix_element(dets[1], dets[1]) << std::endl;
+            //   }
+            // }
     return E0;
 }
 
