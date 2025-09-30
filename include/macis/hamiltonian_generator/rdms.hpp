@@ -202,7 +202,8 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 }
 
 template <size_t N>
-void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(double* rot_mat) {
+void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
+    double* rot_mat) {
   // assert nimp>0
 
   assert(rot_mat != nullptr);
