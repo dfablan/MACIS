@@ -201,4 +201,75 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   generate_integral_intermediates(V_pqrs_);
 }
 
+template <size_t N>
+void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
+    const size_t nimps, double* rot_mat) {
+  // assert nimp>0
+  if(nimps == 0)
+    throw std::runtime_error(
+        "Invalid number of impurities for rotate_hamiltonian_rotmat_imp_bath");
+  assert(rot_mat != nullptr);
+  
+  const int nbaths = norb_ - nimps;
+
+  std::vector<double> natural_orbitals(norb2_, 0.);
+
+  //save rotation matrix
+  std::copy(rot_mat, rot_mat + norb2_, natural_orbitals.data());
+
+  std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
+      tmp2(norb3_ * norb_, 0.0);
+
+  // Transform T
+  // T <- N**H * T * N
+  auto* T_pq_ptr = T_pq_.data_handle();
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+             norb_, norb_, norb_, 1., T_pq_ptr, norb_, natural_orbitals.data(),
+             norb_, 0., tmp.data(), norb_);
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+             norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
+             norb_, 0., T_pq_ptr, norb_);
+
+  // Transorm V
+
+  // 1st Quarter
+  // (pj|kl) = N(i,p) (ij|kl)
+  // W(p,jkl) = N(i,p) * V(i,jkl)
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+             norb3_, norb_, 1., natural_orbitals.data(), norb_,
+             V_pqrs_.data_handle(), norb_, 0., tmp1.data(), norb_);
+
+  // 2nd Quarter
+  // (pq|kl) = N(j,q) (pj|kl)
+  // W_kl(p,q) = V_kl(p,j) N(j,q)
+  for(auto kl = 0; kl < norb2_; ++kl) {
+    auto* V_kl = tmp1.data() + kl * norb2_;
+    auto* W_kl = tmp2.data() + kl * norb2_;
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., V_kl, norb_, natural_orbitals.data(),
+               norb_, 0., W_kl, norb_);
+  }
+
+  // 3rd Quarter
+  // (pq|rl) = N(k,r) (pq|kl)
+  // W_l(pq,r) = V_l(pq,k) N(k,r)
+  for(auto l = 0; l < norb_; ++l) {
+    auto* V_l = tmp2.data() + l * norb3_;
+    auto* W_l = tmp1.data() + l * norb3_;
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb2_, norb_, norb_, 1., V_l, norb2_, natural_orbitals.data(),
+               norb_, 0., W_l, norb2_);
+  }
+
+  // 4th Quarter
+  // (pq|rs) = N(l,s) (pq|rl)
+  // W(pqr,s) = V(pqr,l) N(l,s)
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+             norb3_, norb_, norb_, 1., tmp1.data(), norb3_,
+             natural_orbitals.data(), norb_, 0., V_pqrs_.data_handle(), norb3_);
+
+  // Regenerate intermediates
+  generate_integral_intermediates(V_pqrs_);
+}
+
 }  // namespace macis

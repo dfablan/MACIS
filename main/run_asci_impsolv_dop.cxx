@@ -412,6 +412,9 @@ int main(int argc, char** argv) {
                                   params.n_active, params.n_active,
                                   params.n_active));
 
+    ham_gen.rotate_hamiltonian_rotmat_imp_bath(params.n_imp,
+                                               params.orb_rot.data());
+
     // MCSCF Settings
     macis::GFSettings gf_settings;
     OPT_KEYWORD("GF.NORBS", gf_settings.norbs, size_t);
