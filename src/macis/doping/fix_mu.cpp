@@ -419,6 +419,8 @@ namespace macis {
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
 
+    params->mu_cost_counter = 0;
+
     std::cout << "------------------Initializing Root Solver----------------" << std::endl;
     // if (test_residual)
     //   std::cout << "test_residual (convergence check performed directly on n) = True"  << std::endl;
@@ -505,6 +507,7 @@ namespace macis {
     // Initial bracket for mu, to be 
     double mu0 = init_mu;
     double x_lo = mu0-std::abs(init_shift), x_hi = mu0+std::abs(init_shift);
+    params->mu_cost_counter = 0;
 
     std::cout << "------------------Performing Initial Bracket Search----------------" << std::endl;
     std::cout << "Initial bracket Mu in [" << x_lo << ", " << x_hi << "]" << std::endl;

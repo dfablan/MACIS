@@ -47,7 +47,7 @@ double SolveImpurityED (impurity_params<N>& p){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
+    using generator_t = macis::SDBuildHamiltonianGenerator<N>;
 
     E0 = macis::CASRDMFunctor<generator_t>::rdms(
           mcscf_settings, NumOrbital(n_active), nalpha, nbeta,
@@ -104,11 +104,13 @@ double SolveImpurityASCI (impurity_params<N>& p){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
+    using generator_t = macis::SDBuildHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+    ham_gen.SetJustSingles(p.just_singles);
+    ham_gen.SetNimp(n_imp);
 
     if(asci_wfn_fname.size()) 
     {
@@ -237,29 +239,14 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
-
-    //DEBUG print integrals
-    // std::cout << "T_active integrals: " << std::endl;
-    // for (int i = 0; i < n_active; i++) {
-    //   for (int j = 0; j < n_active; j++) {
-    //     std::cout << T_active[i + j * n_active] << " ";
-    //   }
-    //   std::cout << std::endl;
-    // }
-
-    // std::cout << "V_active integrals: " << std::endl;
-    // for (int i = 0; i < n_active; i++) {
-    //   for (int j = 0; j < n_active; j++) {
-    //     std::cout << V_active[i + i * n_active + j * n_active * n_active + j * n_active * n_active * n_active] << " ";
-    //   }
-    //   std::cout << std::endl;
-    // }
-
+    using generator_t = macis::SDBuildHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+    
+    ham_gen.SetJustSingles(p.just_singles);
+    ham_gen.SetNimp(n_imp);
 
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
@@ -310,19 +297,6 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
           }
           E0 += E_inactive + E_core;
 
-            //DEBUG
-            // std::cout << "First few determinants:" << std::endl;
-            // for(int i = 0; i < std::min(4, static_cast<int>(dets.size())); i++) {
-            //   std::cout << "  det[" << i << "]: " << macis::to_canonical_string(dets[i]) << " (coeff: " << C_local[i] << ")" << std::endl;
-            // }
-            // std::cout << "\nMATRIX ELEMENTS (sample):" << std::endl;
-            //   std::cout << "  H[0,0] = " << ham_gen.matrix_element(dets[0], dets[0]) << std::endl;
-            //   if(dets.size() > 1) {
-            //     std::cout << "  H[0,1] = " << ham_gen.matrix_element(dets[0], dets[1]) << std::endl;
-            //     if(dets.size() > 2) {
-            //       std::cout << "  H[1,1] = " << ham_gen.matrix_element(dets[1], dets[1]) << std::endl;
-            //   }
-            // }
           
           std::cout<<"\n* @ Macro It. " << iorb+1 << " EASCI: " << E0 << std::endl;
 
@@ -459,19 +433,6 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       }
     }
           
-            //DEBUG
-            // std::cout << "First few determinants:" << std::endl;
-            // for(int i = 0; i < std::min(4, static_cast<int>(dets.size())); i++) {
-            //   std::cout << "  det[" << i << "]: " << macis::to_canonical_string(dets[i]) << " (coeff: " << C_local[i] << ")" << std::endl;
-            // }
-            // std::cout << "\nMATRIX ELEMENTS (sample):" << std::endl;
-            //   std::cout << "  H[0,0] = " << ham_gen.matrix_element(dets[0], dets[0]) << std::endl;
-            //   if(dets.size() > 1) {
-            //     std::cout << "  H[0,1] = " << ham_gen.matrix_element(dets[0], dets[1]) << std::endl;
-            //     if(dets.size() > 2) {
-            //       std::cout << "  H[1,1] = " << ham_gen.matrix_element(dets[1], dets[1]) << std::endl;
-            //   }
-            // }
     return E0;
 }
 
@@ -512,11 +473,13 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
 
     double E0 = 0 ;
 
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
+    using generator_t = macis::SDBuildHamiltonianGenerator<N>;
 
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+    ham_gen.SetJustSingles(p.just_singles);
+    ham_gen.SetNimp(n_imp);
 
     E0 =
       selected_ci_diag(dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,

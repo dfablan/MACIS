@@ -45,7 +45,7 @@ double Comp_db_occs(impurity_params<N>& p) {
   std::vector<macis::wfn_t<N>>& dets = (p.dets);
   std::vector<double>& C_local = (p.C);
 
-  using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
+  using generator_t = macis::SDBuildHamiltonianGenerator<N>;
 
   // Copy integrals into active subsets
   std::vector<double> T_active(n_active * n_active);
@@ -61,6 +61,8 @@ double Comp_db_occs(impurity_params<N>& p) {
       macis::matrix_span<double>(T_active.data(), n_active, n_active),
       macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active,
                                 n_active));
+  ham_gen.SetJustSingles(p.just_singles);
+  ham_gen.SetNimp(n_imp);
 
   double orb_db_occs = 0.0;
   double orb_db_occs_bm = 0.0;
@@ -162,7 +164,7 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
     trdm_du_.resize(n_active4_);
 
     // Build generator and compute RDMs
-    using generator_t = macis::DoubleLoopHamiltonianGenerator<N>;
+    using generator_t = macis::SDBuildHamiltonianGenerator<N>;
     generator_t ham_gen(
         macis::matrix_span<double>(T_active.data(), n_active_, n_active_),
         macis::rank4_span<double>(V_active.data(), n_active_, n_active_,

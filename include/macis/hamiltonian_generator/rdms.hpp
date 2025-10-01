@@ -199,6 +199,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
+  SetJustSingles(false);
 }
 
 template <size_t N>
@@ -266,6 +267,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
+  SetJustSingles(false);
 }
 
 }  // namespace macis

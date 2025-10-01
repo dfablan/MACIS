@@ -83,7 +83,7 @@ struct impurity_params {
 
 template <size_t N>
 auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
-                 macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
+                 macis::SDBuildHamiltonianGenerator<N> &ham_gen,
                  macis::GFSettings &gf_settings) {
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
@@ -141,11 +141,11 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
   macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws, occs,
                       gf_settings);
 
-  std::cout << "GF Particle part calculated." << std::endl;
-  for(int i = 0; i < p.n_imp; i++) {
-    for(int j = 0; j < p.n_imp; j++)
-      std::cout << GF_tmp[0][i + j * p.n_active] << " " << std::endl;
-  }
+  //std::cout << "GF Particle part calculated." << std::endl;
+  //for(int i = 0; i < p.n_imp; i++) {
+  //  for(int j = 0; j < p.n_imp; j++)
+  //    std::cout << GF_tmp[0][i + j * p.n_active] << " " << std::endl;
+  //}
 
   // Evaluate hole GF
   macis::RunGFCalc<N>(GF, psi0, ham_gen, p.dets, EASCI, false, ws, occs,
@@ -156,11 +156,11 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
 
   GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
 
-  std::cout << "GF hole part calculated." << std::endl;
-  for(int i = 0; i < p.n_imp; i++) {
-    for(int j = 0; j < p.n_imp; j++)
-      std::cout << GF[0][i + j * p.n_active] << " " << std::endl;
-  }
+  //std::cout << "GF hole part calculated." << std::endl;
+  //for(int i = 0; i < p.n_imp; i++) {
+  //  for(int j = 0; j < p.n_imp; j++)
+  //    std::cout << GF[0][i + j * p.n_active] << " " << std::endl;
+  //}
 
   // Rotate the GF back to original basis
 
@@ -194,7 +194,7 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
 template <size_t N>
 auto evaluate_ordm(std::vector<macis::wfn_t<N>> &dets,
                    std::vector<double> &X_local,
-                   macis::DoubleLoopHamiltonianGenerator<N> &ham_gen,
+                   macis::SDBuildHamiltonianGenerator<N> &ham_gen,
                    std::vector<double> &orb_rot) {
   // Get Parameters
   size_t n_active = sqrt(orb_rot.size());

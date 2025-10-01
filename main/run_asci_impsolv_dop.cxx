@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
   params.E_core = macis::read_fcidump_core(fcidump_fname);
   macis::read_fcidump_1body(fcidump_fname, params.T.data(), params.norb);
   macis::read_fcidump_2body(fcidump_fname, params.V.data(), params.norb);
+  params.just_singles = macis::is_2body_diagonal(fcidump_fname);
 
 #define OPT_KEYWORD(STR, RES, DTYPE) \
   if(input.containsData(STR)) {      \
@@ -405,12 +406,15 @@ int main(int argc, char** argv) {
         params.n_active);
 
     // Generate the Hamiltonian Generator
-    macis::DoubleLoopHamiltonianGenerator <nwfn_bits> ham_gen(
+    macis::SDBuildHamiltonianGenerator <nwfn_bits> ham_gen(
         macis::matrix_span<double>(params.T_active.data(), params.n_active,
                                    params.n_active),
         macis::rank4_span<double>(params.V_active.data(), params.n_active,
                                   params.n_active, params.n_active,
                                   params.n_active));
+
+    ham_gen.SetJustSingles(params.just_singles);
+    ham_gen.SetNimp(params.n_imp);
 
     ham_gen.rotate_hamiltonian_rotmat_imp_bath(params.orb_rot.data());
 
