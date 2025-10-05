@@ -189,7 +189,7 @@ namespace macis {
 
     (p->E) = E;
 
-    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0)/n_imp;
+    curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0) / n_imp;
 
     std::cout<< "Number of electrons (per orbital per spin) = "<< curr_nel_per_spin << std::endl;
     std::cout<< "Goal number of electrons (per orbital) = "<< nel_target << std::endl;
