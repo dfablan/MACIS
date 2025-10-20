@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
   params.spin_dep = false;
   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
   if(fcidump_do_fname != "NONE") {
-    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), norb);
+    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), params.norb);
     params.spin_dep = true;
   }
 
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
     throw std::runtime_error("CI Expansion Not Recognized");
   }
 
-  if(spin_dep && ci_exp == CIExpansion::ASCI)
+  if(params.spin_dep && params.ci_exp == CIExpansion::ASCI)
     throw std::runtime_error("Spin-dependent ASCI not implemented");
 
   // Set up active space

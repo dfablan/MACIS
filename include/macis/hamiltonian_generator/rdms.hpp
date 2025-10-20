@@ -129,6 +129,15 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   const int nbaths = norb_ - nimps;
   // SVD on ordm to get natural orbitals
 
+#!/bin/bash
+
+#SBATCH --job-name=serial_job             # Descriptive name for the job
+#SBATCH --time=00:30:00                   # Maximum wall time (hh:mm:ss)
+#SBATCH --nodes=1                         # Request one node
+#SBATCH --ntasks=1                        # One task (process) total
+#SBATCH --cpus-per-task=1                 # One CPU core per task
+#SBATCH --partition=<partition_na
+
   std::vector<double> natural_orbitals(norb2_, 0.);
 
   std::vector<double> nat_orbs_imp(nimps * nimps, 0.);
@@ -226,6 +235,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
+  SetJustSingles(false);
 }
 
 template <size_t N>
@@ -303,6 +313,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
+  SetJustSingles(false);
 }
 
 }  // namespace macis

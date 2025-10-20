@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
   params.spin_dep = false;
   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
   if(fcidump_do_fname != "NONE") {
-    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), norb);
+    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), params.norb);
     params.spin_dep = true;
   }
 

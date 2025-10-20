@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
   params.spin_dep = false;
   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
   if(fcidump_do_fname != "NONE") {
-    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), norb);
+    macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), params.norb);
   params.spin_dep = true;
   }
 
@@ -354,11 +354,11 @@ int main(int argc, char** argv) {
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
     if(params.ci_exp == CIExpansion::CAS) {
-      E0 = macis::SolveImpurityED<nwfn_bits>(&params);
+      E0 = macis::SolveImpurityED<nwfn_bits>(params);
     } else if(params.ci_exp == CIExpansion::ASCI_cheap) {
-      E0 = macis::SolveImpurityCheapASCI<nwfn_bits>(&params);
+      E0 = macis::SolveImpurityCheapASCI<nwfn_bits>(params);
     } else if(params.ci_exp == CIExpansion::ASCI) {
-      E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(&params);
+      E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
         macis::write_wavefunction(asci_wfn_out_fname, params.n_active,
@@ -384,7 +384,7 @@ int main(int argc, char** argv) {
 
   if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     using dbl = std::numeric_limits<double>;
-    macis::CompObservables<nwfn_bits> obs(&params);
+    macis::CompObservables<nwfn_bits> obs(params);
     if(compute_db_occs) {
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;

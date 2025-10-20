@@ -692,7 +692,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
  * @brief Routine to sum two Green function matrices.
 
 */
-const std::vector<std::vector<std::complex<double>>> sum_GFs(
+inline std::vector<std::vector<std::complex<double>>> sum_GFs(
     const std::vector<std::vector<std::complex<double>>> &GF1,
     const std::vector<std::vector<std::complex<double>>> &GF2,
     const std::vector<std::complex<double>> &ws,
