@@ -28,11 +28,11 @@
 //   return clean_list;
 // }
 
-static std::vector<std::string> tokenize_ws(const std::string &line) {
+static std::vector<std::string> tokenize_ws(const std::string& line) {
   std::istringstream iss(line);
   std::vector<std::string> toks;
   std::string t;
-  while (iss >> t) toks.push_back(t);
+  while(iss >> t) toks.push_back(t);
   return toks;
 }
 
@@ -50,43 +50,45 @@ auto fcidump_line(const std::vector<std::string>& tokens) {
   int32_t p, q, r, s;
   double integral;
 
-  try{
+  try {
     p = std::stoi(tokens[0]);
     q = std::stoi(tokens[1]);
     r = std::stoi(tokens[2]);
     s = std::stoi(tokens[3]);
-    integral = std::stod(tokens[4]);  
-    
-    if(p < 0 or q < 0 or r < 0 or s < 0){
-    std::cout << "Error in fcidump_line! Orbital indices must be positive. Got: "
-              << p << " " << q << " " << r << " " << s << std::endl;
-    throw std::runtime_error("Invalid Orb Idx");
+    integral = std::stod(tokens[4]);
+
+    if(p < 0 or q < 0 or r < 0 or s < 0) {
+      std::cout
+          << "Error in fcidump_line! Orbital indices must be positive. Got: "
+          << p << " " << q << " " << r << " " << s << std::endl;
+      throw std::runtime_error("Invalid Orb Idx");
     }
     return std::make_tuple(p, q, r, s, integral);
-  } catch (const std::exception& e) {
+  } catch(const std::exception& e) {
     // fall through to try the other ordering
   }
 
-  try{
+  try {
     p = std::stoi(tokens[1]);
     q = std::stoi(tokens[2]);
     r = std::stoi(tokens[3]);
     s = std::stoi(tokens[4]);
     integral = std::stod(tokens[0]);
 
-    if(p < 0 or q < 0 or r < 0 or s < 0){
-      std::cout << "Error in fcidump_line! Orbital indices must be positive. Got: "
-                << p << " " << q << " " << r << " " << s << std::endl;
+    if(p < 0 or q < 0 or r < 0 or s < 0) {
+      std::cout
+          << "Error in fcidump_line! Orbital indices must be positive. Got: "
+          << p << " " << q << " " << r << " " << s << std::endl;
       throw std::runtime_error("Invalid Orb Idx");
     }
 
     return std::make_tuple(p, q, r, s, integral);
-    } catch (const std::exception& e) {
-      std::cout << "Error in fcidump_line! Invalid FCIDUMP line: ";
-      for(auto& t : tokens) std::cout << t << " ";
-      std::cout << std::endl;
-      throw e;
-    }
+  } catch(const std::exception& e) {
+    std::cout << "Error in fcidump_line! Invalid FCIDUMP line: ";
+    for(auto& t : tokens) std::cout << t << " ";
+    std::cout << std::endl;
+    throw e;
+  }
 }
 
 enum LineClassification { Core, OneBody, TwoBody };
