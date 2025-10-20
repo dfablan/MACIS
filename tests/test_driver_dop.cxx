@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.FCIDUMP_DO", fcidump_do_fname, std::string);
   if(fcidump_do_fname != "NONE") {
     macis::read_fcidump_1body(fcidump_do_fname, params.Td.data(), params.norb);
-  params.spin_dep = true;
+    params.spin_dep = true;
   }
 
   // Set up job
@@ -243,9 +243,11 @@ int main(int argc, char** argv) {
                             params.V_active.data(), params.n_active);
   if(params.spin_dep)
     macis::active_hamiltonian(
-        NumOrbital(params.norb), NumActive(params.n_active), NumInactive(params.n_inactive),
-        params.Td.data(), params.norb, params.V.data(), params.norb, params.Fd_inactive.data(), params.norb,
-        params.Td_active.data(), params.n_active, params.V_active.data(), params.n_active);
+        NumOrbital(params.norb), NumActive(params.n_active),
+        NumInactive(params.n_inactive), params.Td.data(), params.norb,
+        params.V.data(), params.norb, params.Fd_inactive.data(), params.norb,
+        params.Td_active.data(), params.n_active, params.V_active.data(),
+        params.n_active);
 
   console->debug("FINACTIVE_SUM = {:.12f}", vec_sum(params.F_inactive));
   console->debug("VACTIVE_SUM   = {:.12f}", vec_sum(params.V_active));
@@ -257,7 +259,8 @@ int main(int argc, char** argv) {
       params.F_inactive.data(), params.norb);
   if(params.spin_dep) {
     for(int ii = 0; ii < params.n_inactive; ii++)
-      params.E_inactive += params.Td[ii * (1 + params.n_inactive)] - params.T[ii * (1 + params.n_inactive)];
+      params.E_inactive += params.Td[ii * (1 + params.n_inactive)] -
+                           params.T[ii * (1 + params.n_inactive)];
   }
   console->info("E(inactive) = {:.12f}", params.E_inactive);
 
