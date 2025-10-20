@@ -16,16 +16,24 @@
 #include <regex>
 #include <string>
 
-std::vector<std::string> split(const std::string str,
-                               const std::string regex_str) {
-  std::regex regexz(regex_str);
-  std::vector<std::string> list(
-      std::sregex_token_iterator(str.begin(), str.end(), regexz, -1),
-      std::sregex_token_iterator());
-  std::vector<std::string> clean_list;
-  std::copy_if(list.begin(), list.end(), std::back_inserter(clean_list),
-               [](auto& s) { return s.size() > 0; });
-  return clean_list;
+// std::vector<std::string> split(const std::string str,
+//                                const std::string regex_str) {
+//   std::regex regexz(regex_str);
+//   std::vector<std::string> list(
+//       std::sregex_token_iterator(str.begin(), str.end(), regexz, -1),
+//       std::sregex_token_iterator());
+//   std::vector<std::string> clean_list;
+//   std::copy_if(list.begin(), list.end(), std::back_inserter(clean_list),
+//                [](auto& s) { return s.size() > 0; });
+//   return clean_list;
+// }
+
+static std::vector<std::string> tokenize_ws(const std::string &line) {
+  std::istringstream iss(line);
+  std::vector<std::string> toks;
+  std::string t;
+  while (iss >> t) toks.push_back(t);
+  return toks;
 }
 
 bool is_float(const std::string& str) {
@@ -42,24 +50,43 @@ auto fcidump_line(const std::vector<std::string>& tokens) {
   int32_t p, q, r, s;
   double integral;
 
-  if(idx_first) {
+  try{
     p = std::stoi(tokens[0]);
     q = std::stoi(tokens[1]);
     r = std::stoi(tokens[2]);
     s = std::stoi(tokens[3]);
-    integral = std::stod(tokens[4]);
-  } else {
+    integral = std::stod(tokens[4]);  
+    
+    if(p < 0 or q < 0 or r < 0 or s < 0){
+    std::cout << "Error in fcidump_line! Orbital indices must be positive. Got: "
+              << p << " " << q << " " << r << " " << s << std::endl;
+    throw std::runtime_error("Invalid Orb Idx");
+    }
+    return std::make_tuple(p, q, r, s, integral);
+  } catch (const std::exception& e) {
+    // fall through to try the other ordering
+  }
+
+  try{
     p = std::stoi(tokens[1]);
     q = std::stoi(tokens[2]);
     r = std::stoi(tokens[3]);
     s = std::stoi(tokens[4]);
     integral = std::stod(tokens[0]);
-  }
 
-  if(p < 0 or q < 0 or r < 0 or s < 0)
-    throw std::runtime_error("Invalid Orb Idx");
+    if(p < 0 or q < 0 or r < 0 or s < 0){
+      std::cout << "Error in fcidump_line! Orbital indices must be positive. Got: "
+                << p << " " << q << " " << r << " " << s << std::endl;
+      throw std::runtime_error("Invalid Orb Idx");
+    }
 
-  return std::make_tuple(p, q, r, s, integral);
+    return std::make_tuple(p, q, r, s, integral);
+    } catch (const std::exception& e) {
+      std::cout << "Error in fcidump_line! Invalid FCIDUMP line: ";
+      for(auto& t : tokens) std::cout << t << " ";
+      std::cout << std::endl;
+      throw e;
+    }
 }
 
 enum LineClassification { Core, OneBody, TwoBody };
@@ -80,7 +107,7 @@ uint32_t read_fcidump_norb(std::string fname) {
   std::string line;
   int32_t max_idx = 0;
   while(std::getline(file, line)) {
-    auto tokens = split(line, " ");
+    auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
     auto [p, q, r, s, integral] = fcidump_line(tokens);
@@ -95,7 +122,7 @@ double read_fcidump_core(std::string fname) {
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
-    auto tokens = split(line, " ");
+    auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
     auto [p, q, r, s, integral] = fcidump_line(tokens);
@@ -117,7 +144,7 @@ void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
-    auto tokens = split(line, " ");
+    auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
     auto [p, q, r, s, integral] = fcidump_line(tokens);
@@ -150,7 +177,7 @@ void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
-    auto tokens = split(line, " ");
+    auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
     auto [p, q, r, s, integral] = fcidump_line(tokens);
@@ -188,7 +215,7 @@ bool is_2body_diagonal(std::string fname) {
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
-    auto tokens = split(line, " ");
+    auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
     auto [p, q, r, s, integral] = fcidump_line(tokens);

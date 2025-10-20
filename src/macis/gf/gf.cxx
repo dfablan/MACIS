@@ -139,4 +139,12 @@ void write_GF(const std::vector<std::vector<std::complex<double> > > &GF,
   }
 }
 
+// Explicit template instantiation for commonly used template parameter
+template void RunGFCalc<64>(std::vector<std::vector<std::complex<double>>> &GF,
+               const Eigen::VectorXd &wfn0, HamiltonianGenerator<64> &Hgen,
+               const std::vector<std::bitset<64>> &base_dets,
+               const double energ, const bool is_part,
+               const std::vector<std::complex<double>> &ws,
+               const std::vector<double> &occs, const GFSettings &settings);
+
 }  // namespace macis

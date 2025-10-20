@@ -115,7 +115,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm,
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
-  SetJustSingles(false);
+  // SetJustSingles(false);
 }
 
 template <size_t N>
@@ -135,7 +135,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   std::vector<double> S_imp(nimps);
   for(auto i = 0; i < nimps; ++i)
     for(auto j = 0; j < nimps; ++j)
-      nat_orbs_imp[j + i * nimps] = ordm[j + i * norb_];
+      nat_orbs_imp[i + j * nimps] = ordm[i + j * norb_];
   lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nimps, nimps,
                 nat_orbs_imp.data(), nimps, S_imp.data(), NULL, 1, NULL, 1);
 
@@ -143,17 +143,17 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   std::vector<double> S_bath(nbaths);
   for(auto i = 0; i < nbaths; ++i)
     for(auto j = 0; j < nbaths; ++j)
-      nat_orbs_bath[j + i * nbaths] = ordm[(j + nimps) + (i + nimps) * norb_];
+      nat_orbs_bath[i + j * nbaths] = ordm[(i + nimps) + (j + nimps) * norb_];
   lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nbaths, nbaths,
                 nat_orbs_bath.data(), nbaths, S_bath.data(), NULL, 1, NULL, 1);
 
   for(auto i = 0; i < nimps; ++i)
     for(auto j = 0; j < nimps; ++j)
-      natural_orbitals[j + i * norb_] = nat_orbs_imp[j + i * nimps];
+      natural_orbitals[i + j * norb_] = nat_orbs_imp[i + j * nimps];
   for(auto i = 0; i < nbaths; ++i)
     for(auto j = 0; j < nbaths; ++j)
-      natural_orbitals[(j + nimps) + (i + nimps) * norb_] =
-          nat_orbs_bath[j + i * nbaths];
+      natural_orbitals[(i + nimps) + (j + nimps) * norb_] =
+          nat_orbs_bath[i + j * nbaths];
 
   std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
       tmp2(norb3_ * norb_, 0.0);
@@ -179,6 +179,83 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   // Td <- N**H * Td * N
   auto* Td_pq_ptr = Td_pq_.data_handle();
 
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+             norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
+             norb_, 0., tmp.data(), norb_);
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+             norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
+             norb_, 0., Td_pq_ptr, norb_);
+
+  // Transorm V
+
+  // 1st Quarter
+  // (pj|kl) = N(i,p) (ij|kl)
+  // W(p,jkl) = N(i,p) * V(i,jkl)
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+             norb3_, norb_, 1., natural_orbitals.data(), norb_,
+             V_pqrs_.data_handle(), norb_, 0., tmp1.data(), norb_);
+
+  // 2nd Quarter
+  // (pq|kl) = N(j,q) (pj|kl)
+  // W_kl(p,q) = V_kl(p,j) N(j,q)
+  for(auto kl = 0; kl < norb2_; ++kl) {
+    auto* V_kl = tmp1.data() + kl * norb2_;
+    auto* W_kl = tmp2.data() + kl * norb2_;
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., V_kl, norb_, natural_orbitals.data(),
+               norb_, 0., W_kl, norb_);
+  }
+
+  // 3rd Quarter
+  // (pq|rl) = N(k,r) (pq|kl)
+  // W_l(pq,r) = V_l(pq,k) N(k,r)
+  for(auto l = 0; l < norb_; ++l) {
+    auto* V_l = tmp2.data() + l * norb3_;
+    auto* W_l = tmp1.data() + l * norb3_;
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb2_, norb_, norb_, 1., V_l, norb2_, natural_orbitals.data(),
+               norb_, 0., W_l, norb2_);
+  }
+
+  // 4th Quarter
+  // (pq|rs) = N(l,s) (pq|rl)
+  // W(pqr,s) = V(pqr,l) N(l,s)
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+             norb3_, norb_, norb_, 1., tmp1.data(), norb3_,
+             natural_orbitals.data(), norb_, 0., V_pqrs_.data_handle(), norb3_);
+
+  // Regenerate intermediates
+  generate_integral_intermediates(V_pqrs_);
+}
+
+template <size_t N>
+void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
+    double* rot_mat) {
+  // assert nimp>0
+
+  assert(rot_mat != nullptr);
+
+  std::vector<double> natural_orbitals(norb2_, 0.);
+
+  // save rotation matrix
+  std::copy(rot_mat, rot_mat + norb2_, natural_orbitals.data());
+
+  std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
+      tmp2(norb3_ * norb_, 0.0);
+
+  // Transform Tu
+  // Tu <- N**H * Tu * N
+  auto* Tu_pq_ptr = Tu_pq_.data_handle();
+  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+             norb_, norb_, norb_, 1., Tu_pq_ptr, norb_, natural_orbitals.data(),
+             norb_, 0., tmp.data(), norb_);
+  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+             norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
+             norb_, 0., Tu_pq_ptr, norb_);
+
+  // Transform Td
+  // Td <- N**H * Td * N
+  auto* Td_pq_ptr = Td_pq_.data_handle();
   blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
              norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
              norb_, 0., tmp.data(), norb_);

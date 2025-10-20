@@ -17,11 +17,15 @@
 
 namespace macis {
 
+template <size_t N>
+double Mu_vs_n(double x, void * params);
+
 /**
  * @brief Cost function to find the root for. The solution will optimize the
  * chemical potential mu to fix the number of particles.
  */
 
+template <size_t N>
 double Mu_Cost_f(double x, void *params);
 
 /**
@@ -29,6 +33,7 @@ double Mu_Cost_f(double x, void *params);
  * chemical potential mu to fix the number of particles.
  */
 
+template <size_t N>
 double Mu_Cost_df(double x, void *params);
 
 // /**
@@ -37,6 +42,7 @@ double Mu_Cost_df(double x, void *params);
 // * the number of particles.
 // */
 
+template <size_t N>
 void Mu_Cost_fdf(double x, void *params, double *f, double *df);
 
 // /**
@@ -120,8 +126,9 @@ void print_state_fix_mu_noder(std::ostream &stream, size_t iter,
 //  * @returns double: Optimal chemical potential
 //  *
 //  */
+template <size_t N>
 double Fix_Mu_der(const std::string &method_name, double &init_mu,
-                  impurity_params *params);
+                  impurity_params<N> *params);
 
 // /**
 //  * @brief Actual optimization routine for the chemical potential. Calls GSL's
@@ -148,8 +155,10 @@ double Fix_Mu_der(const std::string &method_name, double &init_mu,
 //  *
 //  * @returns double: Optimal chemical potential
 //  *
+//  */
+template <size_t N>
 double Fix_Mu_noder(const std::string &method_name, double &init_mu,
-                    impurity_params *params);
+                    impurity_params<N> *params);
 
 }  // namespace macis
    // #endif // MACIS_DOPING_FIX_MU_HPP

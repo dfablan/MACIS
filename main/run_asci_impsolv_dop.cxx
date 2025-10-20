@@ -7,13 +7,13 @@
 #include <iomanip>
 #include <iostream>
 #include <macis/comp_observables.hpp>
-#include <macis/gf/gf.hpp>
-#include <macis/util/general_io.hpp>
+#include <macis/doping/fix_mu.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 
-#include "ini_input.hpp"
+#include "../tests/ini_input.hpp"
 
+// enum class CIExpansion { CAS, ASCI, ASCI_cheap };
 constexpr size_t nwfn_bits = 64;
 
 std::map<std::string, CIExpansion> ci_exp_map = {
@@ -34,9 +34,8 @@ int main(int argc, char** argv) {
   spdlog::cfg::load_env_levels();
   spdlog::set_pattern("[%n] %v");
 
-  MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
-
 #ifdef MACIS_ENABLE_MPI
+  MACIS_MPI_CODE(MPI_Init(&argc, &argv);)
   auto world_rank = macis::comm_rank(MPI_COMM_WORLD);
   auto world_size = macis::comm_size(MPI_COMM_WORLD);
 #else
@@ -45,8 +44,8 @@ int main(int argc, char** argv) {
 #endif
 
   // Create Logger
-  auto console = world_rank ? spdlog::null_logger_mt("test_driver")
-                            : spdlog::stdout_color_mt("test_driver");
+  auto console = world_rank ? spdlog::null_logger_mt("test_driver_dop")
+                            : spdlog::stdout_color_mt("test_driver_dop");
 
   // Read Input Options
   std::vector<std::string> opts(argc);
@@ -76,6 +75,7 @@ int main(int argc, char** argv) {
   params.E_core = macis::read_fcidump_core(fcidump_fname);
   macis::read_fcidump_1body(fcidump_fname, params.T.data(), params.norb);
   macis::read_fcidump_2body(fcidump_fname, params.V.data(), params.norb);
+  params.just_singles = macis::is_2body_diagonal(fcidump_fname);
 
 #define OPT_KEYWORD(STR, RES, DTYPE) \
   if(input.containsData(STR)) {      \
@@ -100,9 +100,6 @@ int main(int argc, char** argv) {
   } catch(...) {
     throw std::runtime_error("CI Expansion Not Recognized");
   }
-
-  if(spin_dep && ci_exp == CIExpansion::ASCI)
-    throw std::runtime_error("Spin-dependent ASCI not implemented");
 
   // Set up active space
   params.n_inactive = 0;
@@ -171,7 +168,6 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.GROW_FACTOR", params.asci_settings.grow_factor, int);
   OPT_KEYWORD("ASCI.MAX_REFINE_ITER", params.asci_settings.max_refine_iter,
               size_t);
-
   OPT_KEYWORD("ASCI.REFINE_ETOL", params.asci_settings.refine_energy_tol,
               double);
   OPT_KEYWORD("ASCI.GROW_WITH_ROT", params.asci_settings.grow_with_rot, bool);
@@ -209,7 +205,7 @@ int main(int argc, char** argv) {
 
   // Setup printing
   bool print_davidson = true, print_ci = true, print_mcscf = true,
-       print_diis = true, print_asci_search = false, print_determinants = true;
+       print_diis = true, print_asci_search = true, print_determinants = true;
   double determinants_threshold = 1e-2;
   OPT_KEYWORD("PRINT.DAVIDSON", print_davidson, bool);
   OPT_KEYWORD("PRINT.CI", print_ci, bool);
@@ -234,15 +230,19 @@ int main(int argc, char** argv) {
   params.T_active.resize(params.n_active * params.n_active);
   params.Td_active.resize(params.n_active * params.n_active);
   params.V_active.resize(params.n_active * params.n_active * params.n_active *
-                         params.n_active);
-
-  // Compute active-space Hamiltonian and inactive Fock matrix
+                        params.n_active);
   params.F_inactive.resize(norb2);
   params.Fd_inactive.resize(norb2);
+
+
+  // Compute active-space Hamiltonian and inactive Fock matrix
   macis::active_hamiltonian(NumOrbital(params.norb), NumActive(params.n_active),
-                            NumInactive(params.n_inactive), params.T.data(), params.norb, params.V.data(),
-                            params.norb, params.F_inactive.data(), params.norb, params.T_active.data(),
-                            params.n_active, params.V_active.data(), params.n_active);
+                            NumInactive(params.n_inactive), params.T.data(),
+                            params.norb, params.V.data(), params.norb,
+                            params.F_inactive.data(), params.norb,
+                            params.T_active.data(), params.n_active,
+                            params.V_active.data(), params.n_active);
+
   if(params.spin_dep)
     macis::active_hamiltonian(
         NumOrbital(params.norb), NumActive(params.n_active), NumInactive(params.n_inactive),
@@ -254,46 +254,121 @@ int main(int argc, char** argv) {
   console->debug("TACTIVE_SUM   = {:.12f}", vec_sum(params.T_active));
 
   // Compute Inactive energy
-   params.E_inactive = macis::inactive_energy(
-        NumInactive(params.n_inactive), params.T.data(), params.norb,
-        params.F_inactive.data(), params.norb);
-
+  params.E_inactive = macis::inactive_energy(
+      NumInactive(params.n_inactive), params.T.data(), params.norb,
+      params.F_inactive.data(), params.norb);
   if(params.spin_dep) {
     for(int ii = 0; ii < params.n_inactive; ii++)
       params.E_inactive += params.Td[ii * (1 + params.n_inactive)] - params.T[ii * (1 + params.n_inactive)];
   }
   console->info("E(inactive) = {:.12f}", params.E_inactive);
 
+  bool doping = false;
+  OPT_KEYWORD("CI.DOPING", doping, bool);
+
+  OPT_KEYWORD("DOP.NELECTRONS", params.nel_target, double);
+
+  if(doping && params.nel_target / params.n_imp == 1)
+    std::cout
+        << "WARNING: Doping routines were called but half-filling was asked \n";
+  std::cout << "Doping =" << doping << std::endl;
+
   double E0 = 0.0;
 
-  {
+  if(doping) {
+    double init_mu = -9.5;
+    params.dstep = 2.E-2;
+    params.abs_tol = 1.E-4;
+    params.maxiter = 100;
+    params.print_doping = true;
+    params.init_shift = 2.0;
+    bool deriv = false;
+    std::string method_name = "";
+
+    OPT_KEYWORD("DOP.INIT_MU", init_mu, double);
+    OPT_KEYWORD("DOP.DERIV", deriv, bool);
+    OPT_KEYWORD("DOP.ABS_TOL", params.abs_tol, double);
+    OPT_KEYWORD("DOP.MAXITER", params.maxiter, size_t);
+    OPT_KEYWORD("DOP.PRINT_DOPING", params.print_doping, bool);
+    OPT_KEYWORD("DOP.INIT_SHIFT", params.init_shift, double);
+    OPT_KEYWORD("DOP.DSTEP", params.dstep, double);
+    OPT_KEYWORD("DOP.METHOD", method_name, std::string);
+    params.delta_CFS = 0.0;
+    OPT_KEYWORD("DOP.DELTA_CFS", params.delta_CFS, double);
+    params.cheap_mode = false;
+    OPT_KEYWORD("DOP.CHEAP_MODE", params.cheap_mode, bool);
+
+    std::cout << "Electron filling parameters \n";
+    std::cout << std::setprecision(3) << params.nel_target
+              << " electrons per orbital \n";
+    std::cout << std::setprecision(2) << params.nel_target * params.n_imp
+              << " electrons in " << std::setprecision(1) << params.n_imp
+              << " orbitals \n";
+
+    double mu_fixed;
+
+    if(deriv){
+      std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
+      mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
+    }
+    else{
+      std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
+      mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+    }
+
+    std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed
+              << std::endl;
+
+    // std::cout << "The current occupation values are: \n";
+    // for(int i = 0; i < n_active; i++) {
+    //   std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
+    // }
+
+    // std::cout << "The current GS energy is: \n";
+    // std::cout << "E = " << E << std::endl;
+
+    std::cout << "\nOrbital Occupations (per spin) in the original basis: "
+              << std::endl;
+    std::cout << "Occs: ";
+    for(const auto oc : params.occs) std::cout << oc << ", ";
+    std::cout << std::endl;
+
+    double curr_nel =
+        2 * std::accumulate(params.occs.begin(),
+                            params.occs.begin() + params.n_imp, 0.0);
+    std::cout << "Total number of electrons = " << curr_nel << " in "
+              << params.n_imp << " impurity orbitals\n"
+              << std::endl;
+
+    // Write new FCIDUMP file for the impurity orbitals
+    std::string fcilocal_out_fname = "locFCIDUMP.dat";
+    macis::write_fcidump(fcilocal_out_fname, params.n_imp, params.T.data(),
+                         params.norb, params.V.data(), params.norb,
+                         params.E_core);
+
+    if(params.ci_exp == CIExpansion::ASCI && asci_wfn_out_fname.size()) {
+      console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
+      macis::write_wavefunction(asci_wfn_out_fname, params.n_active,
+                                params.dets, params.C);
+    }
+
+    E0 = params.E;
+  }
+
+  else {
+    std::cout << "Doping routines have not been called\n";
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
-
-    if(params.ci_exp == CIExpansion::CAS)
+    if(params.ci_exp == CIExpansion::CAS) {
       E0 = macis::SolveImpurityED<nwfn_bits>(params);
-    else {
-      if(params.asci_settings.grow_with_rot_legacy)
-        E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
-      else
-        E0 = macis::SolveImpurityASCI<nwfn_bits>(params);
+    } else if(params.ci_exp == CIExpansion::ASCI_cheap) {
+      E0 = macis::SolveImpurityCheapASCI<nwfn_bits>(params);
+    } else if(params.ci_exp == CIExpansion::ASCI) {
+      E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
         macis::write_wavefunction(asci_wfn_out_fname, params.n_active,
                                   params.dets, params.C);
-      }
-    }
-
-    if(print_determinants) {
-      auto det_logger = world_rank ? spdlog::null_logger_mt("determinants")
-                                   : spdlog::stdout_color_mt("determinants");
-      det_logger->info("Print leading determinants > {:.12f}",
-                       determinants_threshold);
-      for(size_t i = 0; i < params.dets.size(); ++i) {
-        if(std::abs(params.C[i]) > determinants_threshold) {
-          det_logger->info("{:>16.12f}   {}", params.C[i],
-                           macis::to_canonical_string(params.dets[i]));
-        }
       }
     }
   }
@@ -313,13 +388,6 @@ int main(int argc, char** argv) {
             << params.n_imp << " impurity orbitals\n"
             << std::endl;
 
-  if(compute_db_occs and params.asci_settings.nrots == 0) {
-    double db_occs = 0;
-    db_occs = macis::Comp_db_occs(params);
-    std::cout << "  * Double occupancy (test function) = " << db_occs
-              << std::endl;
-  }
-
   if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables<nwfn_bits> obs(params);
@@ -331,7 +399,6 @@ int main(int argc, char** argv) {
       std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;
       std::vector<double> sz_sz(nsites * nsites, 0.0);
       sz_sz = obs.compute_sz_sz_correlations();
-      // print to file
       macis::util::write_matrix(sz_sz.data(), nsites, nsites, "sz_sz.dat",
                                 true);
     }
@@ -347,7 +414,6 @@ int main(int argc, char** argv) {
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
   if(testGF) {
-    // Copy integrals into active subsets
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -360,12 +426,17 @@ int main(int argc, char** argv) {
         params.n_active);
 
     // Generate the Hamiltonian Generator
-    macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
+    macis::SDBuildHamiltonianGenerator <nwfn_bits> ham_gen(
         macis::matrix_span<double>(params.T_active.data(), params.n_active,
                                    params.n_active),
         macis::rank4_span<double>(params.V_active.data(), params.n_active,
                                   params.n_active, params.n_active,
                                   params.n_active));
+
+    ham_gen.SetJustSingles(params.just_singles);
+    ham_gen.SetNimp(params.n_imp);
+
+    ham_gen.rotate_hamiltonian_rotmat_imp_bath(params.orb_rot.data());
 
     // MCSCF Settings
     macis::GFSettings gf_settings;
@@ -390,62 +461,14 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.NWS", gf_settings.nws, size_t);
     OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
     OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
-    bool imag_freq = true;
-    OPT_KEYWORD("GF.IMAG_FREQ", imag_freq, bool);
-    std::vector<std::complex<double>> ws(gf_settings.nws,
-                                         std::complex<double>(0., 0.));
-
-    for(int i = 0; i < gf_settings.nws; i++)
-      if(imag_freq) {
-        //  MATSUBARA GRID
-        ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
-      } else {
-        std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
-        std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
-        ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
-      }
-
-    // GF vector
-    std::vector<std::vector<std::complex<double>>> GF(
-        gf_settings.nws,
-        std::vector<std::complex<double>>(params.n_active * params.n_active,
-                                          std::complex<double>(0., 0.)));
-    std::vector<std::vector<std::complex<double>>> GF_tmp(
-        gf_settings.nws,
+    OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
+  
+    std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,
                                           std::complex<double>(0., 0.)));
 
-    // Occupation numbers
-    //    for(int i = 0; i < n_active; i++) {
-    //      occs[i] = occs[i] / 2;
-    //      std::cout << "occs[" << i << "] = " << std::setprecision(10) <<
-    //      occs[i]
-    //                << std::endl;
-    //}
+    GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
-    // GS vector
-    std::vector<int> todelete_p;
-    std::vector<int> todelete_h;
-    Eigen::VectorXd psi0 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
-        params.C.data(), params.C.size());
-
-    // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true,
-                                ws, params.occs, gf_settings);
-
-    GF = GF_tmp;
-
-    // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
-                                ws, params.occs, gf_settings);
-
-    if(todelete_h != todelete_p)
-      throw std::runtime_error("Error: todelete_h != todelete_p");
-
-    GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
-
-    if(gf_settings.writeGF_singlef)
-      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
   }
 
   return 0;
