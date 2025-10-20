@@ -20,6 +20,7 @@ add_library( macis
   gf/gf.cxx
   model/hubbard.cxx
   impurity_solver.cpp
+  comp_observables.cpp
   doping/fix_mu.cpp
 )
 
