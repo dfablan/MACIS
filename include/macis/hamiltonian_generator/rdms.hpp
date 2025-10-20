@@ -120,7 +120,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm,
 
 template <size_t N>
 void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
-    const double* ordm, const size_t nimps, double* rot_mat) {
+    const double* ordm, const size_t nimps, double* rot_mat, bool spin_dep) {
   // assert nimp>0
   if(nimps == 0)
     throw std::runtime_error(
@@ -162,7 +162,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   if(rot_mat != nullptr)
     std::copy(natural_orbitals.data(), natural_orbitals.data() + norb2_,
               rot_mat);
-
+              
   // Transform Tu
   // Tu <- N**H * Tu * N
   auto* Tu_pq_ptr = Tu_pq_.data_handle();
@@ -175,16 +175,19 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
              norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
              norb_, 0., Tu_pq_ptr, norb_);
 
-  // Transform Td
-  // Td <- N**H * Td * N
-  auto* Td_pq_ptr = Td_pq_.data_handle();
+  if (spin_dep) {
+    std::cout << " Spin-dependent is set to TRUE. Performing rotation on Td" << std::endl;
+    // Transform Td
+    // Td <- N**H * Td * N
+    auto* Td_pq_ptr = Td_pq_.data_handle();
 
-  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-             norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
-             norb_, 0., tmp.data(), norb_);
-  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
-             norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
-             norb_, 0., Td_pq_ptr, norb_);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
+               norb_, 0., tmp.data(), norb_);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+               norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
+               norb_, 0., Td_pq_ptr, norb_);
+    }
 
   // Transorm V
 
@@ -231,7 +234,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 
 template <size_t N>
 void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
-    double* rot_mat) {
+    double* rot_mat, bool spin_dep) {
   // assert nimp>0
 
   assert(rot_mat != nullptr);
@@ -254,15 +257,17 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
              norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
              norb_, 0., Tu_pq_ptr, norb_);
 
-  // Transform Td
-  // Td <- N**H * Td * N
-  auto* Td_pq_ptr = Td_pq_.data_handle();
-  blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-             norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
-             norb_, 0., tmp.data(), norb_);
-  blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
-             norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
-             norb_, 0., Td_pq_ptr, norb_);
+  if (spin_dep) {
+    // Transform Td
+    // Td <- N**H * Td * N
+    auto* Td_pq_ptr = Td_pq_.data_handle();
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
+               norb_, 0., tmp.data(), norb_);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
+               norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
+               norb_, 0., Td_pq_ptr, norb_);
+    }
 
   // Transorm V
 

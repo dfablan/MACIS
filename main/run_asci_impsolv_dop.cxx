@@ -433,10 +433,15 @@ int main(int argc, char** argv) {
                                   params.n_active, params.n_active,
                                   params.n_active));
 
+    // Set spin-down one-body matrix if spin-dependent
+    if(params.spin_dep) {
+      ham_gen.ReadTdo(macis::matrix_span<double>(params.Td_active.data(), params.n_active, params.n_active));
+    }
+
     ham_gen.SetJustSingles(params.just_singles);
     ham_gen.SetNimp(params.n_imp);
 
-    ham_gen.rotate_hamiltonian_rotmat_imp_bath(params.orb_rot.data());
+    ham_gen.rotate_hamiltonian_rotmat_imp_bath(params.orb_rot.data(), params.spin_dep);
 
     // MCSCF Settings
     macis::GFSettings gf_settings;

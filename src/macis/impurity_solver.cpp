@@ -122,6 +122,12 @@ double SolveImpurityASCI (impurity_params<N>& p){
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+    
+    // Set spin-down one-body matrix if spin-dependent
+    if(p.spin_dep) {
+      ham_gen.ReadTdo(macis::matrix_span<double>(Td_active.data(), n_active, n_active));
+    }
+    
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
 
@@ -240,6 +246,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     for (int i = 0; i < n_active; i++) orb_rot[i + i * n_active] = 1.0;
 
     std::vector<double>& T_active = p.T_active;
+    std::vector<double>& Td_active = p.Td_active;
     std::vector<double>& V_active = p.V_active;
     std::vector<double>& F_inactive = p.F_inactive;
     double& E_inactive = p.E_inactive;
@@ -258,6 +265,11 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+
+    // Set spin-down one-body matrix if spin-dependent
+    if(p.spin_dep) {
+      ham_gen.ReadTdo(macis::matrix_span<double>(Td_active.data(), n_active, n_active));
+    }
     
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
@@ -335,7 +347,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
             //Rotate to new orbitals
-            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
+            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep );
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                       n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
@@ -478,6 +490,7 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
     occs.assign(n_active, 0);
 
     std::vector<double>& T_active = p.T_active;
+    std::vector<double>& Td_active = p.Td_active;
     std::vector<double>& V_active = p.V_active;
     std::vector<double>& F_inactive = p.F_inactive;
     double& E_inactive = p.E_inactive;
@@ -495,6 +508,12 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
     generator_t ham_gen(
        macis::matrix_span<double>(T_active.data(), n_active, n_active),
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
+    
+    // Set spin-down one-body matrix if spin-dependent
+    if(p.spin_dep) {
+      ham_gen.ReadTdo(macis::matrix_span<double>(Td_active.data(), n_active, n_active));
+    }
+    
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
 
