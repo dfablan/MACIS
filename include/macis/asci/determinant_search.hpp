@@ -130,13 +130,13 @@ asci_contrib_container<wfn_t<N>> asci_contributions_standard(
             return std::abs(x.rv) > asci_settings.rv_prune_tol;
           });
       asci_pairs.erase(it, asci_pairs.end());
-      logger->info("  * Pruning at DET = {} NSZ = {}", i, asci_pairs.size());
+      // logger->info("  * Pruning at DET = {} NSZ = {}", i, asci_pairs.size());
 
       // Extra Pruning if not sufficient
       if(asci_pairs.size() > asci_settings.pair_size_max) {
-        logger->info("    * Removing Duplicates");
+        // logger->info("    * Removing Duplicates");
         sort_and_accumulate_asci_pairs(asci_pairs);
-        logger->info("    * NSZ = {}", asci_pairs.size());
+        // logger->info("    * NSZ = {}", asci_pairs.size());
       }
 
     }  // Pruning
@@ -452,7 +452,8 @@ std::vector<wfn_t<N>> asci_search(
   // Expand Search Space with Connected ASCI Contributions
   auto pairs_st = clock_type::now();
   asci_contrib_container<wfn_t<N>> asci_pairs;
-  if(world_size == 1)
+  // if(world_size == 1)
+  if(world_size == 1 || true)
     asci_pairs = asci_contributions_standard(
         asci_settings, cdets_begin, cdets_end, E_ASCI, C, norb, Tu_pq, Td_pq,
         G_red, V_red, G_pqrs, V_pqrs, ham_gen);

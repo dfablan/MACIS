@@ -49,8 +49,6 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   auto grow_st = hrt_t::now();
 
   while(wfn.size() < asci_settings.ntdets_max) {
-    std::cout << "=====Starting ASCI Growth Iteration!!!!===== " << iter
-              << "\n";  // DEBUG!!!!!
     size_t ndets_new =
         std::min(std::max(asci_settings.ntdets_min,
                           wfn.size() * asci_settings.grow_factor),
@@ -71,9 +69,6 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
     if(asci_settings.grow_with_rot and
        wfn.size() >= asci_settings.rot_size_start) {
       auto grow_rot_st = hrt_t::now();
-
-      std::cout
-          << "Performing Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
 
       // Only do rotation on root rank
       if(!world_rank) {
@@ -169,16 +164,6 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       auto grow_rot_en = hrt_t::now();
       logger->trace("  * GROW_ROT_DUR = {:.2e} ms",
                     dur_t(grow_rot_en - grow_rot_st).count());
-    } else {
-      std::cout
-          << "Skipping Natural Orbital Rotation of Integrals!!!! \n";  // DEBUG!!!!!
-      std::cout << "Current WFN SIZE = " << wfn.size() << "\n";  // DEBUG!!!!!
-      std::cout << "Requested ROT SIZE START = " << asci_settings.rot_size_start
-                << "\n";  // DEBUG!!!!!
-      std::cout << "GROW_WITH_ROT = " << asci_settings.grow_with_rot
-                << "\n";  // DEBUG!!!!!
-      std::cout << "CONDITION TO ENTER WFN.SIZE >= ROT_SIZE_START and "
-                   "GROW_WITH_ROT==TRUE \n";  // DEBUG!!!!!
     }
 
     E0 = E;
@@ -186,7 +171,8 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
   auto grow_en = hrt_t::now();
   dur_t grow_dur = grow_en - grow_st;
-  logger->info("* GROW_DUR = {:.2e} ms", grow_dur.count());
+  logger->info("* GROW_DUR = {:.2e} seconds",
+              grow_dur.count() / 1000.0);
 
   return std::make_tuple(E0, wfn, X);
 }

@@ -130,6 +130,7 @@ double SolveImpurityASCI (impurity_params<N>& p){
     
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
     if(asci_wfn_fname.size()) 
     {
@@ -216,6 +217,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     using clock_type = std::chrono::high_resolution_clock;
     using duration_type = std::chrono::duration<double, std::milli>;
 
+    auto start_ASCI_clock = clock_type::now();
+
     bool& compute_asci_E0 = p.compute_asci_E0;
     double& asci_E0 = p.asci_E0;
     std::string& asci_wfn_fname = p.asci_wfn_fname;
@@ -273,6 +276,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
@@ -295,6 +299,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       for (size_t iorb = 0; iorb <= asci_settings.nrots; iorb++)
       {
 
+          auto orbrot_st = clock_type::now();
+          
           std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
 
           //Starting with HF
@@ -332,7 +338,6 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
           if (iorb == asci_settings.nrots) break;
           else
           {
-            auto orbrot_st = clock_type::now();
             active_ordm.assign( n_active * n_active, 0. );
             active_trdm.assign( n_active * n_active * n_active * n_active, 0. );
             
@@ -348,6 +353,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             comp.assign( n_active * n_active, 0. );
             //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep );
+            asci_settings.just_singles = ham_gen.just_singles;
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                       n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
@@ -412,10 +418,14 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
                       //  mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol, C_local,
                       //  MACIS_MPI_CODE( MPI_COMM_WORLD, ) true, mcscf_settings.ci_nstates);
             
-            auto orbrot_en = clock_type::now();
-            std::cout << "\n  * Rotating to natural orbitals: " << 
-                     duration_type(orbrot_en - orbrot_st).count() << std::endl;
           }
+
+        auto orbrot_en = clock_type::now();
+        duration_type total_rot_time = orbrot_en - orbrot_st;
+        int minutes = static_cast<int>(total_rot_time.count() / 60000.0);
+        double seconds = (total_rot_time.count() / 1000.0) - (minutes * 60.0);
+        std::cout << "\n  Total time for ASCI Macro Iteration " << iorb+1 << ": "
+                  << minutes << " minutes " << seconds << " seconds" << std::endl;
         }
       }
 
@@ -461,6 +471,13 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         ofile_rot << std::endl;
       }
     }
+
+    auto end_ASCI_clock = clock_type::now();
+    duration_type total_ASCI_time = end_ASCI_clock - start_ASCI_clock;
+    int minutes = static_cast<int>(total_ASCI_time.count() / 60000.0);
+    double seconds = (total_ASCI_time.count() / 1000.0) - (minutes * 60.0);
+    std::cout << "\nTotal time to complete ASCI GS calculation: \n"
+              << minutes << " minutes " << seconds << " seconds" << std::endl;
           
     return E0;
 }
@@ -516,6 +533,7 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
     
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
     E0 =
       selected_ci_diag(dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,

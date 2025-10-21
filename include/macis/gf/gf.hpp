@@ -605,13 +605,12 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
       MPI_COMM_WORLD, gf_dets.begin(), gf_dets.end(), Hgen, h_el_tol);
   loop2 = time(NULL);
   loop2C = Clock::now();
-  std::cout << std::setprecision(3) << "Building "
-            << (is_part ? "*PARTICLE*" : "*HOLE*") << " Hamiltonian: "
-            << double(std::chrono::duration_cast<std::chrono::milliseconds>(
-                          loop2C - loop1C)
-                          .count()) /
-                   1000
-            << std::endl;
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop2C - loop1C).count();
+  int minutes = duration / 60000;
+  double seconds = (duration % 60000) / 1000.0;
+  std::cout << std::setprecision(3) << "Time to build "
+            << (is_part ? "particle" : "hole") << " Hamiltonian: "
+            << minutes << "m " << seconds << "s" << std::endl;
   // NOW, PERFORM THE BAND LANCZOS ON THE TRUNCATED SPACE
   // WE ALREADY BUILT THE HAMILTONIANS
 
@@ -677,12 +676,12 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 
   time_t GF_loop2 = time(NULL);
   auto GF_loop2C = Clock::now();
-  std::cout << std::setprecision(3) << "Computing GF with "
-            << (use_bandLan ? " *Band Lanczos*" : "*Regular Lanczos*")
-            << double(std::chrono::duration_cast<std::chrono::milliseconds>(
-                          GF_loop2C - GF_loop1C)
-                          .count()) /
-                   1000
+  duration = std::chrono::duration_cast<std::chrono::milliseconds>(GF_loop2C - GF_loop1C).count();
+  minutes = duration / 60000;
+  seconds = (duration % 60000) / 1000.0;
+  std::cout << std::setprecision(3) << "The full Green Function calculation"
+            << " took " << minutes << " minutes and " << seconds << " seconds."
+            << " and used " << (use_bandLan ? "Band Lanczos" : "Regular Lanczos")
             << std::endl;
 
   if(writeGF) write_GF(GF, ws, GF_orbs_comp, todelete, is_part);
