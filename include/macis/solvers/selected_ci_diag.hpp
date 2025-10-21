@@ -202,12 +202,12 @@ double selected_ci_diag(wavefunction_iterator_t<N> dets_begin,
 
   {
     auto hdur_ms = duration_type(H_en - H_st).count();
-    if (hdur_ms > 1000.0) {
-      logger->info("  {}   = {:6}, {}     = {:.5e} s", "NNZ", total_nnz, "H_DUR",
-                   hdur_ms / 1000.0);
+    if(hdur_ms > 1000.0) {
+      logger->info("  {}   = {:6}, {}     = {:.5e} s", "NNZ", total_nnz,
+                   "H_DUR", hdur_ms / 1000.0);
     } else {
-      logger->info("  {}   = {:6}, {}     = {:.5e} ms", "NNZ", total_nnz, "H_DUR",
-                   hdur_ms);
+      logger->info("  {}   = {:6}, {}     = {:.5e} ms", "NNZ", total_nnz,
+                   "H_DUR", hdur_ms);
     }
   }
 
