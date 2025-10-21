@@ -128,7 +128,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
 
   const int nbaths = norb_ - nimps;
   // SVD on ordm to get natural orbitals
-  
+
   std::vector<double> natural_orbitals(norb2_, 0.);
 
   std::vector<double> nat_orbs_imp(nimps * nimps, 0.);
@@ -162,7 +162,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   if(rot_mat != nullptr)
     std::copy(natural_orbitals.data(), natural_orbitals.data() + norb2_,
               rot_mat);
-              
+
   // Transform Tu
   // Tu <- N**H * Tu * N
   auto* Tu_pq_ptr = Tu_pq_.data_handle();
@@ -175,19 +175,20 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
              norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
              norb_, 0., Tu_pq_ptr, norb_);
 
-  if (spin_dep) {
-    std::cout << " Spin-dependent is set to TRUE. Performing rotation on Td" << std::endl;
+  if(spin_dep) {
+    std::cout << " Spin-dependent is set to TRUE. Performing rotation on Td"
+              << std::endl;
     // Transform Td
     // Td <- N**H * Td * N
     auto* Td_pq_ptr = Td_pq_.data_handle();
 
     blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-               norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
-               norb_, 0., tmp.data(), norb_);
-    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
-               norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
-               norb_, 0., Td_pq_ptr, norb_);
-    }
+               norb_, norb_, norb_, 1., Td_pq_ptr, norb_,
+               natural_orbitals.data(), norb_, 0., tmp.data(), norb_);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., natural_orbitals.data(), norb_,
+               tmp.data(), norb_, 0., Td_pq_ptr, norb_);
+  }
 
   // Transorm V
 
@@ -257,17 +258,17 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
              norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
              norb_, 0., Tu_pq_ptr, norb_);
 
-  if (spin_dep) {
+  if(spin_dep) {
     // Transform Td
     // Td <- N**H * Td * N
     auto* Td_pq_ptr = Td_pq_.data_handle();
     blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
-               norb_, norb_, norb_, 1., Td_pq_ptr, norb_, natural_orbitals.data(),
-               norb_, 0., tmp.data(), norb_);
-    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans, norb_,
-               norb_, norb_, 1., natural_orbitals.data(), norb_, tmp.data(),
-               norb_, 0., Td_pq_ptr, norb_);
-    }
+               norb_, norb_, norb_, 1., Td_pq_ptr, norb_,
+               natural_orbitals.data(), norb_, 0., tmp.data(), norb_);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::Trans, blas::Op::NoTrans,
+               norb_, norb_, norb_, 1., natural_orbitals.data(), norb_,
+               tmp.data(), norb_, 0., Td_pq_ptr, norb_);
+  }
 
   // Transorm V
 

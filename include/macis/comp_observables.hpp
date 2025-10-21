@@ -17,11 +17,10 @@ void Transform_2RDMs(const int norbs, const std::vector<double>& ordm_u,
                      std::vector<double>& trdm_du,
                      std::vector<double>& trdm_dd);
 
-
-template<size_t N>
+template <size_t N>
 double Comp_db_occs(impurity_params<N>& p);
 
-template<size_t N>
+template <size_t N>
 class CompObservables {
  private:
   size_t& norb_;
@@ -51,14 +50,13 @@ class CompObservables {
   std::vector<double>& F_inactive;
 
  public:
-  CompObservables(impurity_params<N>& p) ;
+  CompObservables(impurity_params<N>& p);
 
-  double compute_double_occupancies() const ;
+  double compute_double_occupancies() const;
 
-  std::vector<double> compute_sz_sz_correlations() const ;
+  std::vector<double> compute_sz_sz_correlations() const;
 
-  std::vector<double> compute_tz_tz_correlations() const ;
-
+  std::vector<double> compute_tz_tz_correlations() const;
 };
 
 }  // namespace macis
