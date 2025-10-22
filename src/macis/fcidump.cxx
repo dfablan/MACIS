@@ -247,18 +247,20 @@ void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
     for(size_t j = 0; j < norb; ++j)
       for(size_t k = 0; k < norb; ++k)
         for(size_t l = 0; l < norb; ++l) {
-          logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
-                       V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
+          if(V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV] != 0.0)
+            logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
+                         V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
         }
 
   // Write one body
   for(size_t i = 0; i < norb; ++i)
     for(size_t j = 0; j < norb; ++j) {
-      logger->info(fmt_string, i + 1, j + 1, 0, 0, T[i + j * LDT]);
+      if(T[i + j * LDT] != 0.0)
+        logger->info(fmt_string, i + 1, j + 1, 0, 0, T[i + j * LDT]);
     }
 
   // Write core
-  logger->info(fmt_string, 0, 0, 0, 0, E_core);
+  if(E_core != 0.0) logger->info(fmt_string, 0, 0, 0, 0, E_core);
 }
 
 void read_rdms_binary(std::string fname, size_t norb, double* ORDM, size_t LDD1,

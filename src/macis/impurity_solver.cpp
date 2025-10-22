@@ -111,6 +111,7 @@ double SolveImpurityASCI (impurity_params<N>& p){
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
     if(asci_wfn_fname.size()) 
     {
@@ -247,6 +248,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
       // HF Guess
       // console->info("Generating HF Guess for ASCI");
@@ -319,6 +321,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             comp.assign( n_active * n_active, 0. );
             //Rotate to new orbitals
             ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() );
+            asci_settings.just_singles = ham_gen.just_singles;
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
                       n_active, n_active, n_active, 1.0, orb_rot.data(), n_active,
@@ -480,6 +483,7 @@ double SolveImpurityCheapASCI (impurity_params<N>& p){
        macis::rank4_span<double>(V_active.data(), n_active, n_active, n_active, n_active));
     ham_gen.SetJustSingles(p.just_singles);
     ham_gen.SetNimp(n_imp);
+    asci_settings.just_singles = p.just_singles;
 
     E0 =
       selected_ci_diag(dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,

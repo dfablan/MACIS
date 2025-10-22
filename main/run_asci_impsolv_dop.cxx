@@ -168,6 +168,7 @@ int main(int argc, char** argv) {
               size_t);
   OPT_KEYWORD("ASCI.CONSTRAINT_LVL", params.asci_settings.constraint_level,
               int);
+  params.asci_settings.just_singles = params.just_singles;
   OPT_KEYWORD("ASCI.WFN_FILE", params.asci_wfn_fname, std::string);
   OPT_KEYWORD("ASCI.WFN_OUT_FILE", asci_wfn_out_fname, std::string);
   if(input.containsData("ASCI.E0_WFN")) {
@@ -208,7 +209,7 @@ int main(int argc, char** argv) {
   if(not print_ci) spdlog::null_logger_mt("ci_solver");
   if(not print_mcscf) spdlog::null_logger_mt("mcscf");
   if(not print_diis) spdlog::null_logger_mt("diis");
-  spdlog::null_logger_mt("asci_search");
+  if(not print_asci_search) spdlog::null_logger_mt("asci_search");
 
   params.occs.resize(params.n_active, 0);
   params.orb_rot.resize(params.n_active * params.n_active);
@@ -221,7 +222,7 @@ int main(int argc, char** argv) {
   params.Td_active.resize(params.n_active * params.n_active);
   params.V_active.resize(params.n_active * params.n_active * params.n_active *
                         params.n_active);
-  params.F_inactive.resize(params.n_active * params.n_active);
+  params.F_inactive.resize(norb2);
 
   // std::vector<double> Fd_inactive(norb2);
 
