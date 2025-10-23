@@ -328,11 +328,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
                 ham_gen, n_active MACIS_MPI_CODE(, MPI_COMM_WORLD));
           }
           E0 += E_inactive + E_core;
-		
-	  //!!!!THE PROBLEM WITH SPIN_DEP MUST BE IN THE ROTATION OF TD/TU, IT DOESNT GENERATE THE SAME TRANSFORMED HAMILTONIAN 
-	  //AS IN THE PREVIOUS CASE. THEREFORE, THE NEW NORMAL ASCI ITERATION LEADS TO A DIFFERENT ASCI WAVEFUNCTION, AND 
-	  //ALSO TO DIFFERENT ORDM_1 FOR THE FIRST FOLLOWING ITERATION!!!!!
 
+          
           std::cout<<"\n* @ Macro It. " << iorb+1 << " EASCI: " << E0 << std::endl;
 
           if (iorb == asci_settings.nrots) break;
@@ -445,8 +442,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    double curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0); //DEBUG
-    std::cout << "* Number of electrons on impurity (per spin) = " << curr_nel_per_spin << std::endl;
+    double curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0)/n_imp; //DEBUG
+    std::cout << "* Number of electrons on impurity (per orbital per spin) = " << curr_nel_per_spin << std::endl;
 
     bool print_ordm = false;
     if (print_ordm)

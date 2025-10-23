@@ -310,7 +310,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_rotmat_imp_bath(
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
-  SetJustSingles(true);
+  SetJustSingles(false);
 }
 
 }  // namespace macis
