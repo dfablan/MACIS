@@ -33,7 +33,9 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       wfn.size(), asci_settings.ncdets_max, asci_settings.max_refine_iter,
       asci_settings.refine_energy_tol);
 
-  const std::string fmt_string = "iter = {:4}, E0 = {:20.12e}, dE = {:14.6e}, duration = {:02}min{:05.2f}s";
+  const std::string fmt_string =
+      "iter = {:4}, E0 = {:20.12e}, dE = {:14.6e}, duration = "
+      "{:02}min{:05.2f}s";
 
   logger->info(fmt_string, 0, E0, 0.0, 0, 0.0);
 

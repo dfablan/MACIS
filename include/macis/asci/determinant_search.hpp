@@ -92,10 +92,8 @@ asci_contrib_container<wfn_t<N>> asci_contributions_standard(
     bitset_to_occ_vir(norb, state_beta, occ_beta, vir_beta);
 
     // Precompute orbital energies
-    auto eps_alpha = 
-          ham_gen.single_orbital_ens(norb, occ_alpha, occ_beta);
-    auto eps_beta = 
-          ham_gen.single_orbital_ens(norb, occ_beta, occ_alpha);
+    auto eps_alpha = ham_gen.single_orbital_ens(norb, occ_alpha, occ_beta);
+    auto eps_beta = ham_gen.single_orbital_ens(norb, occ_beta, occ_alpha);
 
     // Compute base diagonal matrix element
     double h_diag = ham_gen.matrix_element(state, state);
@@ -219,10 +217,8 @@ asci_contrib_container<wfn_t<N>> asci_contributions_constraint(
       bitset_to_occ_vir(norb, beta_shift, occ_beta, vir_beta);
 
       // Precompute orbital energies
-      orb_ens_alpha = 
-          ham_gen.single_orbital_ens(norb, occ_alpha, occ_beta);
-      orb_ens_beta = 
-          ham_gen.single_orbital_ens(norb, occ_beta, occ_alpha);
+      orb_ens_alpha = ham_gen.single_orbital_ens(norb, occ_alpha, occ_beta);
+      orb_ens_beta = ham_gen.single_orbital_ens(norb, occ_beta, occ_alpha);
     }
   };
 
