@@ -44,7 +44,7 @@ struct ASCISettings {
   double refine_energy_tol = 1e-6;
 
   int n_imp_orbs = -1;
-  bool no_constraint_search = false;
+  bool no_constraint_search = true;
 
   bool grow_with_rot = false;
   bool grow_with_rot_legacy = false;
