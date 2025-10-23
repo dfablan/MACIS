@@ -198,6 +198,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     using clock_type = std::chrono::high_resolution_clock;
     using duration_type = std::chrono::duration<double, std::milli>;
 
+    auto start_ASCI_clock = clock_type::now();
+
     bool& compute_asci_E0 = p.compute_asci_E0;
     double& asci_E0 = p.asci_E0;
     std::string& asci_wfn_fname = p.asci_wfn_fname;
@@ -271,6 +273,8 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       for (size_t iorb = 0; iorb <= asci_settings.nrots; iorb++)
       {
 
+          auto orbrot_st = clock_type::now();
+          
           std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
 
           //Starting with HF
@@ -386,10 +390,14 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
                       //  mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol, C_local,
                       //  MACIS_MPI_CODE( MPI_COMM_WORLD, ) true, mcscf_settings.ci_nstates);
             
-            auto orbrot_en = clock_type::now();
-            std::cout << "\n  * Rotating to natural orbitals: " << 
-                     duration_type(orbrot_en - orbrot_st).count() << std::endl;
           }
+
+        auto orbrot_en = clock_type::now();
+        duration_type total_rot_time = orbrot_en - orbrot_st;
+        int minutes = static_cast<int>(total_rot_time.count() / 60000.0);
+        double seconds = (total_rot_time.count() / 1000.0) - (minutes * 60.0);
+        std::cout << "\n  Total time for ASCI Macro Iteration " << iorb+1 << ": "
+                  << minutes << " minutes " << seconds << " seconds" << std::endl;
         }
       }
 
@@ -435,6 +443,13 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         ofile_rot << std::endl;
       }
     }
+
+    auto end_ASCI_clock = clock_type::now();
+    duration_type total_ASCI_time = end_ASCI_clock - start_ASCI_clock;
+    int minutes = static_cast<int>(total_ASCI_time.count() / 60000.0);
+    double seconds = (total_ASCI_time.count() / 1000.0) - (minutes * 60.0);
+    std::cout << "\nTotal time to complete ASCI GS calculation: \n"
+              << minutes << " minutes " << seconds << " seconds" << std::endl;
           
     return E0;
 }

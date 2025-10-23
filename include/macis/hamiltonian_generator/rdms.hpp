@@ -12,6 +12,9 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <blas.hh>
 #include <lapack.hh>
+// #include <fstream> //DEBUG
+// #include <iterator> //DEBUG
+
 #pragma GCC diagnostic pop
 
 namespace macis {
@@ -102,6 +105,7 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm,
 
   // Regenerate intermediates
   generate_integral_intermediates(V_pqrs_);
+  SetJustSingles(false);
 }
 
 template <size_t N>

@@ -33,14 +33,16 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       wfn.size(), asci_settings.ncdets_max, asci_settings.max_refine_iter,
       asci_settings.refine_energy_tol);
 
-  const std::string fmt_string = "iter = {:4}, E0 = {:20.12e}, dE = {:14.6e}";
+  const std::string fmt_string = "iter = {:4}, E0 = {:20.12e}, dE = {:14.6e}, duration = {:02}min{:05.2f}s";
 
-  logger->info(fmt_string, 0, E0, 0.0);
+  logger->info(fmt_string, 0, E0, 0.0, 0, 0.0);
 
   // Refinement Loop
   const size_t ndets = wfn.size();
   bool converged = false;
   for(size_t iter = 0; iter < asci_settings.max_refine_iter; ++iter) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     double E;
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets, E0, std::move(wfn), std::move(X),
@@ -49,7 +51,12 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       throw std::runtime_error("Wavefunction size can't change in refinement");
 
     const auto E_delta = E - E0;
-    logger->info(fmt_string, iter + 1, E, E_delta);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_time - start_time;
+    int minutes = static_cast<int>(duration.count()) / 60;
+    double seconds = duration.count() - minutes * 60.0;
+
+    logger->info(fmt_string, iter + 1, E, E_delta, minutes, seconds);
     E0 = E;
     if(std::abs(E_delta) < asci_settings.refine_energy_tol) {
       converged = true;

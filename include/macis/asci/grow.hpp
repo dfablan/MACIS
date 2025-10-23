@@ -165,9 +165,10 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
     E0 = E;
   }
+
   auto grow_en = hrt_t::now();
   dur_t grow_dur = grow_en - grow_st;
-  logger->info("* GROW_DUR = {:.2e} ms", grow_dur.count());
+  logger->info("* GROW_DUR = {:.2e} seconds", grow_dur.count() / 1000.0);
 
   return std::make_tuple(E0, wfn, X);
 }

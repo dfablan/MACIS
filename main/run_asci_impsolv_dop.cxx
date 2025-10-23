@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <macis/comp_observables.hpp>
@@ -29,6 +30,9 @@ T vec_sum(const std::vector<T>& x) {
 int main(int argc, char** argv) {
   using hrt_t = std::chrono::high_resolution_clock;
   using dur_t = std::chrono::duration<double, std::milli>;
+
+  // Start wall-clock timer for total runtime
+  auto t_start = hrt_t::now();
 
   std::cout << std::scientific << std::setprecision(12);
   spdlog::cfg::load_env_levels();
@@ -223,8 +227,6 @@ int main(int argc, char** argv) {
   params.V_active.resize(params.n_active * params.n_active * params.n_active *
                         params.n_active);
   params.F_inactive.resize(norb2);
-
-  // std::vector<double> Fd_inactive(norb2);
 
   // Compute active-space Hamiltonian and inactive Fock matrix
   macis::active_hamiltonian(NumOrbital(params.norb), NumActive(params.n_active),
@@ -450,6 +452,25 @@ int main(int argc, char** argv) {
 
     GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
+  }
+  
+#ifdef MACIS_ENABLE_MPI
+  // Ensure all ranks reach the end before measuring total time
+  MACIS_MPI_CODE(MPI_Barrier(MPI_COMM_WORLD);)
+#endif
+
+  // End wall-clock timer and report total runtime (rank 0 only)
+  auto t_end = hrt_t::now();
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+  auto hh = ms / 3600000;
+  auto mm = (ms % 3600000) / 60000;
+  auto ss = (ms % 60000) / 1000;
+  if(!world_rank) {
+    std::cout << "\n Impurity solver total runtime: " << std::setfill('0')
+              << std::setw(2) << hh << ":"
+              << std::setw(2) << mm << ":"
+              << std::setw(2) << ss << "."
+              << std::setfill(' ') << std::endl;
   }
 
   return 0;

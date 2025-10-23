@@ -211,7 +211,6 @@ int main(int argc, char** argv) {
 
   // Compute active-space Hamiltonian and inactive Fock matrix
   params.F_inactive.resize(norb2);
-  std::vector<double> Fd_inactive(norb2);
   macis::active_hamiltonian(NumOrbital(params.norb), NumActive(params.n_active),
                             NumInactive(params.n_inactive), params.T.data(), params.norb, params.V.data(),
                             params.norb, params.F_inactive.data(), params.norb, params.T_active.data(),
