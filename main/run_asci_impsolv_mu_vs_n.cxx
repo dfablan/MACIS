@@ -128,10 +128,11 @@ int main(int argc, char** argv) {
   bool compute_db_occs = false;
   bool compute_sz_sz = false;
   bool compute_tz_tz = false;
+  bool compute_charge_charge = false;
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
-
+  OPT_KEYWORD("CI.COMP_CHARGE_I_CHARGE_J", compute_charge_charge, bool);
   if(params.n_active > nwfn_bits / 2) throw std::runtime_error("Not Enough Bits");
 
   // MCSCF Settings

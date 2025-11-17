@@ -134,9 +134,11 @@ int main(int argc, char** argv) {
   bool compute_db_occs = false;
   bool compute_sz_sz = false;
   bool compute_tz_tz = false;
+  bool compute_charge_charge = false;
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
+  OPT_KEYWORD("CI.COMP_CHARGE_CHARGE", compute_charge_charge, bool);
 
   if(params.n_active > nwfn_bits / 2)
     throw std::runtime_error("Not Enough Bits");
@@ -412,6 +414,13 @@ int main(int argc, char** argv) {
       tz_tz = obs.compute_tz_tz_correlations();
       // print to file
       macis::util::write_matrix(tz_tz.data(), nsites, nsites, "tauz_tauz.dat",
+                                true);
+    }
+    if(compute_charge_charge) {
+      std::cout << "  * Computing <delta_n(i) delta_n(j)> correlations" << std::endl;
+      std::vector<double> charge_charge(params.n_imp * params.n_imp, 0.0);
+      charge_charge = obs.compute_charge_charge_correlations();
+      macis::util::write_matrix(charge_charge.data(), params.n_imp, params.n_imp, "charge_charge.dat",
                                 true);
     }
   }

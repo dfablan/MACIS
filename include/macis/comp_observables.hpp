@@ -57,6 +57,9 @@ class CompObservables {
   std::vector<double> compute_sz_sz_correlations() const;
 
   std::vector<double> compute_tz_tz_correlations() const;
+
+  std::vector<double> compute_charge_charge_correlations() const;
+
 };
 
 }  // namespace macis
