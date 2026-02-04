@@ -140,6 +140,7 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
   std::vector<int> todelete_p;
   std::vector<int> todelete_h;
 
+  EASCI -= (p.E_core + p.E_inactive);
   // Evaluate particle GF
   macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws, occs,
                       gf_settings);
@@ -153,6 +154,8 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
   // Evaluate hole GF
   macis::RunGFCalc<N>(GF, psi0, ham_gen, p.dets, EASCI, false, ws, occs,
                       gf_settings);
+
+  EASCI += p.E_core + p.E_inactive;
 
   if(todelete_h != todelete_p)
     std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
