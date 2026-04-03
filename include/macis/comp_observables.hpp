@@ -59,7 +59,7 @@ class CompObservables {
   std::vector<double> compute_tz_tz_correlations() const;
 
   std::vector<double> compute_charge_charge_correlations() const;
-  
+
   std::vector<double> compute_db_occs_matrix() const;
 };
 
