@@ -366,11 +366,21 @@ int main(int argc, char** argv) {
     std::cout << "Doping routines have not been called\n";
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
-    if(params.ci_exp == CIExpansion::CAS) {
+    if(params.ci_exp == CIExpansion::CAS) 
+    {
       E0 = macis::SolveImpurityED<nwfn_bits>(params);
-    } else if(params.ci_exp == CIExpansion::ASCI_cheap) {
+      if(asci_wfn_out_fname.size()) {
+        console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
+        macis::write_wavefunction(asci_wfn_out_fname, params.n_active,
+                                  params.dets, params.C);
+      }
+    } 
+    else if(params.ci_exp == CIExpansion::ASCI_cheap) 
+    {
       E0 = macis::SolveImpurityCheapASCI<nwfn_bits>(params);
-    } else if(params.ci_exp == CIExpansion::ASCI) {
+    } 
+    else if(params.ci_exp == CIExpansion::ASCI) 
+    {
       E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
@@ -401,6 +411,12 @@ int main(int argc, char** argv) {
     if(compute_db_occs) {
       double db_occs = obs.compute_double_occupancies();
       std::cout << "  * Double occupancy = " << db_occs << std::endl;
+      if (nsites == 1){
+      	std::vector<double> db_occs_matrix(2, 0.0);
+      	db_occs_matrix = obs.compute_db_occs_matrix();
+      	macis::util::write_matrix(db_occs_matrix.data(), 1, 2, "db_occs_matrix.dat",
+                                true);
+      }
     }
     if(compute_sz_sz) {
       std::cout << "  * Computing <Sz(i) Sz(j)> correlations" << std::endl;

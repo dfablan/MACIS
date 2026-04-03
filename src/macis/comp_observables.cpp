@@ -218,6 +218,51 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
   }
 
   template<size_t N>
+  std::vector<double> CompObservables<N>::compute_db_occs_matrix() const {
+    std::vector<double> db_occs_matrix(2, 0.0);
+
+    for(size_t site_i = 0; site_i < n_sites_; site_i++) {
+      for(size_t site_j = 0; site_j < n_sites_; site_j++) {
+        for(size_t band_i = 0; band_i < n_bands_; band_i++) {
+          int i = site_i + n_sites_ * band_i;
+          for(size_t band_j = 0; band_j < n_bands_; band_j++) {
+            int j = site_j + n_sites_ * band_j;
+            for(size_t a = 0; a < n_imp_; a++)
+              for(size_t b = 0; b < n_imp_; b++)
+                for(size_t c = 0; c < n_imp_; c++)
+                  for(size_t d = 0; d < n_imp_; d++) {
+		    if(i == j) {
+                    	db_occs_matrix[0] +=
+                  		orb_rot_[i + a * n_active_] * orb_rot_[i + c * n_active_] *
+                  		trdm_ud_[a + b * n_active_ + c * n_active2_ +
+                  		         d * n_active3_] *
+                  		orb_rot_[i + b * n_active_] * orb_rot_[i + d * n_active_];
+		    }
+		    else if(i > j) {
+                    	db_occs_matrix[1] +=
+                    		  orb_rot_[i + a * n_active_] *
+                        	  orb_rot_[j + c * n_active_] *
+                        		(trdm_uu_[a + b * n_active_ + c * n_active2_ +
+                         			  d * n_active3_] +
+		                         trdm_du_[a + b * n_active_ + c * n_active2_ +
+                		                  d * n_active3_] +
+		                         trdm_ud_[a + b * n_active_ + c * n_active2_ +
+                		                  d * n_active3_] +
+		                         trdm_dd_[a + b * n_active_ + c * n_active2_ +
+                		                  d * n_active3_] ) * 
+                        	  orb_rot_[i + b * n_active_] *
+                                  orb_rot_[j + d * n_active_];
+		    }
+                  }
+          }
+        }
+      }
+    }
+
+    return db_occs_matrix;
+  }
+
+  template<size_t N>
   std::vector<double> CompObservables<N>::compute_sz_sz_correlations() const {
     std::vector<double> sz_sz(n_sites2_, 0.0);
     // sz_sz = 0.25 * orb[i,a]orb[j,c] <(n_a - n_d)_a (n_a - n_d)_c> orb.T[b,i]orb.T[d,j]

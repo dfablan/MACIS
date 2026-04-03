@@ -85,7 +85,7 @@ struct impurity_params {
 };
 
 template <size_t N>
-auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
+auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
                  macis::SDBuildHamiltonianGenerator<N> &ham_gen,
                  macis::GFSettings &gf_settings) {
   Eigen::VectorXd psi0 =
@@ -106,7 +106,7 @@ auto evaluate_GF(const double EASCI, macis::impurity_params<N> &p,
 
   std::cout << "Orbital Occupations in the rotated basis (nrots = "
             << p.asci_settings.nrots << "):" << std::endl;
-  std::cout << "Occs: ";
+  std::cout << "(rotated)Occs: ";
   for(const auto oc : occs) std::cout << oc << ", ";
   std::cout << std::endl;
 
@@ -217,6 +217,12 @@ auto evaluate_ordm(std::vector<macis::wfn_t<N>> &dets,
       macis::matrix_span<double>(active_ordm.data(), n_active, n_active),
       macis::rank4_span<double>(active_trdm.data(), n_active, n_active,
                                 n_active, n_active));
+
+  std::cout << "Orbital Occupations in the rotated basis:" << std::endl;
+  std::cout << "(rotated)Occs: ";
+  for(int i = 0; i < n_active; i++)
+    std::cout << active_ordm[i + i * n_active] / 2. << ", ";
+  std::cout << std::endl;
 
   //   //print ordm DEBUG
   //  macis::util::write_matrix(active_ordm.data(), n_active, n_active,
