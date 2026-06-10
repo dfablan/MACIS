@@ -80,11 +80,19 @@ int main(int argc, char** argv) {
   macis::read_fcidump_1body(fcidump_fname, params.T.data(), params.norb);
   macis::read_fcidump_2body(fcidump_fname, params.V.data(), params.norb);
   params.just_singles = macis::is_2body_diagonal(fcidump_fname);
+  
+
 
 #define OPT_KEYWORD(STR, RES, DTYPE) \
   if(input.containsData(STR)) {      \
     RES = input.getData<DTYPE>(STR); \
   }
+
+  bool just_singles_ = true;
+  OPT_KEYWORD("CI.JUST_SINGLES", just_singles_, bool);
+  if (not just_singles_) params.just_singles = just_singles_;
+
+  std::cout << "just_singles = " << params.just_singles << std::endl;
 
   // Possibility of hoppings for the spin-down orbitals
   std::string fcidump_do_fname = "NONE";
