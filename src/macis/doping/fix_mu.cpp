@@ -321,62 +321,63 @@ namespace macis {
   }
 
   template <size_t N>
-  void ProposeInitBracket_MuED( impurity_params<N> *params, double &x_lo, double &x_hi )
+  void ProposeInitBracket_MuED( impurity_params<N> *params, double &x_lo, double &x_hi, double& f_lo, double& f_hi )
   {
     // Try mu = 0, then try to bracket a zero by changing signs.
-    double f0 = Mu_Cost_f<N>( 0., params );
     double step = 0.1;
     bool done = false;
-    int max_tries = 100, curr_try = 0;
-    if( abs(f0) < 1.E-6 )
-    {
-      x_lo = -0.1;
-      x_hi =  0.1;
-      done = true;
-    }
-    else if( f0 > 0. )
+    int max_tries = 10, curr_try = 0;
+    double delta_x = abs(x_hi-x_lo);
+    if( abs(f_hi) < abs(f_lo) )
     {
     // Too low initial chemical potential
-      x_lo = 0.;
-      double curr_x = 0.;
+      x_lo = x_hi;
+      f_lo = f_hi;
+      double x_curr = x_hi+delta_x;
       while( curr_try < max_tries )
       {
         curr_try++;
-        curr_x = double(curr_try) * step;
-        double f = Mu_Cost_f<N>( curr_x, params );
-        if( f < 0. )
+        double f_curr = Mu_Cost_f<N>( x_curr, params );
+        if( f_lo*f_curr < 0. )
         {
           done = true;
+	  x_hi = x_curr;
           break;
         }
+	else
+	{
+	  x_lo = x_curr;
+	  f_lo = f_curr;
+	  x_curr = x_curr + delta_x;
+	}
       }
-      x_hi = curr_x;
     }
     else
     {
     // Too large initial chemical potential
-      x_hi = 0.;
-      step *= -1;
-      double curr_x = 0.;
+      x_hi = x_lo;
+      f_hi = f_lo;
+      double x_curr = x_lo - delta_x;
       while( curr_try < max_tries )
       {
         curr_try++;
-        curr_x = double(curr_try) * step;
-        double f = Mu_Cost_f<N>( curr_x, params );
-        if( f > 0. )
+        double f_curr = Mu_Cost_f<N>( x_curr, params );
+        if( f_hi*f_curr < 0. )
         {
           done = true;
+	  x_lo = x_curr;
           break;
         }
+	else
+	{
+	  x_hi = x_curr;
+	  f_hi = f_curr;
+	  x_curr = x_curr - delta_x;
+	}
       }
-      x_lo = curr_x;
     }
-    // If bracketing failed, try a guess interval
     if( !done )
-    {
-      x_lo = -10.;
-      x_hi =  10.;
-    }
+    throw std::runtime_error("ProposeInitBracket_MuED: failed to find a valid bracket after max_tries");
   } 
 
   // Version using derivatives!
@@ -519,7 +520,7 @@ namespace macis {
     
     if (f_hi*f_lo >0){
       std::cout << "User-proposed bracket failed, trying to find a bracket containing n = " << nel_target << std::endl;
-      ProposeInitBracket_MuED<N>( params, x_lo, x_hi );
+      ProposeInitBracket_MuED<N>( params, x_lo, x_hi, f_lo, f_hi );
     }
     else{
       std::cout << "Bracket found! | n(" << x_hi << ") < " << nel_target << " < n(" << x_lo << ")" << std::endl;
