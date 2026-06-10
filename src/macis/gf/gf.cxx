@@ -128,9 +128,10 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
       ofile2 << GF_orbs[iii] << std::endl;
     }
   } else {
-    std::string fname = "GF_";
-    fname += std::to_string(GF_orbs[0] + 1) + "_" +
-             std::to_string(GF_orbs[0] + 1) + ".dat";
+    std::string fname = "GF.dat";
+    // std::string fname = "GF_";
+    // fname += std::to_string(GF_orbs[0] + 1) + "_" +
+            //  std::to_string(GF_orbs[0] + 1) + ".dat";
     std::ofstream ofile(fname);
     ofile.precision(dbl::max_digits10);
     for(int iii = 0; iii < nfreqs; iii++)
