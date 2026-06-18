@@ -387,6 +387,12 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
 
     return charge_charge;
   }
+
+  template <size_t N>
+  std::vector<double> CompObservables<N>::compute_impurity_rdm() const {
+    return compute_impurity_rdm_from_state<N>(n_imp_, n_active_, dets_, C_, orb_rot_);
+  }
+
   // Explicit template instantiations for commonly used template parameter
   template double Comp_db_occs<64>(impurity_params<64>& p);
   template class CompObservables<64>;

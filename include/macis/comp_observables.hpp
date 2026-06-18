@@ -1,5 +1,6 @@
 #pragma once
 #include "macis/impurity_solver.hpp"
+#include "macis/observables/impurity_rdm.hpp"
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -61,6 +62,8 @@ class CompObservables {
   std::vector<double> compute_charge_charge_correlations() const;
 
   std::vector<double> compute_db_occs_matrix() const;
+
+  std::vector<double> compute_impurity_rdm() const;
 };
 
 }  // namespace macis
