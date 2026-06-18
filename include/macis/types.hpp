@@ -16,7 +16,6 @@
 
 namespace macis {
 
-
 template <typename T, size_t rank>
 using col_major_span =
     Kokkos::mdspan<T, Kokkos::dextents<size_t, rank>, Kokkos::layout_left>;
