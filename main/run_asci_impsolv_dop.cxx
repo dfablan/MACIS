@@ -144,11 +144,13 @@ int main(int argc, char** argv) {
   bool compute_tz_tz = false;
   bool compute_charge_charge = false;
   bool compute_imp_rdm = false;
+  bool write_rho_bin = true;
   OPT_KEYWORD("CI.COMP_DB_OCCS", compute_db_occs, bool);
   OPT_KEYWORD("CI.COMP_SZ_I_SZ_J", compute_sz_sz, bool);
   OPT_KEYWORD("CI.COMP_TAUZ_I_TAUZ_J", compute_tz_tz, bool);
   OPT_KEYWORD("CI.COMP_CHARGE_CHARGE", compute_charge_charge, bool);
   OPT_KEYWORD("CI.COMP_IMP_RDM", compute_imp_rdm, bool);
+  OPT_KEYWORD("CI.WRITE_RHO_BIN", write_rho_bin, bool);
 
   if(params.n_active > nwfn_bits / 2)
     throw std::runtime_error("Not Enough Bits");
@@ -452,39 +454,43 @@ int main(int argc, char** argv) {
     if(compute_imp_rdm) {
       std::cout << "  * Computing (full) impurity RDM = |Psi_imp><Psi_imp| = Tr_{bath}( |Psi><Psi| )" << std::endl;
       auto imp_rdm = obs.compute_impurity_rdm();
-
+      
       const std::string output_file = "rho.bin";
-      std::ofstream out(output_file, std::ios::binary);
-      if (!out.is_open()) {
-          throw std::runtime_error("Cannot write to file: " + output_file);
-      }
       const size_t basis_size = std::sqrt(imp_rdm.size());
       const int basis_size_int = (int)basis_size;
-      out.write(reinterpret_cast<const char*>(&basis_size_int), sizeof(int));
-      out.write(reinterpret_cast<const char*>(imp_rdm.data()),
-                (std::streamsize)(imp_rdm.size() * sizeof(double)));
-      out.close();
-      std::cout << "Wrote binary RDM to " << output_file << "\n";
 
-      const std::string text_output = output_file + ".txt";
-      std::ofstream out_txt(text_output);
-      if (!out_txt.is_open()) {
-          throw std::runtime_error("Cannot write text output: " + text_output);
+      if (write_rho_bin)
+      {
+      	std::ofstream out(output_file, std::ios::binary);
+      	if (!out.is_open()) {
+      	    throw std::runtime_error("Cannot write to file: " + output_file);
+      	}
+      	out.write(reinterpret_cast<const char*>(&basis_size_int), sizeof(int));
+      	out.write(reinterpret_cast<const char*>(imp_rdm.data()),
+      	          (std::streamsize)(imp_rdm.size() * sizeof(double)));
+      	out.close();
+      	std::cout << "Wrote binary RDM to " << output_file << "\n";
       }
 
-      out_txt << std::scientific << std::setprecision(12);
-      out_txt << "# Reduced Density Matrix (basis_size=" << basis_size << ")\n";
-      out_txt << "# row col real imag\n";
-      for (size_t i = 0; i < basis_size; ++i) {
-          for (size_t j = 0; j < basis_size; ++j) {
-              const double v = imp_rdm[i * basis_size + j];
-              if (abs(v) > 1e-12) {
-                  out_txt << i << " " << j << " " << v << "\n";
-              }
-          }
-      }
-      out_txt.close();
-      std::cout << "Wrote text RDM to " << text_output << "\n";
+      	const std::string text_output = output_file + ".txt";
+      	std::ofstream out_txt(text_output);
+      	if (!out_txt.is_open()) {
+      	    throw std::runtime_error("Cannot write text output: " + text_output);
+      	}
+
+      	out_txt << std::scientific << std::setprecision(12);
+      	out_txt << "# Reduced Density Matrix (basis_size=" << basis_size << ")\n";
+      	out_txt << "# row col real imag\n";
+      	for (size_t i = 0; i < basis_size; ++i) {
+      	    for (size_t j = 0; j < basis_size; ++j) {
+      	        const double v = imp_rdm[i * basis_size + j];
+      	        if (abs(v) > 1e-12) {
+      	            out_txt << i << " " << j << " " << v << "\n";
+      	        }
+      	    }
+      	}
+      	out_txt.close();
+      	std::cout << "Wrote text RDM to " << text_output << "\n";
 
     }
   }
