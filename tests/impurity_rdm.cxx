@@ -16,16 +16,27 @@ TEST_CASE("Impurity RDM - single determinant projector") {
   det.set(0);
   det.set(1);
 
+  //Print the determinant for debugging
+  std::cout << "Determinant bitset: " << det << "\n";
+  //print the determinant in binary for debugging
+  std::cout << "Determinant binary: ";
+  for(int i = 0; i < 2 * n_active; ++i) {
+    std::cout << det[i];
+  }
+  std::cout << "\n";
+
   std::vector<macis::wfn_t<N>> dets = {det};
   std::vector<double> C = {1.0};
 
   // Identity rotation: impurity orbital i = active orbital i
-  std::vector<double> orb_rot(n_imp * n_active, 0.0);
+  std::vector<double> orb_rot(n_active * n_active, 0.0);
   orb_rot[0 * n_active + 0] = 1.0;
   orb_rot[1 * n_active + 1] = 1.0;
 
   auto rho = macis::compute_impurity_rdm_from_state<N>(n_imp, n_active, dets, C,
                                                        orb_rot);
+
+    
 
   // Print the RDM for debugging
   std::cout << "Non zero elements of the impurity RDM:\n";
@@ -34,16 +45,26 @@ TEST_CASE("Impurity RDM - single determinant projector") {
       if(std::abs(rho[i * dim + j]) > 1e-10) {
         std::cout << "rho[" << i << "][" << j << "] = " << rho[i * dim + j]
                   << "\n";
-        std::cout << "Basis element i: " << std::bitset<4>(i)
-                  << ", Basis element j: " << std::bitset<4>(j) << "\n";
+        std::cout << "Basis element i: " << std::bitset<dim>(i)
+                  << ", Basis element j: " << std::bitset<dim>(j) << "\n";
       }
     }
   }
 
-  SECTION("trace equals number of impurity electrons") {
+  SECTION("assert rho dimension") { REQUIRE(rho.size() == dim * dim); }
+
+  SECTION("print rho diagonal") {
+    std::cout << "Diagonal elements of the impurity RDM:\n";
+    for(size_t i = 0; i < dim; ++i) {
+      std::cout << "rho[" << i << "][" << i << "] = " << rho[i * dim + i]
+                << "\n";
+    }
+  }
+
+  SECTION("trace equals 1: Tr(rho) == 1") {
     double tr = 0.0;
     for(size_t i = 0; i < dim; ++i) tr += rho[i * dim + i];
-    REQUIRE(tr == Approx(2.0).epsilon(1e-10));
+    REQUIRE(tr == Approx(1.0).epsilon(1e-10));
   }
 
   SECTION("idempotent: rho^2 == rho") {
