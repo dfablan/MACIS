@@ -16,9 +16,9 @@ TEST_CASE("Impurity RDM - single determinant projector") {
   det.set(0);
   det.set(1);
 
-  //Print the determinant for debugging
+  // Print the determinant for debugging
   std::cout << "Determinant bitset: " << det << "\n";
-  //print the determinant in binary for debugging
+  // print the determinant in binary for debugging
   std::cout << "Determinant binary: ";
   for(int i = 0; i < 2 * n_active; ++i) {
     std::cout << det[i];
@@ -35,8 +35,6 @@ TEST_CASE("Impurity RDM - single determinant projector") {
 
   auto rho = macis::compute_impurity_rdm_from_state<N>(n_imp, n_active, dets, C,
                                                        orb_rot);
-
-    
 
   // Print the RDM for debugging
   std::cout << "Non zero elements of the impurity RDM:\n";

@@ -80,8 +80,8 @@ std::vector<std::complex<double>> RunResolventGS(
   // base_dets is needed because make_dist_csr_hamiltonian takes non-const
   // wavefunction iterators.
   std::vector<std::bitset<nbits>> dets(base_dets);
-  auto hamil = make_dist_csr_hamiltonian<index_t>(
-      MPI_COMM_WORLD, dets.begin(), dets.end(), Hgen, h_el_tol);
+  auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
+                                                  dets.end(), Hgen, h_el_tol);
   SparsexDistSpMatOp hamil_wrap(hamil);
 
   // Single-vector continued-fraction resolvent on wfn0 itself.
@@ -113,8 +113,8 @@ std::vector<std::complex<double>> RunResolventGS(
  */
 template <size_t nbits, class ScalarFn>
 Eigen::VectorXd apply_diagonal_operator(
-    const Eigen::VectorXd &wfn0,
-    const std::vector<std::bitset<nbits>> &dets, ScalarFn scalar_fn) {
+    const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
+    ScalarFn scalar_fn) {
   assert(wfn0.size() == Eigen::Index(dets.size()));
   Eigen::VectorXd out(wfn0.size());
   for(Eigen::Index k = 0; k < wfn0.size(); ++k)

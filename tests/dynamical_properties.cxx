@@ -42,8 +42,7 @@ Eigen::MatrixXd dense_hamiltonian(std::vector<macis::wfn_t<N>>& dets,
   const auto& colind = H.colind();
   const auto& nzval = H.nzval();
   for(int i = 0; i < n; ++i)
-    for(int p = rowptr[i]; p < rowptr[i + 1]; ++p)
-      Hd(i, colind[p]) = nzval[p];
+    for(int p = rowptr[i]; p < rowptr[i + 1]; ++p) Hd(i, colind[p]) = nzval[p];
   return Hd;
 }
 
@@ -58,10 +57,12 @@ TEST_CASE("Dynamical properties - sz_imp_value and apply_diagonal_operator") {
   // det A: impurity = (up:0, dn:1)  -> n_imp_up=1, n_imp_dn=1 -> Sz_imp = 0
   //        (bath orbital 2 up, 3 dn keeps total Sz = 0)
   auto detA = make_det(/*alpha*/ {0, 2}, /*beta*/ {1, 3});
-  // det B: impurity = (up:0,1 ; dn: none) -> n_imp_up=2, n_imp_dn=0 -> Sz_imp=+1
+  // det B: impurity = (up:0,1 ; dn: none) -> n_imp_up=2, n_imp_dn=0 ->
+  // Sz_imp=+1
   //        bath: (up: none ; dn: 2,3) so total Sz = 0
   auto detB = make_det(/*alpha*/ {0, 1}, /*beta*/ {2, 3});
-  // det C: impurity = (up: none ; dn:0,1) -> n_imp_up=0, n_imp_dn=2 -> Sz_imp=-1
+  // det C: impurity = (up: none ; dn:0,1) -> n_imp_up=0, n_imp_dn=2 ->
+  // Sz_imp=-1
   auto detC = make_det(/*alpha*/ {2, 3}, /*beta*/ {0, 1});
 
   SECTION("sz_imp_value matches hand-computed 0.5*(n_up_imp - n_dn_imp)") {
@@ -83,7 +84,7 @@ TEST_CASE("Dynamical properties - sz_imp_value and apply_diagonal_operator") {
           return macis::sz_imp_value<N>(d, n_imp, n_active);
         });
 
-    REQUIRE(v(0) == Approx(0.3 * 0.0).margin(1e-12));   // Sz_imp(A)=0
+    REQUIRE(v(0) == Approx(0.3 * 0.0).margin(1e-12));    // Sz_imp(A)=0
     REQUIRE(v(1) == Approx(-0.7 * 1.0).epsilon(1e-12));  // Sz_imp(B)=+1
     REQUIRE(v(2) == Approx(0.5 * -1.0).epsilon(1e-12));  // Sz_imp(C)=-1
   }
@@ -137,8 +138,7 @@ TEST_CASE("Dynamical properties - RunResolventSz vs exact Lehmann sum") {
   settings.saveGFmats = false;
   const double eta = 0.2;
   std::vector<std::complex<double>> ws;
-  for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0)
-    ws.emplace_back(w, eta);
+  for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0) ws.emplace_back(w, eta);
 
   auto R = macis::RunResolventSz<N, int32_t>(psi0, ham_gen, dets, n_imp,
                                              n_active, E0, ws, settings);
@@ -163,8 +163,10 @@ TEST_CASE("Dynamical properties - RunResolventSz vs exact Lehmann sum") {
       const double wn = es.eigenvalues()(n) - E0;  // excitation energy >= 0
       ref += (overlaps(n) * overlaps(n)) / (ws[iw] - wn);
     }
-    REQUIRE(std::real(R[iw]) == Approx(std::real(ref)).epsilon(1e-6).margin(1e-8));
-    REQUIRE(std::imag(R[iw]) == Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
+    REQUIRE(std::real(R[iw]) ==
+            Approx(std::real(ref)).epsilon(1e-6).margin(1e-8));
+    REQUIRE(std::imag(R[iw]) ==
+            Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
   }
 
   SECTION("first spectral moment is non-negative (excitations above GS)") {
@@ -176,8 +178,7 @@ TEST_CASE("Dynamical properties - RunResolventSz vs exact Lehmann sum") {
   }
 
   SECTION("retarded spectral function is non-negative: Im R(w) <= 0") {
-    for(size_t iw = 0; iw < ws.size(); ++iw)
-      REQUIRE(std::imag(R[iw]) <= 1e-8);
+    for(size_t iw = 0; iw < ws.size(); ++iw) REQUIRE(std::imag(R[iw]) <= 1e-8);
   }
 }
 
