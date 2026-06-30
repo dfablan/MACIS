@@ -497,7 +497,12 @@ int main(int argc, char** argv) {
 
   bool testGF = false;
   OPT_KEYWORD("CI.GF", testGF, bool);
-  if(testGF) {
+
+  // Optionally compute the dynamical impurity Sz-Sz response instead in addition to the Green's function.
+  bool sz_resolvent = false;
+  OPT_KEYWORD("GF.SZ_RESOLVENT", sz_resolvent, bool);
+
+  if(testGF || sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -551,13 +556,16 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
     OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
     OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
-  
+
     std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,
                                           std::complex<double>(0., 0.)));
 
-    GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
+    if(testGF)
+      GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
+    if(sz_resolvent)
+      macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings);
   }
   
 #ifdef MACIS_ENABLE_MPI

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <macis/asci/grow.hpp>
 #include <macis/asci/refine.hpp>
+#include <macis/gf/dynamical_properties.hpp>
 #include <macis/gf/gf.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
 #include <macis/hamiltonian_generator/sd_build.hpp>
@@ -195,6 +196,69 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
     macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
 
   return GF;
+}
+
+/**
+ * @brief Evaluates the dynamical impurity Sz-Sz response, i.e. the retarded
+ *        resolvent of the impurity Sz operator on the ASCI ground state:
+ *
+ *          R(w) = <psi0| Sz_imp  1/(w - (H - E0))  Sz_imp |psi0>
+ *
+ *        Sz_imp is applied to the ground state by rescaling each determinant
+ *        coefficient (see macis::RunResolventSz / macis::sz_imp_value), and the
+ *        single-vector resolvent of the resulting state is evaluated over the
+ *        same frequency grid used by evaluate_GF. The result R(w) is written to
+ *        "Sz_resolvent.dat" (columns: Re(w) Im(w) Re(R) Im(R)) when
+ *        gf_settings.writeGF_singlef is set, and returned to the caller.
+ *
+ * @param[in] double EASCI: ASCI ground-state energy (including core/inactive).
+ * @param[in] macis::impurity_params<N> &p: Impurity problem parameters.
+ * @param[in] macis::SDBuildHamiltonianGenerator<N> &ham_gen: Hamiltonian
+ *            generator.
+ * @param[in] macis::GFSettings &gf_settings: GF/resolvent settings (frequency
+ *            grid, nLanIts, saveGFmats, writeGF_singlef).
+ *
+ * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
+ */
+template <size_t N>
+auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
+                           macis::SDBuildHamiltonianGenerator<N> &ham_gen,
+                           macis::GFSettings &gf_settings) {
+  Eigen::VectorXd psi0 =
+      Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
+
+  std::cout << "EASCI = " << EASCI << std::endl;
+
+  // Frequency grid (same convention as evaluate_GF).
+  std::vector<std::complex<double>> ws(gf_settings.nws,
+                                       std::complex<double>(0., 0.));
+  for(int i = 0; i < gf_settings.nws; i++)
+    if(gf_settings.imag_freq) {
+      //  MATSUBARA GRID
+      ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
+    } else {
+      std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
+      std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
+      ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
+    }
+
+  // Reference energy relative to the active-space Hamiltonian (matching the
+  // shift used for the Green's function in evaluate_GF).
+  double E0 = EASCI - (p.E_core + p.E_inactive);
+
+  std::vector<std::complex<double>> R = macis::RunResolventSz<N>(
+      psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings);
+
+  if(gf_settings.writeGF_singlef) {
+    using dbl = std::numeric_limits<double>;
+    std::ofstream ofile("Sz_resolvent.dat");
+    ofile.precision(dbl::max_digits10);
+    for(size_t iii = 0; iii < ws.size(); iii++)
+      ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii]) << " "
+            << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+  }
+
+  return R;
 }
 
 template <size_t N>
