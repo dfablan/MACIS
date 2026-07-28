@@ -16,9 +16,9 @@ namespace macis {
     size_t nsites = (n_imp / nbands);
 
     double& delta_CFS = (p->delta_CFS);
-    if (delta_CFS != 0.0 && nbands != 2)
+    if (delta_CFS != 0.0 && (nbands != 2 && nbands != 3))
     {
-        std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
+        std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2 or 3. This is not supported." << std::endl;
         delta_CFS = 0.0; // Reset to zero to avoid issues
     }
 
@@ -31,27 +31,62 @@ namespace macis {
     double curr_nel_per_spin = 0.0;
     std::vector<double> occs;
 
-    if( nbands == 2 && delta_CFS != 0.0 )
+    if( delta_CFS != 0.0 )
     {
-        // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-        for(int i = 0; i < n_imp; i++) 
-        {
-            if( i / nsites == 0 )
-            {
-                // For the first band, we add mu - delta_CFS
-                T.at(i*norb+i) = mu - delta_CFS/2.0;
-            }
-            else if( i / nsites == 1 )
-            {
-                // For the second band, we add mu + delta_CFS
-                T.at(i*norb+i) = mu + delta_CFS/2.0 ;
-            }
-            else
-            {
-                std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-                throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
-            }
-        }
+      if( nbands == 2 )
+      {
+          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+          for(int i = 0; i < n_imp; i++) 
+          {
+              if( i / nsites == 0 )
+              {
+                  // For the first band, we add mu - delta_CFS
+                  T.at(i*norb+i) = mu - delta_CFS/2.0;
+              }
+              else if( i / nsites == 1 )
+              {
+                  // For the second band, we add mu + delta_CFS
+                  T.at(i*norb+i) = mu + delta_CFS/2.0 ;
+              }
+              else
+              {
+                  std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+                  throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
+              }
+          }
+      }
+      else if ( nbands == 3 )
+      {
+          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+          for(int i = 0; i < n_imp; i++) 
+          {
+              if( i / nsites == 0 )
+              {
+                  // For the first band, we add mu
+                  T.at(i*norb+i) = mu;
+              }
+              else if( i / nsites == 1 )
+              {
+                  // For the second band, we add mu
+                  T.at(i*norb+i) = mu;
+              }
+              else if( i / nsites == 2 )
+              {
+                  // For the third band, we add mu + delta_CFS
+                  T.at(i*norb+i) = mu + delta_CFS ;
+              }
+              else
+              {
+                  std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+                  throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
+              }
+          }
+      }
+      else
+      {
+          std::cout << "Error in Mu_vs_n! Invalid number of bands: nbands = " << nbands << std::endl;
+          throw( std::runtime_error( "Error in Mu_vs_n! Invalid number of bands" ) );
+      }
     }
     else
     {
@@ -107,9 +142,9 @@ namespace macis {
     double& delta_CFS = (p->delta_CFS);
     double& nel_target = (p->nel_target);
 
-    if (delta_CFS != 0.0 && nbands != 2)
+    if (delta_CFS != 0.0 && nbands != 2 && nbands != 3)
     {
-      std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2. This is not supported." << std::endl;
+      std::cout << "Error in Mu_Cost_f! delta_CFS is not zero, but nbands is not 2 or 3. This is not supported." << std::endl;
       delta_CFS = 0.0; // Reset to zero to avoid issues
     }
 
@@ -120,27 +155,62 @@ namespace macis {
     double mu = x;  
     double curr_nel_per_spin = 0.0;
 
-    if (delta_CFS != 0.0 && nbands == 2)
+    if (delta_CFS != 0.0)
     {
-      // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-      for(int i = 0; i < n_imp; i++) 
-      {
-        if( i / nsites == 0 )
+        if (nbands == 2)
         {
-          // For the first band, we add mu - delta_CFS
-          T.at(i*norb+i) = mu - delta_CFS/2.0;
+          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+          for(int i = 0; i < n_imp; i++) 
+          {
+            if( i / nsites == 0 )
+            {
+              // For the first band, we add mu - delta_CFS
+              T.at(i*norb+i) = mu - delta_CFS/2.0;
+            }
+            else if( i / nsites == 1 )
+            {
+              // For the second band, we add mu + delta_CFS
+              T.at(i*norb+i) = mu + delta_CFS/2.0 ;
+            }
+            else
+            {
+              std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+              throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
+            }
+          }
         }
-        else if( i / nsites == 1 )
+        else if (nbands == 3)
         {
-          // For the second band, we add mu + delta_CFS
-          T.at(i*norb+i) = mu + delta_CFS/2.0 ;
+          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
+          for(int i = 0; i < n_imp; i++) 
+          {
+            if( i / nsites == 0 )
+            {
+              // For the first band, we add mu
+              T.at(i*norb+i) = mu;
+            }
+            else if( i / nsites == 1 )
+            {
+              // For the second band, we add mu
+              T.at(i*norb+i) = mu;
+            }
+            else if( i / nsites == 2 )
+            {
+              // For the third band, we add mu + delta_CFS
+              T.at(i*norb+i) = mu + delta_CFS ;
+            }
+            else
+            {
+              std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+              throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
+            }
+          }
         }
         else
         {
-          std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-          throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
+          std::cout << "Error in Mu_Cost_f! Invalid number of bands: nbands = " << nbands << std::endl;
+          throw( std::runtime_error( "Error in Mu_Cost_f! Invalid number of bands" ) );
         }
-      }
     }
     else
     {
