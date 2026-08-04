@@ -6,6 +6,50 @@
   ~ See LICENSE.txt for details
 -->
 
+> [!NOTE]
+> **This is a fork.** Upstream is
+> [wavefunction91/MACIS](https://github.com/wavefunction91/MACIS), which remains
+> the canonical version of MACIS — please report issues with core MACIS there.
+>
+> This fork builds on upstream's `feature/spin_dep` and `feature/gf` branches
+> (spin-dependent Hamiltonians and band-Lanczos Green's functions are upstream
+> work) and adds a quantum-impurity-solver layer on top:
+>
+> * **Impurity solver** — ED, ASCI, rotated-ASCI and "cheap ASCI" solver entry
+>   points behind a common `impurity_params` interface
+>   (`include/macis/impurity_solver.hpp`).
+> * **Chemical-potential control** — GSL-based root finding to fix `mu` at a
+>   target filling, plus `mu`-vs-`n` scans (`src/macis/doping/fix_mu.cpp`).
+> * **Impurity RDMs** — impurity/bath determinant decomposition with fermionic
+>   sign handling and bath-traced reduced density matrices
+>   (`include/macis/observables/impurity_rdm.hpp`).
+> * **Static observables** — double occupancies, charge-charge, `Sz-Sz` and
+>   `tauz-tauz` correlators, with 2-RDM transformation under orbital rotations
+>   (`src/macis/comp_observables.cpp`).
+> * **Dynamical `Sz`** — resolvent-based dynamical spin response layered on
+>   upstream's band-Lanczos machinery
+>   (`include/macis/gf/dynamical_properties.hpp`).
+> * **Natural-orbital rotations in ASCI** — SVD-based rotation of the
+>   Hamiltonian in separate impurity and bath blocks, interleaved with ASCI
+>   growth (`include/macis/hamiltonian_generator/rdms.hpp`,
+>   `include/macis/asci/grow.hpp`).
+> * **Davidson hardening** — Gram-Schmidt with linear-dependence detection,
+>   NaN/Inf validation, stagnation and near-degeneracy handling
+>   (`include/macis/solvers/davidson.hpp`).
+> * **Drivers** under `main/` for doped and `mu`-scan impurity workflows.
+>
+> Fork work by Diego Florez-Ablan.
+>
+> **Additional dependency:** this fork requires
+> [GSL](https://www.gnu.org/software/gsl/), the GNU Scientific Library, beyond
+> the upstream dependencies listed below. It is used by the chemical-potential
+> fixing routines in `src/macis/doping/fix_mu.cpp`, which build on its
+> one-dimensional root finders (`gsl_roots.h`, `gsl_vector.h`). Note that the
+> build currently links GSL unconditionally, so it must be available even if
+> those routines are not used.
+>
+> All upstream copyright and license terms apply unchanged; see `LICENSE.txt`.
+
 # About
 
 Many-Body Adaptive Configuration Interaction Suite (MACIS) Copyright (c) 2023,
@@ -58,6 +102,8 @@ Phenomena [(SPEC)](https://spec.labworks.org/home) Center.
 * MPI 
 * [`std::mdspan`](https://en.cppreference.com/w/cpp/container/mdspan) with [Kokkos](https://github.com/kokkos/mdspan) extensions
 * spdlog
+* [GSL](https://www.gnu.org/software/gsl/) (fork only — required by the
+  `mu`-fixing doping routines; see the fork note at the top)
 * OpenMP (Optional)
 * Boost (Optional)
 * Catch2 (Testing)
