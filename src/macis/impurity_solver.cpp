@@ -442,7 +442,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       std::cout << "occs[" << i << "] = " << occs[i] << std::endl;
     }
 
-    double curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0)/n_imp; //DEBUG
+    double curr_nel_per_spin = std::accumulate(occs.begin(), occs.begin()+ n_imp, 0.0)/n_imp;
     std::cout << "* Number of electrons on impurity (per orbital per spin) = " << curr_nel_per_spin << std::endl;
 
     bool print_ordm = true;

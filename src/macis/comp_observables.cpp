@@ -194,8 +194,6 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
 
     Transform_2RDMs(n_active_, ordm_u_, ordm_d_, trdm_uu_, trdm_ud_, trdm_du_,
                     trdm_dd_);
-
-    std::cout << " Constructor done\n" << std::endl;  // DEBUG
   }
 
   template<size_t N>

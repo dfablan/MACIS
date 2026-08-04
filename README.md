@@ -173,6 +173,63 @@ target_link_libraries( my_target PUBLIC macis::macis )
 | `LAPACK_LIBRARIES`         | Full LAPACK linker.                                       |  --      |
 | `BUILD_TESTING`            | Whether to build unit tests                               |  `ON`    |
 
+## Building the fork's impurity drivers
+
+Beyond the upstream dependencies, this fork requires GSL. On Debian or Ubuntu:
+
+```
+apt-get install libgsl-dev
+```
+
+GSL is linked unconditionally, so it must be present even if the
+chemical-potential routines are unused. If it is installed outside the default
+search paths — a local build on a cluster, for instance — pass its prefix at
+configure time (or export `GSL_ROOT_DIR` in the environment):
+
+```
+cmake -S . -B build -DGSL_ROOT_DIR=/path/to/gsl-install
+cmake --build build
+```
+
+This builds three additional executables into `build/main/`:
+
+| Driver | Purpose |
+|--------|---------|
+| `run_asci_impsolv_dop`      | Impurity solve at fixed electron count, adjusting `mu` |
+| `run_asci_impsolv_mu_vs_n`  | Scan of filling `n` as a function of chemical potential `mu` |
+| `test_lapack_convention`    | Checks of the LAPACK column-major conventions used by the rotation code |
+
+Each takes a single INI-style input file as its only argument:
+
+```
+./build/main/run_asci_impsolv_dop input.ini
+```
+
+The input is grouped into sections — `[CI]` for the Hamiltonian and active
+space, `[ASCI]` for the selected-CI parameters, and `[DOP]` for the
+chemical-potential search:
+
+```ini
+[CI]
+FCIDUMP  = /path/to/FCIDUMP
+NACTIVE  = 12
+NALPHA   = 6
+NBETA    = 6
+DOPING   = true
+
+[DOP]
+INIT_MU     = 0.0
+NELECTRONS  = 6.0
+METHOD      = brent
+ABS_TOL     = 1e-6
+MAXITER     = 100
+```
+
+This is a minimal illustration rather than a complete reference. The
+authoritative list of recognised keys is the set of `input.get<...>("SECTION.KEY")`
+calls in the corresponding driver source under `main/`; the parser itself lives
+in `tests/ini_input.cxx`.
+
 # Example Usage
 
 Coming Soon.... See `tests/standalone_driver.cxx` for an example end-to-end

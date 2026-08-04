@@ -12,8 +12,6 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <blas.hh>
 #include <lapack.hh>
-// #include <fstream> //DEBUG
-// #include <iterator> //DEBUG
 
 #pragma GCC diagnostic pop
 

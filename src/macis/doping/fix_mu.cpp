@@ -57,8 +57,12 @@ namespace macis {
       }
       else if ( nbands == 3 )
       {
+          // Three-band CFS scheme: two degenerate levels at mu and a third
+          // shifted by delta_CFS. This level ordering follows the realistic
+          // FeSC Hamiltonian this routine was developed against; other
+          // materials may require a different assignment.
           // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-          for(int i = 0; i < n_imp; i++) 
+          for(int i = 0; i < n_imp; i++)
           {
               if( i / nsites == 0 )
               {
