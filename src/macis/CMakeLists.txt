@@ -67,8 +67,11 @@ target_link_libraries(macis PUBLIC spdlog::spdlog)
 include(macis-mdspan)
 target_link_libraries(macis PUBLIC mdspan)
 
-# GSL
-set( GSL_ROOT_DIR "/home/dfloreza/gsl-install")
+# GSL -- required by the chemical-potential fixing routines in src/macis/doping.
+# If GSL lives outside the default search paths (e.g. a local build on a
+# cluster), point CMake at it with -DGSL_ROOT_DIR=/path/to/gsl-install, or by
+# exporting GSL_ROOT_DIR in the environment.
+#set( GSL_ROOT_DIR "/home/dfloreza/gsl-install") probably for Ulysses cluster
 find_package(GSL REQUIRED)
 target_link_libraries(macis PUBLIC GSL::gsl GSL::gslcblas)
 
