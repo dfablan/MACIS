@@ -1,0 +1,90 @@
+# Build directories
+build/
+build*/
+_build/
+out/
+cmake-build-*/
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+CPackConfig.cmake
+CPackSourceConfig.cmake
+*.cmake.tmp
+
+# Compiled objects, libraries, executables
+*.o
+*.obj
+*.lo
+*.slo
+*.a
+*.la
+*.lai
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Dependencies fetched at configure time
+_deps/
+
+# Doxygen / docs output
+docs/html/
+docs/latex/
+docs/xml/
+doxygen_warnings.log
+
+# Editor / IDE
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+.ccls-cache/
+.cache/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Runtime output written by the drivers and tests.
+# Reference data under tests/ref_data/ and attic/ is tracked -- do not add
+# blanket *.dat / *.bin rules here, they would shadow it.
+GF.dat
+GFMatrix_OrbitalIndices.dat
+GFMatrix_OrbitalIndices_ADD.dat
+GFMatrix_OrbitalIndices_SUB.dat
+LanGFMatrix_ADD.dat
+LanGFMatrix_SUB.dat
+BLEigs.dat
+BLH.dat
+*_BLevals.dat
+QRresRmat.dat
+QRresVecs.dat
+active_ordm.dat
+ordm_up.dat
+ordm_do.dat
+db_occs_matrix.dat
+rot_matrix.dat
+charge_charge.dat
+sz_sz.dat
+tauz_tauz.dat
+mu_vs_n.dat
+locFCIDUMP.dat
+rho.bin
+
+# Job scripts / scheduler logs
+*.log
+slurm-*.out
+core.*
