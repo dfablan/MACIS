@@ -66,18 +66,18 @@ namespace macis {
           {
               if( i / nsites == 0 )
               {
-                  // For the first band, we add mu
-                  T.at(i*norb+i) = mu;
+                  // For the first band, we add mu-1/3*delta_CFS
+                  T.at(i*norb+i) = mu-delta_CFS/3.0;
               }
               else if( i / nsites == 1 )
               {
-                  // For the second band, we add mu
-                  T.at(i*norb+i) = mu;
+                  // For the second band, we add mu-1/3*delta_CFS
+                  T.at(i*norb+i) = mu-delta_CFS/3.0 ;
               }
               else if( i / nsites == 2 )
               {
-                  // For the third band, we add mu + delta_CFS
-                  T.at(i*norb+i) = mu + delta_CFS ;
+                  // For the third band, we add mu + 2/3*delta_CFS
+                  T.at(i*norb+i) = mu + 2.0*delta_CFS/3.0 ;
               }
               else
               {
@@ -190,18 +190,18 @@ namespace macis {
           {
             if( i / nsites == 0 )
             {
-              // For the first band, we add mu
-              T.at(i*norb+i) = mu;
+              // For the first band, we add mu - 1/3*delta_CFS
+              T.at(i*norb+i) = mu - delta_CFS/3.0;
             }
             else if( i / nsites == 1 )
             {
-              // For the second band, we add mu
-              T.at(i*norb+i) = mu;
+              // For the second band, we add mu - 1/3*delta_CFS
+              T.at(i*norb+i) = mu - delta_CFS/3.0;
             }
             else if( i / nsites == 2 )
             {
-              // For the third band, we add mu + delta_CFS
-              T.at(i*norb+i) = mu + delta_CFS ;
+              // For the third band, we add mu + 2/3*delta_CFS
+              T.at(i*norb+i) = mu + 2.0*delta_CFS/3.0 ;
             }
             else
             {
