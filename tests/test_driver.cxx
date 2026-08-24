@@ -175,8 +175,6 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.REFINE_ETOL", params.asci_settings.refine_energy_tol,
               double);
   OPT_KEYWORD("ASCI.GROW_WITH_ROT", params.asci_settings.grow_with_rot, bool);
-  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY",
-              params.asci_settings.grow_with_rot_legacy, bool);
   OPT_KEYWORD("ASCI.NROTS", params.asci_settings.nrots, size_t);
   OPT_KEYWORD("ASCI.ROT_SIZE_START", params.asci_settings.rot_size_start,
               size_t);
@@ -278,10 +276,7 @@ int main(int argc, char** argv) {
     if(params.ci_exp == CIExpansion::CAS)
       E0 = macis::SolveImpurityED<nwfn_bits>(params);
     else {
-      if(params.asci_settings.grow_with_rot_legacy)
-        E0 = macis::SolveImpurityASCI_rot<nwfn_bits>(params);
-      else
-        E0 = macis::SolveImpurityASCI<nwfn_bits>(params);
+      E0 = macis::SolveImpurityASCI<nwfn_bits>(params);
       if(asci_wfn_out_fname.size()) {
         console->info("Writing ASCI Wavefunction to {}", asci_wfn_out_fname);
         macis::write_wavefunction(asci_wfn_out_fname, params.n_active,

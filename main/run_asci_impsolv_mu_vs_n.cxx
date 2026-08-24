@@ -162,8 +162,6 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.MAX_REFINE_ITER", params.asci_settings.max_refine_iter, size_t);
   OPT_KEYWORD("ASCI.REFINE_ETOL", params.asci_settings.refine_energy_tol, double);
   OPT_KEYWORD("ASCI.GROW_WITH_ROT", params.asci_settings.grow_with_rot, bool);
-  OPT_KEYWORD("ASCI.GROW_WITH_ROT_LEGACY", params.asci_settings.grow_with_rot_legacy,
-              bool);
   OPT_KEYWORD("ASCI.NROTS", params.asci_settings.nrots, size_t);
   OPT_KEYWORD("ASCI.ROT_SIZE_START", params.asci_settings.rot_size_start, size_t);
   OPT_KEYWORD("ASCI.CONSTRAINT_LVL", params.asci_settings.constraint_level, int);

@@ -47,7 +47,6 @@ struct ASCISettings {
   bool no_constraint_search = true;
 
   bool grow_with_rot = false;
-  bool grow_with_rot_legacy = false;
   size_t nrots = 0;
   size_t rot_size_start = 1000;
 
