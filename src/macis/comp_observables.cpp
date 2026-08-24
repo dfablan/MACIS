@@ -85,8 +85,15 @@ double Comp_db_occs(impurity_params<N>& p) {
         macis::rank4_span<double>(trdm_dd.data(), n_active, n_active, n_active,
                                   n_active));
 
+    // NOTE: form_rdms returns the 2-RDMs in the "energy-contraction"
+    // normalization, i.e. trdm = Gamma/2 (every two-body kernel in
+    // macis/util/rdms.hpp folds in a factor of 1/2, the one-body ordm does
+    // not). Expectation values must therefore be taken from 2*trdm, so that
+    // sum_pq Gamma(p,p,q,q) = N(N-1) matches tr(ordm) = N. Without the 2 this
+    // printed exactly half of the "from WF" value below.
     for(int a = 0; a < n_imp; a++) {
-      orb_db_occs += trdm_ud[a + a * n_active + a * n_active2 + a * n_active3];
+      orb_db_occs +=
+          2.0 * trdm_ud[a + a * n_active + a * n_active2 + a * n_active3];
     }
     orb_db_occs = orb_db_occs / n_imp;
 
@@ -94,27 +101,22 @@ double Comp_db_occs(impurity_params<N>& p) {
               << orb_db_occs << std::endl;
 
     {
-      struct wf_pair {
-        std::string str;
-        double coeff;
-      };
-
-      std::vector<wf_pair> pairs;
-      pairs.reserve(dets.size());
-      for(int idet = 0; idet < dets.size(); idet++) {
-        wf_pair p = {macis::to_canonical_string(dets[idet]), C_local[idet]};
-        pairs.push_back(p);
-      }
-
-      std::sort(pairs.begin(), pairs.end(),
-                [](const wf_pair& a, const wf_pair& b) {
-                  return abs(a.coeff) > abs(b.coeff);
-                });
-
-      for(int idet = 0; idet < pairs.size(); ++idet) {
+      // Reference value, read straight off the determinant occupations: the
+      // number operator is diagonal in the determinant basis, so <n_up(a)
+      // n_dn(a)> is just the total weight of the determinants that carry a
+      // doubly occupied impurity orbital a. This is the same sum as the 2-RDM
+      // expression above, term for term - trdm_ud(a,a,a,a) only ever collects
+      // 0.5*|C_I|^2 from the diagonal kernel in macis/util/rdms.hpp (the
+      // single/double excitation kernels all have v1 != o1 and so cannot reach
+      // the fully diagonal element) - so the two printed values must agree to
+      // roundoff.
+      for(size_t idet = 0; idet < dets.size(); ++idet) {
+        const auto det_alpha = macis::bitset_lo_word(dets[idet]);
+        const auto det_beta = macis::bitset_hi_word(dets[idet]);
+        const double weight = C_local[idet] * C_local[idet];
         for(size_t i = 0; i < n_imp; ++i) {
-          if(pairs[idet].str[i] == '2') {
-            orb_db_occs_bm += pairs[idet].coeff * pairs[idet].coeff;
+          if(det_alpha[i] and det_beta[i]) {
+            orb_db_occs_bm += weight;
           }
         }
       }
@@ -183,7 +185,13 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
         macis::rank4_span<double>(trdm_dd_.data(), n_active_, n_active_,
                                   n_active_, n_active_));
 
-    {  // Possible bug fix
+    // Convert the 2-RDMs from the "energy-contraction" normalization returned
+    // by form_rdms (trdm = Gamma/2, see macis/util/rdms.hpp) to the standard
+    // 2-RDM normalized to N(N-1), which is what tr(ordm) = N is consistent
+    // with. All observables below (double occupancies, Sz-Sz, tz-tz,
+    // charge-charge) assume this convention, and Transform_2RDMs adds the
+    // undoubled ordm, so it must run after this loop.
+    {
       for(int i = 0; i < n_active4_; i++) {
         trdm_dd_[i] = 2.0 * trdm_dd_[i];
         trdm_uu_[i] = 2.0 * trdm_uu_[i];
@@ -297,6 +305,16 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
 
   template<size_t N>
   std::vector<double> CompObservables<N>::compute_tz_tz_correlations() const {
+    // The orbital-isospin tau_z used below has +/-1 eigenvalues, which only
+    // exists for a two-band manifold. Throw rather than assert: this project
+    // builds Release (NDEBUG defined), so an assert here would silently
+    // compile out and let a 3-band run return numbers that are not tau_z for
+    // anything.
+    if(n_bands_ != 2)
+      throw std::runtime_error(
+          "compute_tz_tz_correlations: tau_z is only defined for a two-band "
+          "manifold (n_bands == 2), got n_bands = " +
+          std::to_string(n_bands_));
     std::vector<double> tz_tz(n_sites2_, 0.0);
     for(size_t site_i = 0; site_i < n_sites_; site_i++) {
       for(size_t site_j = 0; site_j < n_sites_; site_j++) {
