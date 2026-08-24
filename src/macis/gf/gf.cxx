@@ -148,6 +148,15 @@ template void RunGFCalc<64>(std::vector<std::vector<std::complex<double>>> &GF,
                             const double energ, const bool is_part,
                             const std::vector<std::complex<double>> &ws,
                             const std::vector<double> &occs,
+                            const GFSettings &settings,
+                            std::vector<int> &todelete);
+template void RunGFCalc<64>(std::vector<std::vector<std::complex<double>>> &GF,
+                            const Eigen::VectorXd &wfn0,
+                            HamiltonianGenerator<64> &Hgen,
+                            const std::vector<std::bitset<64>> &base_dets,
+                            const double energ, const bool is_part,
+                            const std::vector<std::complex<double>> &ws,
+                            const std::vector<double> &occs,
                             const GFSettings &settings);
 
 }  // namespace macis

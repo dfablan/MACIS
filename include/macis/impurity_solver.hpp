@@ -20,6 +20,8 @@
 #include <macis/wavefunction_io.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
+#include <stdexcept>
+#include <string>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -144,7 +146,7 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   EASCI -= (p.E_core + p.E_inactive);
   // Evaluate particle GF
   macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws, occs,
-                      gf_settings);
+                      gf_settings, todelete_p);
 
   // std::cout << "GF Particle part calculated." << std::endl;
   // for(int i = 0; i < p.n_imp; i++) {
@@ -154,12 +156,14 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
 
   // Evaluate hole GF
   macis::RunGFCalc<N>(GF, psi0, ham_gen, p.dets, EASCI, false, ws, occs,
-                      gf_settings);
+                      gf_settings, todelete_h);
 
   EASCI += p.E_core + p.E_inactive;
 
   if(todelete_h != todelete_p)
-    std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
+    throw std::runtime_error(
+        "In evaluate_GF: todelete_h != todelete_p, the particle and hole "
+        "Green's functions dropped different orbitals and cannot be summed");
 
   GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
 
@@ -173,10 +177,48 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
 
   size_t G_n_orbs = sqrt(GF[0].size());
 
+  // The loops below index rows/columns 0..n_imp-1 of the returned GF, so the
+  // GF must be at least that large. It is not if fewer than n_imp orbitals
+  // were requested in GF_orbs_comp, or if any of them were dropped.
+  if(G_n_orbs < p.n_imp)
+    throw std::runtime_error(
+        "In evaluate_GF: the computed Green's function is smaller than n_imp, "
+        "cannot rotate the impurity block back to the original basis. Check "
+        "GF.ORBS_COMP and the list of dropped orbitals.");
+
+  // The back-rotation also assumes GF row j corresponds to impurity orbital j.
+  // That mapping breaks as soon as an orbital is dropped, since the surviving
+  // rows are then GF_orbs_comp minus todelete_p.
+  if(!todelete_p.empty())
+    throw std::runtime_error(
+        "In evaluate_GF: orbitals were dropped from the Green's function, so "
+        "its rows no longer map onto impurity orbitals 0..n_imp-1 and the "
+        "back-rotation would mix the wrong entries.");
+
   Eigen::MatrixXd rotMat = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
   for(int j = 0; j < p.n_imp; j++)
     for(int k = 0; k < p.n_imp; k++)
       rotMat(j, k) = p.orb_rot[j + k * p.n_active];
+
+  // rotMat is the top-left n_imp x n_imp block of the n_active x n_active
+  // orb_rot. That block is only unitary on its own if orb_rot is block-diagonal
+  // in imp/bath, which rotate_hamiltonian_ordm_imp_bath guarantees but the full
+  // rotate_hamiltonian_ordm (asci_grow's grow_with_rot path) does not. Without
+  // this check a non-block-diagonal orb_rot would silently apply a
+  // non-unitary truncation to the GF.
+  if(p.n_imp > 0) {
+    const Eigen::MatrixXd dev = rotMat * rotMat.transpose() -
+                                Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+    const double unitarity_tol = 1.e-8;
+    if(dev.cwiseAbs().maxCoeff() > unitarity_tol)
+      throw std::runtime_error(
+          "In evaluate_GF: the impurity block of orb_rot is not unitary (max "
+          "deviation of R R^T from the identity is " +
+          std::to_string(dev.cwiseAbs().maxCoeff()) +
+          "). orb_rot is not block-diagonal in imp/bath, so the impurity "
+          "Green's function cannot be rotated back with its impurity block "
+          "alone.");
+  }
 
   for(int iw = 0; iw < gf_settings.nws; iw++) {
     Eigen::MatrixXcd G = Eigen::MatrixXcd::Zero(p.n_imp, p.n_imp);

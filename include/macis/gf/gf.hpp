@@ -533,6 +533,11 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
  * orbital.
  * @param [in] const GFSettings &settings: Structure with various parameters for
  * Green's function calculation.
+ * @param [out] std::vector<int> &todelete: On return, the indices into
+ * settings.GF_orbs_comp whose add/remove vector vanished and was therefore
+ * dropped. The returned GF is (GF_orbs_comp.size() - todelete.size())^2, NOT
+ * GF_orbs_comp.size()^2, so callers must forward this to sum_GFs/write_GF or
+ * they will read past the end of every row.
  *
  * @author Carlos Mejuto Zaera
  * @date 01/02/2022
@@ -543,7 +548,8 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                const std::vector<std::bitset<nbits>> &base_dets,
                const double energ, const bool is_part,
                const std::vector<std::complex<double>> &ws,
-               const std::vector<double> &occs, const GFSettings &settings) {
+               const std::vector<double> &occs, const GFSettings &settings,
+               std::vector<int> &todelete) {
   using Clock = std::chrono::high_resolution_clock;
   // READ INPUT
   const size_t trunc_size = settings.trunc_size;
@@ -619,7 +625,9 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   if(nterms < nLanIts) nLanIts = nterms;
 
   // PREPARE THE WAVEFUNCTIONS FOR THE BAND LANCZOS
-  std::vector<int> todelete;
+  // NOTE: todelete is an out-parameter. BuildWfn4Lanczos clears and fills it,
+  // and it sets the dimension of the GF returned below; it must reach the
+  // caller.
   std::vector<double> wfns;
   int nvecs;
   std::tie(wfns, nvecs) = BuildWfn4Lanczos<nbits, index_t>(
@@ -692,6 +700,24 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 }
 
 /**
+ * @brief Convenience overload of RunGFCalc for callers that do not need the
+ *        list of dropped orbitals. Only safe when no orbital can be dropped;
+ *        if one is, the returned GF is smaller than GF_orbs_comp.size()^2 and
+ *        the caller has no way to know. Prefer the overload taking todelete.
+ */
+template <size_t nbits, typename index_t = int32_t>
+void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
+               const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
+               const std::vector<std::bitset<nbits>> &base_dets,
+               const double energ, const bool is_part,
+               const std::vector<std::complex<double>> &ws,
+               const std::vector<double> &occs, const GFSettings &settings) {
+  std::vector<int> todelete;
+  RunGFCalc<nbits, index_t>(GF, wfn0, Hgen, base_dets, energ, is_part, ws, occs,
+                            settings, todelete);
+}
+
+/**
  * @brief Routine to sum two Green function matrices.
 
 */
@@ -703,6 +729,23 @@ inline const std::vector<std::vector<std::complex<double>>> sum_GFs(
   using dbl = std::numeric_limits<double>;
   size_t nfreqs = ws.size();
   int GFmat_size = GF_orbs.size() - todelete.size();
+
+  // The two GFs must already be GFmat_size x GFmat_size. They will not be if
+  // todelete was not the list actually produced by RunGFCalc, in which case the
+  // loops below would read past the end of every row.
+  if(GFmat_size <= 0)
+    throw std::runtime_error(
+        "In sum_GFs: every requested GF orbital was dropped, nothing to sum");
+  if(GF1.size() < nfreqs || GF2.size() < nfreqs)
+    throw std::runtime_error(
+        "In sum_GFs: fewer GF frequencies than entries in the frequency grid");
+  const size_t expected = size_t(GFmat_size) * size_t(GFmat_size);
+  for(size_t iii = 0; iii < nfreqs; iii++)
+    if(GF1[iii].size() != expected || GF2[iii].size() != expected)
+      throw std::runtime_error(
+          "In sum_GFs: GF matrix dimension does not match GF_orbs.size() - "
+          "todelete.size(). Did the caller forget to forward the todelete list "
+          "returned by RunGFCalc?");
 
   std::vector<std::vector<std::complex<double>>> GF(
       nfreqs, std::vector<std::complex<double>>(GFmat_size * GFmat_size,
