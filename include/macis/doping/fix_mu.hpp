@@ -8,6 +8,7 @@
 #pragma once
 // #ifndef MACIS_DOPING_FIX_MU_HPP
 // #define MACIS_DOPING_FIX_MU_HPP
+#include <gsl/gsl_errno.h>
 #include <gsl/gsl_roots.h>
 #include <gsl/gsl_vector.h>
 

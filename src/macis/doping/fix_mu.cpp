@@ -3,6 +3,78 @@
 
 namespace macis {
 
+namespace {
+
+  // Turns GSL's default error handler off for the lifetime of the guard and
+  // restores the previous one on scope exit, including when an exception leaves
+  // the scope. The default handler aborts the process, which would kill a long
+  // run on a solver error we can diagnose and report properly.
+  struct GSLErrorHandlerGuard {
+    gsl_error_handler_t* prev;
+    GSLErrorHandlerGuard() : prev( gsl_set_error_handler_off() ) {}
+    ~GSLErrorHandlerGuard() { gsl_set_error_handler( prev ); }
+    GSLErrorHandlerGuard( const GSLErrorHandlerGuard& ) = delete;
+    GSLErrorHandlerGuard& operator=( const GSLErrorHandlerGuard& ) = delete;
+  };
+
+  // Writes mu -- plus the crystal-field splitting, if any -- onto the impurity
+  // diagonal of a one-body matrix. Factored out of Mu_vs_n / Mu_Cost_f so that
+  // both spin channels receive exactly the same shift: applying it to T alone
+  // makes mu a Zeeman field rather than a chemical potential.
+  void set_impurity_diagonal( std::vector<double>& T, double mu, size_t norb,
+                              size_t n_imp, size_t nbands, double delta_CFS,
+                              const std::string& caller )
+  {
+    if( delta_CFS == 0.0 )
+    {
+      // If delta_CFS is zero, we just update the diagonal elements with mu
+      for( size_t i = 0; i < n_imp; i++ ) T.at(i*norb+i) = mu;
+      return;
+    }
+
+    const size_t nsites = n_imp / nbands;
+
+    if( nbands == 2 )
+    {
+      for( size_t i = 0; i < n_imp; i++ )
+      {
+        // First band is lowered by delta_CFS/2, second is raised by the same
+        if( i / nsites == 0 )      T.at(i*norb+i) = mu - delta_CFS/2.0;
+        else if( i / nsites == 1 ) T.at(i*norb+i) = mu + delta_CFS/2.0;
+        else
+        {
+          std::cout << "Error in " << caller << "! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+          throw( std::runtime_error( "Error in " + caller + "! Invalid index for impurity orbital" ) );
+        }
+      }
+    }
+    else if( nbands == 3 )
+    {
+      // Three-band CFS scheme: two degenerate levels at mu - delta_CFS/3 and a
+      // third at mu + 2*delta_CFS/3. This level ordering follows the realistic
+      // FeSC Hamiltonian this routine was developed against; other materials
+      // may require a different assignment.
+      for( size_t i = 0; i < n_imp; i++ )
+      {
+        if( i / nsites == 0 )      T.at(i*norb+i) = mu - delta_CFS/3.0;
+        else if( i / nsites == 1 ) T.at(i*norb+i) = mu - delta_CFS/3.0;
+        else if( i / nsites == 2 ) T.at(i*norb+i) = mu + 2.0*delta_CFS/3.0;
+        else
+        {
+          std::cout << "Error in " << caller << "! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
+          throw( std::runtime_error( "Error in " + caller + "! Invalid index for impurity orbital" ) );
+        }
+      }
+    }
+    else
+    {
+      std::cout << "Error in " << caller << "! Invalid number of bands: nbands = " << nbands << std::endl;
+      throw( std::runtime_error( "Error in " + caller + "! Invalid number of bands" ) );
+    }
+  }
+
+}  // namespace
+
   template <size_t N>
   double Mu_vs_n(double x, void * params)
   {
@@ -13,7 +85,21 @@ namespace macis {
     size_t& norb = (p->norb);
     size_t& n_imp = (p->n_imp);
     size_t& nbands = (p->nbands);
-    size_t nsites = (n_imp / nbands);
+
+    // set_impurity_diagonal writes mu onto diagonal entries [0, n_imp) of the
+    // FULL orbital set, i.e. it assumes the impurity orbitals are the leading
+    // indices of T/Td. active_hamiltonian's convention is the opposite: the
+    // INACTIVE orbitals are the leading indices (see
+    // include/macis/util/fock_matrices.hpp). With n_inactive != 0 the shift
+    // would land on inactive orbitals instead of the impurity, and
+    // E_inactive (computed once at driver setup) would go stale. Fail loudly
+    // rather than silently mis-shift.
+    if( p->n_inactive != 0 )
+      throw( std::runtime_error(
+          "Error in Mu_vs_n! n_inactive != 0 is not supported: the chemical "
+          "potential shift assumes the impurity orbitals are the leading "
+          "indices of T, which only holds when there are no inactive "
+          "orbitals." ) );
 
     double& delta_CFS = (p->delta_CFS);
     if (delta_CFS != 0.0 && (nbands != 2 && nbands != 3))
@@ -27,79 +113,37 @@ namespace macis {
     std::vector<double>& T = (p->T);
 
     // Solve the impurity problem
-    double mu = x;  
+    double mu = x;
     double curr_nel_per_spin = 0.0;
-    std::vector<double> occs;
 
-    if( delta_CFS != 0.0 )
-    {
-      if( nbands == 2 )
-      {
-          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-          for(int i = 0; i < n_imp; i++) 
-          {
-              if( i / nsites == 0 )
-              {
-                  // For the first band, we add mu - delta_CFS
-                  T.at(i*norb+i) = mu - delta_CFS/2.0;
-              }
-              else if( i / nsites == 1 )
-              {
-                  // For the second band, we add mu + delta_CFS
-                  T.at(i*norb+i) = mu + delta_CFS/2.0 ;
-              }
-              else
-              {
-                  std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-                  throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
-              }
-          }
-      }
-      else if ( nbands == 3 )
-      {
-          // Three-band CFS scheme: two degenerate levels at mu and a third
-          // shifted by delta_CFS. This level ordering follows the realistic
-          // FeSC Hamiltonian this routine was developed against; other
-          // materials may require a different assignment.
-          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-          for(int i = 0; i < n_imp; i++)
-          {
-              if( i / nsites == 0 )
-              {
-                  // For the first band, we add mu-1/3*delta_CFS
-                  T.at(i*norb+i) = mu-delta_CFS/3.0;
-              }
-              else if( i / nsites == 1 )
-              {
-                  // For the second band, we add mu-1/3*delta_CFS
-                  T.at(i*norb+i) = mu-delta_CFS/3.0 ;
-              }
-              else if( i / nsites == 2 )
-              {
-                  // For the third band, we add mu + 2/3*delta_CFS
-                  T.at(i*norb+i) = mu + 2.0*delta_CFS/3.0 ;
-              }
-              else
-              {
-                  std::cout << "Error in Mu_vs_n! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-                  throw( std::runtime_error( "Error in Mu_vs_n! Invalid index for impurity orbital" ) );
-              }
-          }
-      }
-      else
-      {
-          std::cout << "Error in Mu_vs_n! Invalid number of bands: nbands = " << nbands << std::endl;
-          throw( std::runtime_error( "Error in Mu_vs_n! Invalid number of bands" ) );
-      }
-    }
-    else
-    {
-        // If delta_CFS is zero, we just update the diagonal elements with mu
-        for(int i = 0; i < n_imp; i++)
-        {
-            T.at(i*norb+i) = mu;
-        }
-    }
+    // Apply mu (and any crystal-field splitting) to the impurity diagonal of
+    // BOTH spin channels. Shifting T alone would make mu a Zeeman field.
+    set_impurity_diagonal( T, mu, norb, n_imp, nbands, delta_CFS, "Mu_vs_n" );
+    if( p->spin_dep )
+      set_impurity_diagonal( p->Td, mu, norb, n_imp, nbands, delta_CFS, "Mu_vs_n" );
+
+    // Propagate the updated one-body integrals into the active-space arrays:
+    // T_active / Td_active are what the solvers actually consume.
+    macis::active_hamiltonian(
+        NumOrbital(norb), NumActive(p->n_active),
+        NumInactive(p->n_inactive), T.data(),
+        norb, p->V.data(), norb,
+        p->F_inactive.data(), norb,
+        p->T_active.data(), p->n_active,
+        p->V_active.data(), p->n_active);
+
+    if( p->spin_dep )
+      macis::active_hamiltonian(
+          NumOrbital(norb), NumActive(p->n_active),
+          NumInactive(p->n_inactive), p->Td.data(),
+          norb, p->V.data(), norb,
+          p->Fd_inactive.data(), norb,
+          p->Td_active.data(), p->n_active,
+          p->V_active.data(), p->n_active);
+
+    // Bind to the struct member the solvers fill, not a local copy.
+    std::vector<double>& occs = (p->occs);
+    occs.assign(n_imp, 0);
 
     double E;
     if (ci_exp == CIExpansion::CAS)
@@ -142,9 +186,23 @@ namespace macis {
     size_t& norb = (p->norb);
     size_t& n_imp = (p->n_imp);
     size_t& nbands = (p->nbands);
-    size_t nsites = n_imp / nbands;
     double& delta_CFS = (p->delta_CFS);
     double& nel_target = (p->nel_target);
+
+    // set_impurity_diagonal writes mu onto diagonal entries [0, n_imp) of the
+    // FULL orbital set, i.e. it assumes the impurity orbitals are the leading
+    // indices of T/Td. active_hamiltonian's convention is the opposite: the
+    // INACTIVE orbitals are the leading indices (see
+    // include/macis/util/fock_matrices.hpp). With n_inactive != 0 the shift
+    // would land on inactive orbitals instead of the impurity, and
+    // E_inactive (computed once at driver setup) would go stale. Fail loudly
+    // rather than silently mis-shift.
+    if( p->n_inactive != 0 )
+      throw( std::runtime_error(
+          "Error in Mu_Cost_f! n_inactive != 0 is not supported: the chemical "
+          "potential shift assumes the impurity orbitals are the leading "
+          "indices of T, which only holds when there are no inactive "
+          "orbitals." ) );
 
     if (delta_CFS != 0.0 && nbands != 2 && nbands != 3)
     {
@@ -159,79 +217,30 @@ namespace macis {
     double mu = x;  
     double curr_nel_per_spin = 0.0;
 
-    if (delta_CFS != 0.0)
-    {
-        if (nbands == 2)
-        {
-          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-          for(int i = 0; i < n_imp; i++) 
-          {
-            if( i / nsites == 0 )
-            {
-              // For the first band, we add mu - delta_CFS
-              T.at(i*norb+i) = mu - delta_CFS/2.0;
-            }
-            else if( i / nsites == 1 )
-            {
-              // For the second band, we add mu + delta_CFS
-              T.at(i*norb+i) = mu + delta_CFS/2.0 ;
-            }
-            else
-            {
-              std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-              throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
-            }
-          }
-        }
-        else if (nbands == 3)
-        {
-          // If delta_CFS is not zero, we need to account for the Crystal Field Splitting (CFS)
-          for(int i = 0; i < n_imp; i++) 
-          {
-            if( i / nsites == 0 )
-            {
-              // For the first band, we add mu - 1/3*delta_CFS
-              T.at(i*norb+i) = mu - delta_CFS/3.0;
-            }
-            else if( i / nsites == 1 )
-            {
-              // For the second band, we add mu - 1/3*delta_CFS
-              T.at(i*norb+i) = mu - delta_CFS/3.0;
-            }
-            else if( i / nsites == 2 )
-            {
-              // For the third band, we add mu + 2/3*delta_CFS
-              T.at(i*norb+i) = mu + 2.0*delta_CFS/3.0 ;
-            }
-            else
-            {
-              std::cout << "Error in Mu_Cost_f! Invalid index for impurity orbital: i / nsites = " << i / nsites << std::endl;
-              throw( std::runtime_error( "Error in Mu_Cost_f! Invalid index for impurity orbital" ) );
-            }
-          }
-        }
-        else
-        {
-          std::cout << "Error in Mu_Cost_f! Invalid number of bands: nbands = " << nbands << std::endl;
-          throw( std::runtime_error( "Error in Mu_Cost_f! Invalid number of bands" ) );
-        }
-    }
-    else
-    {
-         // If delta_CFS is zero, we just update the diagonal elements with mu
-        for(int i = 0; i < n_imp; i++) 
-        {
-         T.at(i*norb+i) = mu;
-        }
-    }
+    // Apply mu (and any crystal-field splitting) to the impurity diagonal of
+    // BOTH spin channels. Shifting T alone would make mu a Zeeman field.
+    set_impurity_diagonal( T, mu, norb, n_imp, nbands, delta_CFS, "Mu_Cost_f" );
+    if( p->spin_dep )
+      set_impurity_diagonal( p->Td, mu, norb, n_imp, nbands, delta_CFS, "Mu_Cost_f" );
 
+    // Propagate the updated one-body integrals into the active-space arrays:
+    // T_active / Td_active are what the solvers actually consume.
     macis::active_hamiltonian(
-        NumOrbital(norb), NumActive(p->n_active), 
-        NumInactive(p->n_inactive), T.data(), 
+        NumOrbital(norb), NumActive(p->n_active),
+        NumInactive(p->n_inactive), T.data(),
         norb, p->V.data(), norb,
         p->F_inactive.data(), norb,
-        p->T_active.data(), p->n_active, 
+        p->T_active.data(), p->n_active,
         p->V_active.data(), p->n_active);
+
+    if( p->spin_dep )
+      macis::active_hamiltonian(
+          NumOrbital(norb), NumActive(p->n_active),
+          NumInactive(p->n_inactive), p->Td.data(),
+          norb, p->V.data(), norb,
+          p->Fd_inactive.data(), norb,
+          p->Td_active.data(), p->n_active,
+          p->V_active.data(), p->n_active);
 
 
     std::vector<double>& occs = (p->occs);
@@ -401,8 +410,8 @@ namespace macis {
     double step = 0.1;
     bool done = false;
     int max_tries = 10, curr_try = 0;
-    double delta_x = abs(x_hi-x_lo);
-    if( abs(f_hi) < abs(f_lo) )
+    double delta_x = std::abs(x_hi-x_lo);
+    if( std::abs(f_hi) < std::abs(f_lo) )
     {
     // Too low initial chemical potential
       x_lo = x_hi;
@@ -520,29 +529,66 @@ namespace macis {
 
 
 
-    // Run optimization
+    // Run optimization. Inspect the solver status ourselves rather than letting
+    // GSL abort the process (see GSLErrorHandlerGuard).
+    GSLErrorHandlerGuard gsl_handler_guard;
+
     double mu_prev, mu = mu0;
+    int iter_status = GSL_SUCCESS;
     do
     {
-    	iter++;
-      status = gsl_root_fdfsolver_iterate(s);
-    	mu_prev = mu;
-     	mu      = gsl_root_fdfsolver_root(s);
-     	status = gsl_root_test_delta( mu, mu_prev, abs_tol, 1.E-3 );
+      iter++;
+
+      // Status of the solver step itself. This must be checked before it is
+      // overwritten by the convergence test below.
+      iter_status = gsl_root_fdfsolver_iterate(s);
+      if( iter_status != GSL_SUCCESS )
+      {
+        std::cout << "Error in Fix_Mu_der! gsl_root_fdfsolver_iterate failed at iteration "
+                  << iter << ": " << gsl_strerror( iter_status ) << std::endl;
+        if( iter_status == GSL_EZERODIV )
+          std::cout << "A zero derivative usually means the filling is on a plateau: n(mu) "
+                       "is a step function at T = 0, so the finite difference taken in "
+                       "Mu_Cost_df vanishes. Increase DOP.DSTEP so the two evaluations "
+                       "straddle the step, or use the derivative-free solver instead."
+                    << std::endl;
+        gsl_root_fdfsolver_free( s );
+        throw( std::runtime_error( "Error in Fix_Mu_der! Root solver step failed" ) );
+      }
+
+      mu_prev = mu;
+      mu      = gsl_root_fdfsolver_root(s);
+      status  = gsl_root_test_delta( mu, mu_prev, abs_tol, 1.E-3 );
 
       if( print )
         print_state_fix_mu_der( std::cout, iter, s, mu_prev );
 
       if (status == GSL_SUCCESS && print)   // check if solver is stuck
-     	  std::cout << "Converged!" << std::endl;
-      }
-      while (status == GSL_CONTINUE && iter < maxiter);
+        std::cout << "Converged!" << std::endl;
+    }
+    while (status == GSL_CONTINUE && iter < maxiter);
 
-      // Finally, get and return the optimal chemical potential
-      double res_mu = gsl_root_fdfsolver_root( s );
-      gsl_root_fdfsolver_free (s);
-    
-      return res_mu; 
+    // The loop also exits when the iteration budget runs out. Do not report an
+    // exhausted search as a converged mu.
+    if( status != GSL_SUCCESS )
+    {
+      std::cout << "Error in Fix_Mu_der! Root search did not converge in " << iter
+                << " iterations (maxiter = " << maxiter << "). Last mu = " << mu
+                << ", |mu - mu_prev| = " << std::abs( mu - mu_prev )
+                << ", abs_tol = " << abs_tol << std::endl;
+      gsl_root_fdfsolver_free( s );
+      throw( std::runtime_error( "Error in Fix_Mu_der! Root search did not converge" ) );
+    }
+
+    // Finally, get and return the optimal chemical potential
+    double res_mu = gsl_root_fdfsolver_root( s );
+    // The solver leaves params (E, occs, dets, C) holding its last trial
+    // evaluation, which is generally not the root. Re-solve at res_mu so the
+    // observables the caller reports belong to the mu that is returned.
+    Mu_Cost_f<N>(res_mu, params);
+    gsl_root_fdfsolver_free (s);
+
+    return res_mu;
     }
 
 
@@ -603,11 +649,28 @@ namespace macis {
     // std::cout<< "f(" << x_hi << ") =" << f.function(x_hi,params) << std::endl;
 
 
-    // Set the solver:
+    // Set the solver. Inspect the solver status ourselves rather than letting
+    // GSL abort the process (see GSLErrorHandlerGuard). This has to cover
+    // gsl_root_fsolver_set as well, which fails outright if the bracket does
+    // not straddle the target filling.
+    GSLErrorHandlerGuard gsl_handler_guard;
+
     std::cout << "------------------Initializing Root Solver----------------" << std::endl;
     T = SelectMuSolver_Type_noder( method_name );
     s = gsl_root_fsolver_alloc (T);
-    gsl_root_fsolver_set (s, &f, x_lo, x_hi);
+
+    int set_status = gsl_root_fsolver_set (s, &f, x_lo, x_hi);
+    if( set_status != GSL_SUCCESS )
+    {
+      std::cout << "Error in Fix_Mu_noder! gsl_root_fsolver_set failed on the bracket ["
+                << x_lo << ", " << x_hi << "]: " << gsl_strerror( set_status ) << std::endl;
+      if( set_status == GSL_EINVAL )
+        std::cout << "The bracket endpoints do not straddle the target filling n = "
+                  << nel_target << ". Widen DOP.INIT_SHIFT or pick a different DOP.INIT_MU."
+                  << std::endl;
+      gsl_root_fsolver_free( s );
+      throw( std::runtime_error( "Error in Fix_Mu_noder! Invalid initial bracket" ) );
+    }
 
 
     std::cout << "------------------Performing Root search----------------" << std::endl;
@@ -620,10 +683,22 @@ namespace macis {
 
 
     // Run optimization
+    int iter_status = GSL_SUCCESS;
     do
     {
       iter++;
-      status = gsl_root_fsolver_iterate(s);
+
+      // Status of the solver step itself. This must be checked before it is
+      // overwritten by the convergence test below.
+      iter_status = gsl_root_fsolver_iterate(s);
+      if( iter_status != GSL_SUCCESS )
+      {
+        std::cout << "Error in Fix_Mu_noder! gsl_root_fsolver_iterate failed at iteration "
+                  << iter << ": " << gsl_strerror( iter_status ) << std::endl;
+        gsl_root_fsolver_free( s );
+        throw( std::runtime_error( "Error in Fix_Mu_noder! Root solver step failed" ) );
+      }
+
       x_lo   = gsl_root_fsolver_x_lower(s);
       x_hi   = gsl_root_fsolver_x_upper(s);
       status = gsl_root_test_interval( x_lo, x_hi, abs_tol, 1.E-4 );
@@ -634,13 +709,26 @@ namespace macis {
 
       if (status == GSL_SUCCESS && print)   // check if solver is stuck
         std::cout << "Converged!" << std::endl;
-      }
-      while (status == GSL_CONTINUE && iter < maxiter);
+    }
+    while (status == GSL_CONTINUE && iter < maxiter);
 
-      // Finally, get and return the optimal chemical potential
-      double res_mu = gsl_root_fsolver_root( s );
-      gsl_root_fsolver_free (s);
-      return res_mu; 
+    // The loop also exits when the iteration budget runs out. Do not report an
+    // exhausted search as a converged mu.
+    if( status != GSL_SUCCESS )
+    {
+      std::cout << "Error in Fix_Mu_noder! Root search did not converge in " << iter
+                << " iterations (maxiter = " << maxiter << "). Final bracket = ["
+                << x_lo << ", " << x_hi << "], width = " << std::abs( x_hi - x_lo )
+                << ", abs_tol = " << abs_tol << std::endl;
+      gsl_root_fsolver_free( s );
+      throw( std::runtime_error( "Error in Fix_Mu_noder! Root search did not converge" ) );
+    }
+
+    // Finally, get and return the optimal chemical potential
+    double res_mu = gsl_root_fsolver_root( s );
+    Mu_Cost_f<N>(res_mu, params);
+    gsl_root_fsolver_free (s);
+    return res_mu;
     }
 
 // Explicit template instantiations for commonly used template parameter
