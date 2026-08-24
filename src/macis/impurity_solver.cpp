@@ -166,7 +166,7 @@ double SolveImpurityASCI (impurity_params<N>& p){
     // HF Guess
     // console->info("Generating HF Guess for ASCI");
     std::cout<<"Generating HF Guess for ASCI \n";
-    dets = {macis::canonical_hf_determinant<N>(nalpha, nalpha)};
+    dets = {macis::canonical_hf_determinant<N>(nalpha, nbeta)};
     // std::cout << dets[0].to_ullong() << std::endl;
     E0 = ham_gen.matrix_element(dets[0], dets[0]);
     C_local = {1.0};
@@ -428,9 +428,9 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     {
       std::ofstream ofile_rot( "rot_matrix.dat");
       ofile_rot.precision(std::numeric_limits<double>::max_digits10);
-      for (int i = 0; i < norb; i++)
+      for (int i = 0; i < n_active; i++)
       {
-        for (int j = 0; j < norb; j++)
+        for (int j = 0; j < n_active; j++)
           ofile_rot << std::scientific << orb_rot[i + j * n_active] << " ";
         ofile_rot << std::endl;
       }
