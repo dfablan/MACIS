@@ -118,7 +118,8 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm,
 
 template <size_t N>
 void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
-    const double* ordm, const size_t nimps, double* rot_mat, bool spin_dep) {
+    const double* ordm, const size_t nimps, double* rot_mat, bool spin_dep,
+    double* occs_out) {
   // assert nimp>0
   if(nimps == 0)
     throw std::runtime_error(
@@ -144,6 +145,16 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
       nat_orbs_bath[i + j * nbaths] = ordm[(i + nimps) + (j + nimps) * norb_];
   lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nbaths, nbaths,
                 nat_orbs_bath.data(), nbaths, S_bath.data(), NULL, 1, NULL, 1);
+
+  // gesvd returns singular values in descending order within each block;
+  // since ordm's imp/bath blocks are PSD, these singular values are exactly
+  // the natural-orbital occupations of the basis natural_orbitals above.
+  // Hand them back so callers don't have to (and risk disagreeing with)
+  // re-diagonalize the same blocks themselves.
+  if(occs_out != nullptr) {
+    std::copy(S_imp.begin(), S_imp.end(), occs_out);
+    std::copy(S_bath.begin(), S_bath.end(), occs_out + nimps);
+  }
 
   for(auto i = 0; i < nimps; ++i)
     for(auto j = 0; j < nimps; ++j)

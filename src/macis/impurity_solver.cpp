@@ -348,8 +348,15 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             //Reset auxiliary vectors
             tmp_rot.assign( n_active * n_active, 0. );
             comp.assign( n_active * n_active, 0. );
-            //Rotate to new orbitals
-            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep );
+            //Rotate to new orbitals. orb_occs receives the natural-orbital
+            //occupations (imp block then bath block, each descending) of
+            //the exact basis this call rotates the Hamiltonian into, so
+            //hf_determinant_byocc below is guaranteed to be consistent with
+            //that basis -- re-diagonalizing the ordm blocks separately here
+            //could pick a different (but equally valid) basis within any
+            //degenerate/near-degenerate occupation subspace, silently
+            //decoupling the HF guess from the rotated Hamiltonian.
+            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data() );
             asci_settings.just_singles = ham_gen.just_singles;
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
@@ -358,46 +365,6 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
             orb_rot = std::move(comp);
             
             {//Generate new HF determinant in rotated basis
-            size_t n_bath = n_active - n_imp;
-            //Impurity block
-            std::vector<double> ordm_i(n_imp * n_imp);
-            std::vector<double> eigvals_i(n_imp);
-            //Copy impurity block (active_ordm is column-major)
-            for(size_t ii = 0; ii < n_imp; ii++) {
-                for(size_t jj = 0; jj < n_imp; jj++) {
-                    ordm_i[ii + jj * n_imp] = active_ordm[ii + jj * n_active];
-                }
-            }
-            //Negate for descending eigenvalue order 
-            for(auto& x : ordm_i) x *= -1.0;
-            //Diagonalize impurity block
-            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_imp, ordm_i.data(),
-                         n_imp, eigvals_i.data());
-            //Restore sign of eigenvalues
-            for(auto& x : eigvals_i) x *= -1.0;
-            //Bath block
-            std::vector<double> ordm_b(n_bath * n_bath);
-            std::vector<double> eigvals_b(n_bath);
-            //Copy bath block
-            for(size_t ii = 0; ii < n_bath; ii++) {
-                for(size_t jj = 0; jj < n_bath; jj++) {
-                    ordm_b[ii + jj * n_bath] = active_ordm[(ii + n_imp) + (jj + n_imp) * n_active];
-                }
-            }
-            //Negate for descending eigenvalue order
-            for(auto& x : ordm_b) x *= -1.0;
-            // Diagonalize bath block
-            lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, n_bath, ordm_b.data(),
-                         n_bath, eigvals_b.data());
-            // Restore sign of eigenvalues
-            for(auto& x : eigvals_b) x *= -1.0;
-            // Store eigenvalues (already in descending order due to sign flip)
-            for(size_t ii = 0; ii < n_imp; ii++) {
-                orb_occs[ii] = eigvals_i[ii];
-            }
-            for(size_t ii = n_imp; ii < n_active; ii++) {
-                orb_occs[ii] = eigvals_b[ii - n_imp];
-            }
             std::cout << "* Impurity and bath 1-RDM eigenvalues: " << std::endl;
             std::cout << "  ";
             for(size_t ii = 0; ii < n_active; ii++) {
