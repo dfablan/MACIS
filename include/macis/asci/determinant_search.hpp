@@ -44,7 +44,15 @@ struct ASCISettings {
   double refine_energy_tol = 1e-6;
 
   int n_imp_orbs = -1;
-  bool no_constraint_search = true;
+  // Selects asci_contributions_standard over asci_contributions_constraint
+  // for EVERY rank count, not just world_size == 1 (see the dispatch below).
+  // The standard path is serial: under MPI each rank builds an identical,
+  // fully replicated pair list, which is then never deduplicated (the
+  // sort_and_accumulate_asci_pairs call further down only runs when
+  // world_size == 1) and whose distributed top-k selection assumes an
+  // unreplicated list. Leave this false so world_size == 1 alone selects the
+  // standard path; opt in per-run only when actually running single-rank.
+  bool no_constraint_search = false;
 
   bool grow_with_rot = false;
   size_t nrots = 0;

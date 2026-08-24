@@ -260,14 +260,18 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
             "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
             "{:.1e} change in eigenvalue)",
             stagnant_iter, stagnation_tol);
-        logger->warn(
-            "    Current residual norm: {:.3e} may be best achievable. "
-            "Convergence threshold = {:.3e}",
-            res_nrm, tol);
-        if(res_nrm < 100 * tol) {
-          converged = true;
-        }
-        break;
+        // Stagnation means the Krylov space stopped improving before
+        // reaching tol, not that it converged. Reporting it as converged
+        // breaks the error budget every caller assumes ("Davidson
+        // Converged!" means res_nrm < tol) -- surface the achieved residual
+        // and fail loudly instead of silently accepting up to 100x tol.
+        throw std::runtime_error(
+            "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
+            " iterations with < " + std::to_string(stagnation_tol) +
+            " change in eigenvalue. Achieved residual norm = " +
+            std::to_string(res_nrm) +
+            ", requested tol = " + std::to_string(tol) +
+            ". Not converged.");
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -297,12 +301,15 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
 
     // Project new vector out from old vectors
     if(!gram_schmidt(N, k, V.data(), N, R)) {
-      logger->warn(
-          "  * WARNING: Linear Dependence Detected at Iteration {}. Stopping "
-          "early.",
-          iter);
-      converged = true;
-      break;
+      // The Krylov space broke down before reaching tol (the convergence
+      // check above already let this iteration through), so this is a
+      // failure to converge, not success -- do not set converged = true.
+      throw std::runtime_error(
+          "Davidson: Linear Dependence Detected at iteration " +
+          std::to_string(iter) +
+          ", Krylov space broke down. Achieved residual norm = " +
+          std::to_string(res_nrm) +
+          ", requested tol = " + std::to_string(tol) + ". Not converged.");
     }
 
   }  // Davidson iterations
@@ -516,14 +523,20 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
             "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
             "{:.1e} change in eigenvalue)",
             stagnant_iter, stagnation_tol);
-        logger->warn(
-            "    Current residual norm: {:.3e} may be best achievable. "
-            "Convergence threshold {:.3e}",
-            res_nrm, tol);
-        if(res_nrm < 100 * tol) {
-          converged = true;
-        }
-        break;
+        // Stagnation means the Krylov space stopped improving before
+        // reaching tol, not that it converged. Reporting it as converged
+        // breaks the error budget every caller assumes ("Davidson
+        // Converged!" means res_nrm < tol) -- surface the achieved residual
+        // and fail loudly instead of silently accepting up to 100x tol. Both
+        // res_nrm and the stagnation decision above are already reduced
+        // across ranks, so every rank throws consistently.
+        throw std::runtime_error(
+            "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
+            " iterations with < " + std::to_string(stagnation_tol) +
+            " change in eigenvalue. Achieved residual norm = " +
+            std::to_string(res_nrm) +
+            ", requested tol = " + std::to_string(tol) +
+            ". Not converged.");
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -547,21 +560,29 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
       R_local[j] = -R_local[j] / denominator;
     }
 
-    size_t total_degenerate_count = 0;
-    if(degenerate_count > 0) {
-      total_degenerate_count = allreduce(degenerate_count, MPI_SUM, comm);
+    // allreduce is collective over comm: it must run on every rank every
+    // iteration, regardless of whether this rank itself saw a
+    // near-degeneracy, or a run where only some ranks do hangs the rest.
+    size_t total_degenerate_count = allreduce(degenerate_count, MPI_SUM, comm);
+    if(total_degenerate_count > 0) {
       logger->warn("  * WARNING: {} near-degenerate diagonal elements detected",
                    total_degenerate_count);
     }
 
     // Project new vector out form old vectors
     if(!p_gram_schmidt(N_local, k, V_local.data(), N_local, R_local, comm)) {
-      logger->warn(
-          "  * WARNING: Linear Dependence Detected at Iteration {}. Stopping "
-          "early.",
-          iter);
-      converged = true;
-      break;
+      // The Krylov space broke down before reaching tol (the convergence
+      // check above already let this iteration through), so this is a
+      // failure to converge, not success -- do not set converged = true.
+      // p_gram_schmidt's linear-dependence decision is itself derived from a
+      // collective allreduce, so it is identical across ranks and every rank
+      // throws consistently here.
+      throw std::runtime_error(
+          "Davidson: Linear Dependence Detected at iteration " +
+          std::to_string(iter) +
+          ", Krylov space broke down. Achieved residual norm = " +
+          std::to_string(res_nrm) +
+          ", requested tol = " + std::to_string(tol) + ". Not converged.");
     }
 
   }  // Davidson iterations
