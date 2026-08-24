@@ -270,8 +270,7 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
             " iterations with < " + std::to_string(stagnation_tol) +
             " change in eigenvalue. Achieved residual norm = " +
             std::to_string(res_nrm) +
-            ", requested tol = " + std::to_string(tol) +
-            ". Not converged.");
+            ", requested tol = " + std::to_string(tol) + ". Not converged.");
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -308,8 +307,8 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
           "Davidson: Linear Dependence Detected at iteration " +
           std::to_string(iter) +
           ", Krylov space broke down. Achieved residual norm = " +
-          std::to_string(res_nrm) +
-          ", requested tol = " + std::to_string(tol) + ". Not converged.");
+          std::to_string(res_nrm) + ", requested tol = " + std::to_string(tol) +
+          ". Not converged.");
     }
 
   }  // Davidson iterations
@@ -535,8 +534,7 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
             " iterations with < " + std::to_string(stagnation_tol) +
             " change in eigenvalue. Achieved residual norm = " +
             std::to_string(res_nrm) +
-            ", requested tol = " + std::to_string(tol) +
-            ". Not converged.");
+            ", requested tol = " + std::to_string(tol) + ". Not converged.");
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -581,8 +579,8 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
           "Davidson: Linear Dependence Detected at iteration " +
           std::to_string(iter) +
           ", Krylov space broke down. Achieved residual norm = " +
-          std::to_string(res_nrm) +
-          ", requested tol = " + std::to_string(tol) + ". Not converged.");
+          std::to_string(res_nrm) + ", requested tol = " + std::to_string(tol) +
+          ". Not converged.");
     }
 
   }  // Davidson iterations
