@@ -86,4 +86,40 @@ TEST_CASE("FCIDUMP") {
       REQUIRE(EMP2 == Approx(-0.203989305096243));
     }
   }
+
+  // Both FCIDUMP column orderings must parse identically: "<p> <q> <r> <s>
+  // <integral>" (what write_fcidump emits) and "<integral> <p> <q> <r> <s>"
+  // (the Molpro/PySCF convention). The two fixtures hold the same integrals.
+  SECTION("Column Ordering") {
+    const size_t norb = 2;
+    const size_t norb4 = norb * norb * norb * norb;
+
+    REQUIRE(macis::read_fcidump_norb(layout_index_first_fcidump) == norb);
+    REQUIRE(macis::read_fcidump_norb(layout_integral_first_fcidump) == norb);
+
+    std::vector<double> T_idx(norb * norb), T_int(norb * norb);
+    std::vector<double> V_idx(norb4), V_int(norb4);
+
+    macis::read_fcidump_1body(layout_index_first_fcidump, T_idx.data(), norb);
+    macis::read_fcidump_2body(layout_index_first_fcidump, V_idx.data(), norb);
+    macis::read_fcidump_1body(layout_integral_first_fcidump, T_int.data(),
+                              norb);
+    macis::read_fcidump_2body(layout_integral_first_fcidump, V_int.data(),
+                              norb);
+
+    // Anchor the known-good (index-first) read so the comparison below cannot
+    // be satisfied by both layouts being misparsed the same way.
+    REQUIRE(macis::read_fcidump_core(layout_index_first_fcidump) ==
+            Approx(0.125));
+    REQUIRE(T_idx[0 + 0 * norb] == Approx(-1.25));
+    REQUIRE(T_idx[0 + 1 * norb] == Approx(-0.5));
+    REQUIRE(T_idx[1 + 0 * norb] == Approx(-0.5));
+    REQUIRE(V_idx[0] == Approx(0.5));
+
+    REQUIRE(macis::read_fcidump_core(layout_integral_first_fcidump) ==
+            Approx(0.125));
+    for(size_t i = 0; i < norb * norb; ++i)
+      REQUIRE(T_int[i] == Approx(T_idx[i]));
+    for(size_t i = 0; i < norb4; ++i) REQUIRE(V_int[i] == Approx(V_idx[i]));
+  }
 }

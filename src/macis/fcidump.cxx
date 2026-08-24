@@ -14,6 +14,7 @@
 #include <iostream>
 #include <macis/util/fcidump.hpp>
 #include <regex>
+#include <sstream>
 #include <string>
 
 // std::vector<std::string> split(const std::string str,
@@ -36,58 +37,73 @@ static std::vector<std::string> tokenize_ws(const std::string& line) {
   return toks;
 }
 
-bool is_float(const std::string& str) {
-  return std::any_of(str.begin(), str.end(),
-                     [](auto c) { return std::isalpha(c) or c == '.'; });
+namespace {
+
+// True iff the *entire* token is a signed integer. Note that std::stoi alone is
+// not sufficient to decide this: it happily parses a leading integer prefix and
+// stops at the first foreign character, so stoi("0.5") returns 0 without
+// throwing. Requiring the full token to be consumed is what distinguishes an
+// orbital index from an integral.
+bool is_integer_token(const std::string& str) {
+  size_t pos = 0;
+  try {
+    (void)std::stoi(str, &pos);
+  } catch(const std::exception&) {
+    return false;
+  }
+  return pos == str.size();
 }
 
+int32_t parse_index(const std::string& str) {
+  size_t pos = 0;
+  int32_t idx = std::stoi(str, &pos);
+  if(pos != str.size())
+    throw std::runtime_error("Malformed orbital index: " + str);
+  if(idx < 0) throw std::runtime_error("Invalid Orb Idx: " + str);
+  return idx;
+}
+
+double parse_integral(const std::string& str) {
+  size_t pos = 0;
+  double val = std::stod(str, &pos);
+  if(pos != str.size()) throw std::runtime_error("Malformed integral: " + str);
+  return val;
+}
+
+}  // namespace
+
 auto fcidump_line(const std::vector<std::string>& tokens) {
-  auto idx_first = is_float(tokens.back());
-  auto int_first = is_float(tokens.front());
+  if(tokens.size() != 5) throw std::runtime_error("Invalid FCIDUMP Line");
 
-  if(idx_first and int_first) throw std::runtime_error("Invalid FCIDUMP Line");
+  // Two layouts are accepted: "<p> <q> <r> <s> <integral>" (what write_fcidump
+  // emits) and "<integral> <p> <q> <r> <s>" (the Molpro/PySCF convention).
+  // Decide by which end of the line is a bare integer.
+  const bool front_is_int = is_integer_token(tokens.front());
+  const bool back_is_int = is_integer_token(tokens.back());
 
-  int32_t p, q, r, s;
-  double integral;
+  bool idx_first;
+  if(front_is_int and not back_is_int)
+    idx_first = true;  // 1 1 1 1 0.5
+  else if(back_is_int)
+    idx_first = false;  // 0.5 1 1 1 1, and the all-integer tie ("4 1 1 1 1"),
+                        // where integral-first is the FCIDUMP standard
+  else
+    throw std::runtime_error("Invalid FCIDUMP Line");  // neither end an index
 
-  try {
-    p = std::stoi(tokens[0]);
-    q = std::stoi(tokens[1]);
-    r = std::stoi(tokens[2]);
-    s = std::stoi(tokens[3]);
-    integral = std::stod(tokens[4]);
-
-    if(p < 0 or q < 0 or r < 0 or s < 0) {
-      std::cout
-          << "Error in fcidump_line! Orbital indices must be positive. Got: "
-          << p << " " << q << " " << r << " " << s << std::endl;
-      throw std::runtime_error("Invalid Orb Idx");
-    }
-    return std::make_tuple(p, q, r, s, integral);
-  } catch(const std::exception& e) {
-    // fall through to try the other ordering
-  }
+  const size_t i0 = idx_first ? 0 : 1;  // first index token
+  const size_t ii = idx_first ? 4 : 0;  // integral token
 
   try {
-    p = std::stoi(tokens[1]);
-    q = std::stoi(tokens[2]);
-    r = std::stoi(tokens[3]);
-    s = std::stoi(tokens[4]);
-    integral = std::stod(tokens[0]);
-
-    if(p < 0 or q < 0 or r < 0 or s < 0) {
-      std::cout
-          << "Error in fcidump_line! Orbital indices must be positive. Got: "
-          << p << " " << q << " " << r << " " << s << std::endl;
-      throw std::runtime_error("Invalid Orb Idx");
-    }
-
-    return std::make_tuple(p, q, r, s, integral);
+    auto p = parse_index(tokens[i0 + 0]);
+    auto q = parse_index(tokens[i0 + 1]);
+    auto r = parse_index(tokens[i0 + 2]);
+    auto s = parse_index(tokens[i0 + 3]);
+    return std::make_tuple(p, q, r, s, parse_integral(tokens[ii]));
   } catch(const std::exception& e) {
-    std::cout << "Error in fcidump_line! Invalid FCIDUMP line: ";
-    for(auto& t : tokens) std::cout << t << " ";
-    std::cout << std::endl;
-    throw e;
+    std::ostringstream oss;
+    oss << "Invalid FCIDUMP line [" << e.what() << "]:";
+    for(const auto& t : tokens) oss << " " << t;
+    throw std::runtime_error(oss.str());
   }
 }
 

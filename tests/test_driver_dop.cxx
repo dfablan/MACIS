@@ -493,15 +493,15 @@ int main(int argc, char** argv) {
 
     // Evaluate particle GF
     macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true,
-                                ws, params.occs, gf_settings);
+                                ws, params.occs, gf_settings, todelete_p);
     GF = GF_tmp;
 
     // Evaluate hole GF
     macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
-                                ws, params.occs, gf_settings);
+                                ws, params.occs, gf_settings, todelete_h);
 
     if(todelete_h != todelete_p)
-      std::cout << "ERROR: todelete_h!=todelete_p" << std::endl;
+      throw std::runtime_error("Error: todelete_h != todelete_p");
 
     GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
 
