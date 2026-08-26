@@ -176,6 +176,4 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   return std::make_tuple(E0, wfn, X);
 }
 
-
-
 }  // namespace macis
