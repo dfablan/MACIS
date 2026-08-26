@@ -4,6 +4,92 @@
 
 namespace macis {
 
+namespace {
+
+/**
+ *  @brief Load an ASCI guess wavefunction from p.asci_wfn_fname, if one was requested.
+ *
+ *  Returns true when a guess was loaded, in which case @p dets, @p C_local and @p E0
+ *  are set from the file. Returns false when no guess file was requested, leaving all
+ *  three untouched so the caller falls back to its own HF reference.
+ *
+ *  Every precondition below is a throw rather than a warning: a guess that is silently
+ *  ignored or silently misapplied produces a plausible-looking energy for a calculation
+ *  nobody asked for, which is exactly the failure this path exists to prevent.
+ */
+template <size_t N>
+bool load_asci_guess(impurity_params<N>& p, std::vector<macis::wfn_t<N>>& dets,
+                     std::vector<double>& C_local, double& E0) {
+  const std::string& fname = p.asci_wfn_fname;
+  if(fname.empty()) return false;
+
+  // A determinant list is meaningful only relative to an orbital basis. With NROTS > 0
+  // the solver rotates into the natural-orbital basis of the current macro iteration,
+  // while the file was written in whatever basis produced it, so the two do not
+  // correspond and the guess would be wrong rather than merely useless. With NROTS == 0
+  // no rotation is ever applied (orb_rot stays the identity) and file and FCIDUMP share
+  // a basis.
+  if(p.asci_settings.nrots > 0)
+    throw std::runtime_error(
+        "ASCI.WFN_FILE with ASCI.NROTS > 0 is not supported: the guess is expressed in "
+        "the orbital basis of the run that wrote it, while NROTS > 0 rotates into the "
+        "natural-orbital basis. Set NROTS = 0 or drop ASCI.WFN_FILE.");
+
+  // Recomputing E0 = <C|H|C> for a guess is a dense O(ndets^2) contraction over
+  // matrix_element; at production NTDETS_MAX that costs far more than the cold start it
+  // is meant to replace. Whoever wrote the guess already knows its energy, so require it.
+  if(p.compute_asci_E0)
+    throw std::runtime_error(
+        "ASCI.WFN_FILE requires ASCI.E0_WFN: recomputing E0 for a guess wavefunction is "
+        "an O(ndets^2) dense contraction and is not viable at production ndets. Supply "
+        "the total energy reported by the run that wrote the guess.");
+
+  // asci_grow only iterates while wfn.size() < ntdets_max, so a converged guess -- which
+  // is at ntdets_max by construction -- skips growth entirely and refinement is the only
+  // stage left that diagonalizes anything. Since E0 is now supplied rather than computed,
+  // MAX_REFINE_ITER = 0 would return ASCI.E0_WFN verbatim as the answer.
+  if(p.asci_settings.max_refine_iter == 0)
+    throw std::runtime_error(
+        "ASCI.WFN_FILE requires ASCI.MAX_REFINE_ITER > 0: a converged guess is already "
+        "at ASCI.NTDETS_MAX, so asci_grow is a no-op and refinement is the only stage "
+        "that would diagonalize the guess; with MAX_REFINE_ITER = 0 the solver would "
+        "return ASCI.E0_WFN unchanged.");
+
+  std::cout << "Reading Guess Wavefunction From " << fname << std::endl;
+  const auto header = macis::read_wavefunction(fname, dets, C_local,
+                                              /* check_orbital_bounds = */ true);
+
+  // ASCI generates only single and double excitations, which conserve the per-spin
+  // particle number, so a guess in the wrong (N, Sz) sector keeps the entire expansion
+  // in that sector -- no error, just the energy of a filling that was never requested.
+  for(size_t i = 0; i < dets.size(); ++i) {
+    const size_t na = macis::bitset_lo_word(dets[i]).count();
+    const size_t nb = macis::bitset_hi_word(dets[i]).count();
+    if(na != p.nalpha or nb != p.nbeta)
+      throw std::runtime_error(
+          "Guess wavefunction " + fname + ": determinant " + std::to_string(i) +
+          " has (" + std::to_string(na) + ", " + std::to_string(nb) +
+          ") electrons, but this run requested (" + std::to_string(p.nalpha) + ", " +
+          std::to_string(p.nbeta) + ")");
+  }
+
+  if(header.norb != p.n_active)
+    std::cout << "WARNING: guess wavefunction " << fname << " was written for "
+              << header.norb << " active orbitals, but this run uses " << p.n_active
+              << std::endl;
+
+  // ASCI.E0_WFN is a total energy -- the value this driver reports -- while the solvers
+  // work with the active-space reference. Subtracting the *current* E_core/E_inactive is
+  // the correct conversion when the bath or mu has moved since the guess was written.
+  E0 = p.asci_E0 - p.E_core - p.E_inactive;
+  std::cout << "*  Reading E0 \n";
+
+  return true;
+}
+
+}  // namespace
+
+
   
   
 template <size_t N>
@@ -132,44 +218,16 @@ double SolveImpurityASCI (impurity_params<N>& p){
     ham_gen.SetNimp(n_imp);
     asci_settings.just_singles = p.just_singles;
 
-    if(asci_wfn_fname.size()) 
+    // A guess wavefunction seeds the expansion when ASCI.WFN_FILE is set; otherwise
+    // fall back to the HF reference. load_asci_guess validates the guess and throws on
+    // any condition under which it could not be applied faithfully.
+    if(!load_asci_guess(p, dets, C_local, E0))
     {
-      // Read wave function from standard file
-      // console->info("Reading Guess Wavefunction From {}", asci_wfn_fname);
-      std::cout<<"Reading Guess Wavefunction From "<< asci_wfn_fname << std::endl;
-      macis::read_wavefunction(asci_wfn_fname, dets, C_local);
-      // std::cout << dets[0].to_ullong() << std::endl;
-      if(compute_asci_E0) 
-      {
-        // console->info("*  Calculating E0");
-        std::cout<<"*  Calculating E0 \n";
-        E0 = 0;
-        for(auto ii = 0; ii < dets.size(); ++ii) 
-        {
-          double tmp = 0.0;
-          for(auto jj = 0; jj < dets.size(); ++jj) 
-          {
-            tmp += ham_gen.matrix_element(dets[ii], dets[jj]) * C_local[jj];
-          }
-          E0 += C_local[ii] * tmp;
-        }
-      } 
-      else 
-      {
-        // console->info("*  Reading E0");
-        std::cout<<"*  Reading E0 \n";
-        E0 = asci_E0 - E_core - E_inactive;
-      }
-    } 
-    else 
-    {
-    // HF Guess
-    // console->info("Generating HF Guess for ASCI");
-    std::cout<<"Generating HF Guess for ASCI \n";
-    dets = {macis::canonical_hf_determinant<N>(nalpha, nbeta)};
-    // std::cout << dets[0].to_ullong() << std::endl;
-    E0 = ham_gen.matrix_element(dets[0], dets[0]);
-    C_local = {1.0};
+      // HF Guess
+      std::cout<<"Generating HF Guess for ASCI \n";
+      dets = {macis::canonical_hf_determinant<N>(nalpha, nbeta)};
+      E0 = ham_gen.matrix_element(dets[0], dets[0]);
+      C_local = {1.0};
     }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
@@ -278,16 +336,23 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     ham_gen.SetNimp(n_imp);
     asci_settings.just_singles = p.just_singles;
 
-      // HF Guess
-      // console->info("Generating HF Guess for ASCI");
-      std::cout<<"Generating HF Guess for ASCI \n";
+      // hf_det is needed whether or not a guess is loaded: it is the reference the
+      // macro-iteration loop restarts from in each rotated basis, refreshed via
+      // hf_determinant_byocc after every rotation below.
       macis::wfn_t<N> hf_det = macis::canonical_hf_determinant<N>(nalpha, nbeta);
-      dets = {hf_det};
-      // std::cout << dets[0].to_ullong() << std::endl;
-      E0 = ham_gen.matrix_element(dets[0], dets[0]);
-      C_local = {1.0};
       std::vector<double> orb_occs(n_active,0.0);
-    
+
+      // A guess only seeds the first macro iteration. load_asci_guess requires
+      // NROTS == 0, so with a guess that first iteration is also the only one.
+      const bool have_guess = load_asci_guess(p, dets, C_local, E0);
+      if(!have_guess)
+      {
+        // HF Guess
+        std::cout<<"Generating HF Guess for ASCI \n";
+        dets = {hf_det};
+        E0 = ham_gen.matrix_element(dets[0], dets[0]);
+        C_local = {1.0};
+      }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
     // console->info("ASCI Guess Size = {}", dets.size());
@@ -303,11 +368,18 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
           
           std::cout<<"\n* Macro It. " << iorb+1 << std::endl;
 
-          //Starting with HF
-          dets.clear();
-          dets = {hf_det};
-          C_local = {1.0};
-          E0 = ham_gen.matrix_element(dets[0], dets[0]);
+          //Starting with HF. A guess wavefunction survives into the first macro
+          //iteration only: from the second onwards its determinants refer to the
+          //previous orbital basis, so the HF reference in the current basis is the
+          //only valid restart. (load_asci_guess requires NROTS == 0, so a guess
+          //never actually reaches iorb > 0 -- the condition states the invariant.)
+          if(iorb > 0 or !have_guess)
+          {
+            dets.clear();
+            dets = {hf_det};
+            C_local = {1.0};
+            E0 = ham_gen.matrix_element(dets[0], dets[0]);
+          }
           std::cout<<"ASCI E0 = "<< E0 << std::endl;
           std::cout<<"ASCI E_core = "<< E_core << std::endl;
           std::cout<<"ASCI E_inactive = "<< E_inactive << std::endl;
