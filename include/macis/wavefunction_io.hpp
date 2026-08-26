@@ -95,8 +95,8 @@ wavefunction_header read_wavefunction(std::string fname,
       header.nalpha = std::stoul(nalpha_);
       header.nbeta = std::stoul(nbeta_);
     } catch(const std::exception&) {
-      throw std::runtime_error("Malformed header in wavefunction file " + fname +
-                               ": " + line);
+      throw std::runtime_error("Malformed header in wavefunction file " +
+                               fname + ": " + line);
     }
   }
 
@@ -140,11 +140,11 @@ wavefunction_header read_wavefunction(std::string fname,
   // truncated -- a job killed while writing a large wavefunction -- which would
   // otherwise be accepted as a smaller, perfectly plausible wavefunction.
   if(states.size() != header.nstate)
-    throw std::runtime_error(
-        "Wavefunction file " + fname + " declares " +
-        std::to_string(header.nstate) + " determinants but contains " +
-        std::to_string(states.size()) +
-        "; the file is truncated or its header is wrong");
+    throw std::runtime_error("Wavefunction file " + fname + " declares " +
+                             std::to_string(header.nstate) +
+                             " determinants but contains " +
+                             std::to_string(states.size()) +
+                             "; the file is truncated or its header is wrong");
 
   return header;
 }
