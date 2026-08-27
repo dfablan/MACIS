@@ -12,6 +12,16 @@
 
 namespace macis {
 
+// NOTE on normalization: the one-body accumulations below fill ordm in the
+// standard convention, tr(ordm_u) + tr(ordm_d) = N. The two-body kernels each
+// fold in a factor of 1/2, so the returned trdm blocks are Gamma/2 rather than
+// the standard 2-RDM: summing over all four spin blocks gives
+// sum_pq trdm(p,p,q,q) = N(N-1)/2. That is the form wanted for contracting
+// straight against the two-electron integrals, but any consumer that reads
+// expectation values out of trdm (double occupancies, density-density
+// correlators, ...) must multiply by 2 first to put it on the same footing as
+// ordm. See src/macis/comp_observables.cpp for both uses.
+
 template <typename T, size_t N>
 inline void rdm_contributions_4(wfn_t<N> bra, wfn_t<N> ket, wfn_t<N> ex, T val,
                                 rank4_span<T> trdm) {

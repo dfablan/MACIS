@@ -15,11 +15,13 @@
 #include <fstream>
 #include <macis/asci/determinant_contributions.hpp>
 #include <macis/asci/determinant_sort.hpp>
+#include <macis/asci/determinant_symmetry.hpp>
 #include <macis/sd_operations.hpp>
 #include <macis/types.hpp>
 #include <macis/util/dist_quickselect.hpp>
 #include <macis/util/memory.hpp>
 #include <macis/util/mpi.hpp>
+#include <memory>
 
 namespace macis {
 
@@ -60,6 +62,17 @@ struct ASCISettings {
 
   // bool dist_triplet_random = false;
   int constraint_level = 2;  // Up To Quints
+
+  // Orbital-permutation symmetry enforcement (band permutations): close the
+  // selected determinant set under sym_group at every ASCI selection step.
+  bool symmetrize_dets = false;
+  // Integral-invariance validation tolerance for the supplied permutations
+  double sym_tol = 1e-8;
+  // Full permutation group (identity included), expanded from the input
+  // generators at solver entry (prepare_det_symmetry). Held behind a
+  // shared_ptr because ASCISettings is passed by value through
+  // asci_grow -> asci_iter -> asci_search.
+  std::shared_ptr<const std::vector<std::vector<uint32_t>>> sym_group;
 };
 
 template <size_t N>
@@ -577,7 +590,19 @@ std::vector<wfn_t<N>> asci_search(
 
   // Only do top-K on (ndets_max - ncdets) b/c CDETS will be added later
   // const size_t top_k_elements = ndets_max - ncdets;
-  const size_t top_k_elements = ndets_max;
+  size_t top_k_elements = ndets_max;
+
+  // Never ask for more elements than exist. The serial branch below is already
+  // guarded by (asci_pairs.size() > top_k_elements), but the MPI branch calls
+  // dist_quickselect unconditionally, and that routine's gather fallback
+  // indexes gathered_data.begin() + k -- out of bounds, silently returning a
+  // garbage k-th score, when k exceeds the global element count. A whole-orbit
+  // symmetric budget makes that the normal case rather than an edge case.
+#ifdef MACIS_ENABLE_MPI
+  if(world_size > 1)
+    top_k_elements =
+        std::min(top_k_elements, allreduce(asci_pairs.size(), MPI_SUM, comm));
+#endif
 
   auto keep_large_en = clock_type::now();
   duration_type keep_large_dur = keep_large_en - keep_large_st;
@@ -626,6 +651,13 @@ std::vector<wfn_t<N>> asci_search(
       std::transform(g_begin, l_begin, keep_strings_local.begin(),
                      [](const auto& p) { return p.state; });
 
+      // Strip scores over the same [g_begin, l_begin) range, so the
+      // string <-> score pairing is exact (needed by the symmetry closure
+      // below; behavior-neutral otherwise)
+      std::vector<double> keep_scores_local(n_geq_local);
+      std::transform(g_begin, l_begin, keep_scores_local.begin(),
+                     [](const auto& p) { return p.rv; });
+
       // Gather global strings
       std::vector<int> local_sizes, displ;
       auto n_geq_global = total_gather_and_exclusive_scan(
@@ -637,18 +669,24 @@ std::vector<wfn_t<N>> asci_search(
                      keep_strings_global.data(), local_sizes.data(),
                      displ.data(), string_dtype, comm);
 
+      // Gather global scores with identical counts/displacements
+      std::vector<double> keep_scores_global(n_geq_global);
+      MPI_Allgatherv(keep_scores_local.data(), n_geq_local, MPI_DOUBLE,
+                     keep_scores_global.data(), local_sizes.data(),
+                     displ.data(), MPI_DOUBLE, comm);
+
       // Edge case where NGEQ > TOPK - erase equivalent elements
       if(n_geq_global > top_k_elements) {
         n_geq_global = top_k_elements;
         keep_strings_global.resize(n_geq_global);
+        keep_scores_global.resize(n_geq_global);
       }
 
-      // Make fake strings
+      // Rebuild the kept pairs with their real scores
       topk.resize(n_geq_global);
-      std::transform(keep_strings_global.begin(), keep_strings_global.end(),
-                     topk.begin(), [](const auto& s) {
-                       return asci_contrib<wfn_t<N>>{s, -1.0};
-                     });
+      for(size_t i = 0; i < topk.size(); ++i)
+        topk[i] = asci_contrib<wfn_t<N>>{keep_strings_global[i],
+                                         keep_scores_global[i]};
 
 #endif
     } else {
@@ -678,9 +716,21 @@ std::vector<wfn_t<N>> asci_search(
   asci_pairs.shrink_to_fit();
 
   // Extract new search determinants
-  std::vector<std::bitset<N>> new_dets(asci_pairs.size());
-  std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
-                 [](auto x) { return x.state; });
+  std::vector<std::bitset<N>> new_dets;
+  if(asci_settings.symmetrize_dets and asci_settings.sym_group) {
+    // Close the surviving set under the orbital-permutation group with a
+    // strict whole-orbit budget. The input list is identical on every rank
+    // (serial: trivially; MPI: replicated by the Allgatherv above) and the
+    // selection is deterministic, so no extra communication is needed.
+    new_dets = symmetric_orbit_select(asci_pairs, *asci_settings.sym_group,
+                                      ndets_max);
+    logger->info("  * SYM CLOSURE: {} dets -> {} dets", asci_pairs.size(),
+                 new_dets.size());
+  } else {
+    new_dets.resize(asci_pairs.size());
+    std::transform(asci_pairs.begin(), asci_pairs.end(), new_dets.begin(),
+                   [](auto x) { return x.state; });
+  }
 
   // Insert the CDETS back in
   // new_dets.insert(new_dets.end(), cdets_begin, cdets_end);

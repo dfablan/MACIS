@@ -1,4 +1,7 @@
 #define IMPURITY_SOLVER_CPP
+#include <sstream>
+
+#include "macis/asci/determinant_symmetry.hpp"
 #include "macis/impurity_solver.hpp"
 
 
@@ -85,6 +88,174 @@ bool load_asci_guess(impurity_params<N>& p, std::vector<macis::wfn_t<N>>& dets,
   std::cout << "*  Reading E0 \n";
 
   return true;
+}
+
+/**
+ *  @brief Validate and finalize orbital-permutation symmetry enforcement
+ *  (ASCI.SYMMETRIZE_DETS) at solver entry.
+ *
+ *  On entry p.asci_settings.sym_group holds the generator permutations read
+ *  from the input file; on exit it holds the full expanded group (identity
+ *  included). Each generator is validated as an exact symmetry of the
+ *  active-space integrals within sym_tol. The check is made on the integrals
+ *  themselves, never inferred from any assumption about the bath structure:
+ *  any bath that is not permutation-symmetric fails here, whatever produced
+ *  it.
+ *
+ *  Idempotent: expanding an already-expanded group returns the same group, so
+ *  repeated solver entries (e.g. the mu root-find wrappers) are safe.
+ */
+template <size_t N>
+void prepare_det_symmetry(impurity_params<N>& p) {
+  auto& stg = p.asci_settings;
+  if(!stg.symmetrize_dets) return;
+
+  if(stg.nrots > 0 or stg.grow_with_rot)
+    throw std::runtime_error(
+        "ASCI.SYMMETRIZE_DETS requires ASCI.NROTS = 0 and ASCI.GROW_WITH_ROT "
+        "= FALSE: natural-orbital rotations destroy the flavor labels the "
+        "permutation group acts on.");
+
+  if(!stg.sym_group or stg.sym_group->empty())
+    throw std::runtime_error(
+        "ASCI.SYMMETRIZE_DETS = TRUE but no permutations were supplied "
+        "(ASCI.SYM_NPERM / ASCI.SYM_PERM_i).");
+
+  const size_t n = p.n_active;
+  const size_t n2 = n * n;
+  const size_t n3 = n2 * n;
+  const auto& gens = *stg.sym_group;
+
+  const auto hf_det = macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta);
+
+  for(size_t ig = 0; ig < gens.size(); ++ig) {
+    const auto& g = gens[ig];
+    const std::string gname = "permutation " + std::to_string(ig + 1);
+
+    if(!macis::is_valid_permutation(g, n))
+      throw std::runtime_error("ASCI.SYMMETRIZE_DETS: " + gname +
+                               " is not a bijection on the " +
+                               std::to_string(n) + " active orbitals.");
+
+    // One-body invariance: T (and Td if spin-dependent)
+    auto check_1body = [&](const std::vector<double>& T, const char* name) {
+      double max_dev = 0.0;
+      for(size_t q = 0; q < n; ++q)
+        for(size_t r = 0; r < n; ++r)
+          max_dev =
+              std::max(max_dev, std::abs(T[g[r] + g[q] * n] - T[r + q * n]));
+      if(max_dev > stg.sym_tol) {
+        std::ostringstream oss;
+        oss << "ASCI.SYMMETRIZE_DETS: " << gname << " is not a symmetry of "
+            << name << ": max deviation " << std::scientific << max_dev
+            << " exceeds SYM_TOL = " << stg.sym_tol;
+        throw std::runtime_error(oss.str());
+      }
+    };
+    check_1body(p.T_active, "T_active");
+    if(p.spin_dep) check_1body(p.Td_active, "Td_active");
+
+    // Two-body invariance (full n^4 sweep). The linearization convention is
+    // immaterial: the permutation is applied to all four indices, so
+    // invariance in one per-index linearization is invariance in any.
+    {
+      const auto& V = p.V_active;
+      double max_dev = 0.0;
+      for(size_t l = 0; l < n; ++l)
+        for(size_t k = 0; k < n; ++k)
+          for(size_t q = 0; q < n; ++q)
+            for(size_t r = 0; r < n; ++r) {
+              const double dev =
+                  std::abs(V[g[r] + g[q] * n + g[k] * n2 + g[l] * n3] -
+                           V[r + q * n + k * n2 + l * n3]);
+              if(dev > max_dev) max_dev = dev;
+            }
+      if(max_dev > stg.sym_tol) {
+        std::ostringstream oss;
+        oss << "ASCI.SYMMETRIZE_DETS: " << gname
+            << " is not a symmetry of V_active: max deviation "
+            << std::scientific << max_dev
+            << " exceeds SYM_TOL = " << stg.sym_tol;
+        throw std::runtime_error(oss.str());
+      }
+    }
+
+    // The HF reference must map to itself, otherwise the initial seed cannot
+    // be closed without changing the reference
+    if(macis::permute_orbitals(hf_det, g) != hf_det)
+      throw std::runtime_error(
+          "ASCI.SYMMETRIZE_DETS: " + gname +
+          " does not leave the HF reference determinant invariant. The "
+          "filling must close whole flavor multiplets (nalpha - n_imp must "
+          "fill complete band groups in the bath prefix).");
+  }
+
+  // Expand the generators to the full group and store it for the solvers
+  const size_t ngen = gens.size();
+  auto group = macis::expand_permutation_group(gens, n);
+  stg.sym_group = std::make_shared<const std::vector<std::vector<uint32_t>>>(
+      std::move(group));
+  std::cout << "* SYMMETRIZE_DETS: " << ngen
+            << " input permutation(s) expanded to a group of order "
+            << stg.sym_group->size() << std::endl;
+}
+
+/**
+ *  @brief Close a guess wavefunction under the orbital-permutation group.
+ *
+ *  Added orbit partners get C = 0: zero-coefficient determinants leave the
+ *  guess energy <C|H|C> unchanged, and Davidson re-solves the coefficients in
+ *  the closed space anyway.
+ */
+template <size_t N>
+void close_guess_under_group(std::vector<macis::wfn_t<N>>& dets,
+                             std::vector<double>& C,
+                             const std::vector<std::vector<uint32_t>>& group) {
+  std::map<macis::wfn_t<N>, double, macis::bitset_less_comparator<N>> closed;
+  for(size_t i = 0; i < dets.size(); ++i) closed.emplace(dets[i], C[i]);
+  const size_t n_orig = closed.size();
+  for(size_t i = 0; i < dets.size(); ++i)
+    for(const auto& g : group)
+      closed.emplace(macis::permute_orbitals(dets[i], g), 0.0);
+  if(closed.size() == n_orig) return;
+
+  std::cout << "* SYMMETRIZE_DETS: guess wavefunction was not closed under "
+               "the permutation group; added "
+            << closed.size() - n_orig << " determinants with C = 0 ("
+            << n_orig << " -> " << closed.size() << ")" << std::endl;
+  dets.clear();
+  C.clear();
+  dets.reserve(closed.size());
+  C.reserve(closed.size());
+  for(const auto& [d, c] : closed) {
+    dets.push_back(d);
+    C.push_back(c);
+  }
+}
+
+/**
+ *  @brief Log the maximum deviation of the 1-RDM from the enforced
+ *  orbital-permutation symmetry. Warns but never throws: Davidson-tolerance
+ *  asymmetry is expected.
+ */
+template <size_t N>
+void check_rdm_symmetry(const impurity_params<N>& p,
+                        const std::vector<double>& ordm) {
+  const auto& stg = p.asci_settings;
+  if(!stg.symmetrize_dets or !stg.sym_group) return;
+  const size_t n = p.n_active;
+  double max_dev = 0.0;
+  for(const auto& g : *stg.sym_group)
+    for(size_t q = 0; q < n; ++q)
+      for(size_t r = 0; r < n; ++r)
+        max_dev = std::max(max_dev,
+                           std::abs(ordm[g[r] + g[q] * n] - ordm[r + q * n]));
+  std::cout << "* SYMMETRIZE_DETS: max 1-RDM symmetry deviation = " << max_dev
+            << std::endl;
+  if(max_dev > 1e-6)
+    std::cout << "WARNING: 1-RDM breaks the enforced permutation symmetry by "
+              << max_dev << " (> 1e-6); check Davidson convergence."
+              << std::endl;
 }
 
 }  // namespace
@@ -218,6 +389,9 @@ double SolveImpurityASCI (impurity_params<N>& p){
     ham_gen.SetNimp(n_imp);
     asci_settings.just_singles = p.just_singles;
 
+    // Validate and expand the orbital-permutation symmetry group, if enabled
+    prepare_det_symmetry(p);
+
     // A guess wavefunction seeds the expansion when ASCI.WFN_FILE is set; otherwise
     // fall back to the HF reference. load_asci_guess validates the guess and throws on
     // any condition under which it could not be applied faithfully.
@@ -228,6 +402,12 @@ double SolveImpurityASCI (impurity_params<N>& p){
       dets = {macis::canonical_hf_determinant<N>(nalpha, nbeta)};
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
       C_local = {1.0};
+    }
+    else if(asci_settings.symmetrize_dets and asci_settings.sym_group)
+    {
+      // The HF fallback is closed by construction (validated in
+      // prepare_det_symmetry); a guess from file need not be
+      close_guess_under_group(dets, C_local, *asci_settings.sym_group);
     }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
@@ -255,9 +435,12 @@ double SolveImpurityASCI (impurity_params<N>& p){
 
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
-    ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
-    macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+    ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(),
+    macis::matrix_span<double>(active_ordm.data(),n_active,n_active),
     macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
+
+    // Health metric: how well the 1-RDM respects the enforced symmetry
+    check_rdm_symmetry(p, active_ordm);
 
     // Occupation numbers
     // std::vector<double> occs(n_active, 1);
@@ -336,6 +519,11 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     ham_gen.SetNimp(n_imp);
     asci_settings.just_singles = p.just_singles;
 
+    // Validate and expand the orbital-permutation symmetry group, if enabled.
+    // Rejects NROTS > 0, so with symmetrization on the macro loop below runs
+    // exactly once and the post-rotation reseed path is unreachable.
+    prepare_det_symmetry(p);
+
       // hf_det is needed whether or not a guess is loaded: it is the reference the
       // macro-iteration loop restarts from in each rotated basis, refreshed via
       // hf_determinant_byocc after every rotation below.
@@ -352,6 +540,12 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         dets = {hf_det};
         E0 = ham_gen.matrix_element(dets[0], dets[0]);
         C_local = {1.0};
+      }
+      else if(asci_settings.symmetrize_dets and asci_settings.sym_group)
+      {
+        // The HF reference is closed by construction (validated in
+        // prepare_det_symmetry); a guess from file need not be
+        close_guess_under_group(dets, C_local, *asci_settings.sym_group);
       }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
@@ -468,11 +662,15 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
     if (asci_settings.nrots == 0)
-      ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(), 
-      macis::matrix_span<double>(active_ordm.data(),n_active,n_active), 
+      ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(),
+      macis::matrix_span<double>(active_ordm.data(),n_active,n_active),
       macis::rank4_span<double>(active_trdm.data(),n_active,n_active,n_active,n_active));
     else
       active_ordm = evaluate_ordm( dets, C_local, ham_gen, orb_rot );
+
+    // Health metric: how well the 1-RDM respects the enforced symmetry
+    // (symmetrization forces nrots == 0, so this is the unrotated 1-RDM)
+    check_rdm_symmetry(p, active_ordm);
 
     // Occupation numbers
     // std::vector<double> occs(n_active, 1);

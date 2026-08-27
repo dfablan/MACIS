@@ -20,6 +20,7 @@ add_executable( macis_test
   fock_matrices.cxx
   mcscf.cxx
   asci.cxx
+  determinant_symmetry.cxx
   dist_quickselect.cxx
   hubbard.cxx
   impurity_rdm.cxx

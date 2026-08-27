@@ -165,6 +165,25 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.NROTS", params.asci_settings.nrots, size_t);
   OPT_KEYWORD("ASCI.ROT_SIZE_START", params.asci_settings.rot_size_start, size_t);
   OPT_KEYWORD("ASCI.CONSTRAINT_LVL", params.asci_settings.constraint_level, int);
+  OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", params.asci_settings.symmetrize_dets,
+              bool);
+  OPT_KEYWORD("ASCI.SYM_TOL", params.asci_settings.sym_tol, double);
+  if(params.asci_settings.symmetrize_dets) {
+    size_t nperm = 0;
+    OPT_KEYWORD("ASCI.SYM_NPERM", nperm, size_t);
+    if(nperm == 0)
+      throw std::runtime_error("SYMMETRIZE_DETS=TRUE requires SYM_NPERM >= 1");
+    auto gens = std::make_shared<std::vector<std::vector<uint32_t>>>();
+    for(size_t i = 1; i <= nperm; ++i) {
+      std::string key = "ASCI.SYM_PERM_" + std::to_string(i);
+      if(!input.containsData(key)) throw std::runtime_error("Missing " + key);
+      auto v = input.getData<std::vector<int>>(key);
+      gens->emplace_back(v.begin(), v.end());
+    }
+    // Generators only; validated and expanded to the full group at solver
+    // entry (prepare_det_symmetry)
+    params.asci_settings.sym_group = gens;
+  }
   OPT_KEYWORD("ASCI.WFN_FILE", params.asci_wfn_fname, std::string);
   OPT_KEYWORD("ASCI.WFN_OUT_FILE", asci_wfn_out_fname, std::string);
   if(input.containsData("ASCI.E0_WFN")) {

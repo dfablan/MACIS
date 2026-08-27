@@ -24,6 +24,36 @@ auto asci_iter(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
   // Sanity check on search determinants
   size_t nkeep = std::min(asci_settings.ncdets_max, wfn.size());
 
+  // Close the seed (cdets) set under the orbital-permutation group: orbit
+  // partners have |C| equal up to Davidson tolerance, so extending the seed
+  // window to whole orbits makes the candidate score function symmetric and
+  // keeps the top-K boundary from splitting score-degenerate orbits. The
+  // incoming wfn is G-closed (it came from a closed search or a closed
+  // guess), so the closure members are found inside wfn itself.
+  if(asci_settings.symmetrize_dets and asci_settings.sym_group and
+     nkeep < wfn.size()) {
+    const auto& group = *asci_settings.sym_group;
+    std::set<wfn_t<N>, bitset_less_comparator<N>> seed_closure;
+    for(size_t i = 0; i < nkeep; ++i)
+      for(const auto& g : group)
+        seed_closure.insert(permute_orbitals(wfn[i], g));
+
+    // Jointly stable-partition wfn/X so closure members precede the rest;
+    // ordering within each part (by |C|, from the sort above) is preserved
+    std::vector<std::pair<wfn_t<N>, double>> zipped(wfn.size());
+    for(size_t i = 0; i < wfn.size(); ++i) zipped[i] = {wfn[i], X[i]};
+    auto part_it = std::stable_partition(
+        zipped.begin(), zipped.end(),
+        [&](const auto& p) { return seed_closure.count(p.first) > 0; });
+    for(size_t i = 0; i < wfn.size(); ++i) {
+      wfn[i] = zipped[i].first;
+      X[i] = zipped[i].second;
+    }
+
+    // Extend the seed window to the closure members actually present
+    nkeep = std::distance(zipped.begin(), part_it);
+  }
+
   // Perform the ASCI search
   wfn = asci_search(asci_settings, ndets_max, wfn.begin(), wfn.begin() + nkeep,
                     E0, X, norb, ham_gen.Tu(), ham_gen.Td(), ham_gen.G_red(),

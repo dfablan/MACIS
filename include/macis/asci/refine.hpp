@@ -49,8 +49,16 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets, E0, std::move(wfn), std::move(X),
         ham_gen, norb MACIS_MPI_CODE(, comm));
-    if(wfn.size() != ndets)
-      throw std::runtime_error("Wavefunction size can't change in refinement");
+    if(wfn.size() != ndets) {
+      // The whole-orbit budget may legitimately return a few determinants
+      // less than the frozen entry size; growth beyond it still throws.
+      if(asci_settings.symmetrize_dets and wfn.size() <= ndets)
+        logger->info("Refine wavefunction size {} <= {} (whole-orbit budget)",
+                     wfn.size(), ndets);
+      else
+        throw std::runtime_error(
+            "Wavefunction size can't change in refinement");
+    }
 
     const auto E_delta = E - E0;
     auto end_time = std::chrono::high_resolution_clock::now();

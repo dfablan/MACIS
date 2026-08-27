@@ -167,6 +167,20 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
     }
 
     E0 = E;
+
+    // Stall guard: break instead of spinning when an iteration adds no
+    // determinants. With SYMMETRIZE_DETS the whole-orbit budget can leave the
+    // final size a few determinants short of ntdets_max forever; without it
+    // this fixes a latent infinite loop when the search cannot grow the
+    // wavefunction any further.
+    if(wfn.size() == prev_size) {
+      logger->warn(
+          "ASCI grow stalled at {} determinants (target {}); terminating grow "
+          "loop.",
+          wfn.size(), asci_settings.ntdets_max);
+      break;
+    }
+    prev_size = wfn.size();
   }
 
   auto grow_en = hrt_t::now();
