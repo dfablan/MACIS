@@ -722,8 +722,8 @@ std::vector<wfn_t<N>> asci_search(
     // strict whole-orbit budget. The input list is identical on every rank
     // (serial: trivially; MPI: replicated by the Allgatherv above) and the
     // selection is deterministic, so no extra communication is needed.
-    new_dets = symmetric_orbit_select(asci_pairs, *asci_settings.sym_group,
-                                      ndets_max);
+    new_dets =
+        symmetric_orbit_select(asci_pairs, *asci_settings.sym_group, ndets_max);
     logger->info("  * SYM CLOSURE: {} dets -> {} dets", asci_pairs.size(),
                  new_dets.size());
   } else {

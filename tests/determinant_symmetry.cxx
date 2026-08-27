@@ -296,15 +296,13 @@ TEST_CASE("ASCI Symmetric Search") {
     ham_gen.form_rdms(
         dets_sym.begin(), dets_sym.end(), dets_sym.begin(), dets_sym.end(),
         C_sym.data(), macis::matrix_span<double>(ordm.data(), nsites, nsites),
-        macis::rank4_span<double>(trdm.data(), nsites, nsites, nsites,
-                                  nsites));
+        macis::rank4_span<double>(trdm.data(), nsites, nsites, nsites, nsites));
     double max_dev = 0.0;
     for(const auto& g : *group)
       for(size_t q = 0; q < nsites; ++q)
         for(size_t r = 0; r < nsites; ++r)
-          max_dev = std::max(
-              max_dev, std::abs(ordm[g[r] + g[q] * nsites] -
-                                ordm[r + q * nsites]));
+          max_dev = std::max(max_dev, std::abs(ordm[g[r] + g[q] * nsites] -
+                                               ordm[r + q * nsites]));
     REQUIRE(max_dev < 1e-6);
   }
 
