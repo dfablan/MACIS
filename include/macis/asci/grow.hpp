@@ -44,7 +44,9 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
   logger->info(fmt_string, 0, E0, 0.0, wfn.size());
   // Grow wfn until max size, or until we get stuck
-  size_t prev_size = wfn.size();
+  size_t best_size = wfn.size();   // largest size reached so far
+  size_t stall_iters = 0;          // consecutive iters that failed to beat best_size
+  constexpr size_t stall_iters_max = 5;
   size_t iter = 1;
   auto grow_st = hrt_t::now();
 
@@ -168,19 +170,34 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
     E0 = E;
 
-    // Stall guard: break instead of spinning when an iteration adds no
-    // determinants. With SYMMETRIZE_DETS the whole-orbit budget can leave the
-    // final size a few determinants short of ntdets_max forever; without it
-    // this fixes a latent infinite loop when the search cannot grow the
-    // wavefunction any further.
-    if(wfn.size() == prev_size) {
+    // Stall guard: break instead of spinning when growth stops making
+    // progress toward ntdets_max. Two failure modes arise with
+    // SYMMETRIZE_DETS when the requested ceiling cannot be reached by a
+    // permutation-closed determinant set:
+    //   * plateau:      the size stops at S < ntdets_max and repeats exactly;
+    //   * oscillation:  the size toggles between values just below the
+    //     ceiling (e.g. 519995 <-> 519998), because every refill to
+    //     ntdets_max is trimmed by the symmetry closure to a different,
+    //     smaller set.
+    // A bare "wfn.size() == prev_size" test catches the plateau but is
+    // defeated by the oscillation, whose consecutive sizes never match.
+    // Track the best (largest) size ever reached and count consecutive
+    // iterations that fail to beat it; terminate once that count exceeds a
+    // small tolerance.
+    if(wfn.size() > best_size) {
+      best_size = wfn.size();
+      stall_iters = 0;
+    } else {
+      ++stall_iters;
+    }
+    if(stall_iters >= stall_iters_max) {
       logger->warn(
-          "ASCI grow stalled at {} determinants (target {}); terminating grow "
+          "ASCI grow stalled: size has not exceeded {} determinants for {} "
+          "consecutive iterations (current {}; target {}); terminating grow "
           "loop.",
-          wfn.size(), asci_settings.ntdets_max);
+          best_size, stall_iters, wfn.size(), asci_settings.ntdets_max);
       break;
     }
-    prev_size = wfn.size();
   }
 
   auto grow_en = hrt_t::now();
