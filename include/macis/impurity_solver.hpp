@@ -250,7 +250,11 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
  *        Sz_imp is applied to the ground state by rescaling each determinant
  *        coefficient (see macis::RunResolventSz / macis::sz_imp_value), and the
  *        single-vector resolvent of the resulting state is evaluated over the
- *        same frequency grid used by evaluate_GF. The result R(w) is written to
+ *        same real grid as evaluate_GF but on a bosonic Matsubara grid
+ *        (even multiples of pi/beta) on the imaginary axis, since the Sz-Sz
+ *        response is a bosonic correlator. The grid starts at nu_1 = 2*pi/beta
+ *        and deliberately EXCLUDES nu_0 = 0: see the comment on the grid
+ *        construction below. The result R(w) is written to
  *        "Sz_resolvent.dat" (columns: Re(w) Im(w) Re(R) Im(R)) when
  *        gf_settings.writeGF_singlef is set, and returned to the caller.
  *
@@ -272,13 +276,31 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
 
   std::cout << "EASCI = " << EASCI << std::endl;
 
-  // Frequency grid (same convention as evaluate_GF).
+  // Frequency grid: real axis as in evaluate_GF, but on the imaginary axis
+  // use a BOSONIC Matsubara grid (even multiples of pi/beta): the Sz-Sz
+  // resolvent is a spin (bosonic) correlator, unlike the fermionic GF which
+  // lives on odd multiples (2*i+1)*pi/beta.
+  //
+  // The grid starts at nu_1 = 2*pi/beta, NOT at nu_0 = 0. w = 0 is a point on
+  // the REAL axis, which is exactly where the poles of the continued fraction
+  // sit, and there is no i*eta broadening on the Matsubara axis to keep it
+  // away from them. E0 comes from Davidson at CI_RES_TOL, while the smallest
+  // eigenvalue of the Lanczos tridiagonal matrix is the exact ground state of
+  // H in the Krylov space, so the two differ by O(CI_RES_TOL) with an
+  // essentially arbitrary sign. That plants a spurious pole at w ~ delta -> 0
+  // whose contribution to R is -weight/delta at w = 0 and only
+  // -weight*delta/(nu^2 + delta^2) ~ 0 at every nu >> delta. The nu = 0 value
+  // was therefore the only unusable point on the grid (observed: static
+  // susceptibilities wrong by orders of magnitude, and negative), while
+  // nu >= nu_1 is smooth. Recover the static limit by extrapolating R(i*nu)
+  // from the lowest few Matsubara points instead.
   std::vector<std::complex<double>> ws(gf_settings.nws,
                                        std::complex<double>(0., 0.));
   for(int i = 0; i < gf_settings.nws; i++)
     if(gf_settings.imag_freq) {
-      //  MATSUBARA GRID
-      ws[i] = std::complex<double>(0., (2 * i + 1) * M_PI / gf_settings.beta);
+      //  BOSONIC MATSUBARA GRID, STARTING AT nu_1 = 2*pi/beta
+      ws[i] = std::complex<double>(
+          0., 2. * double(i + 1) * M_PI / gf_settings.beta);
     } else {
       std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
       std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
