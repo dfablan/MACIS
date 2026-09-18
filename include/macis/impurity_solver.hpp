@@ -160,12 +160,14 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
 
   EASCI += p.E_core + p.E_inactive;
 
-  if(todelete_h != todelete_p)
-    throw std::runtime_error(
-        "In evaluate_GF: todelete_h != todelete_p, the particle and hole "
-        "Green's functions dropped different orbitals and cannot be summed");
-
-  GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
+  // Both sectors now return full GF_orbs_comp^2 matrices: RunGFCalc pads the
+  // dropped (vanishing add/remove vector) rows/cols with zeros. They may have
+  // dropped different orbitals (e.g. a fully occupied orbital is dropped from
+  // the particle sector while an empty one is dropped from the hole sector),
+  // but each sector's contribution to a dropped orbital is zero, so the two
+  // matrices can simply be added elementwise.
+  for(size_t iw = 0; iw < gf_settings.nws; iw++)
+    for(size_t k = 0; k < GF[iw].size(); k++) GF[iw][k] += GF_tmp[iw][k];
 
   // std::cout << "GF hole part calculated." << std::endl;
   // for(int i = 0; i < p.n_imp; i++) {
@@ -186,14 +188,13 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
         "cannot rotate the impurity block back to the original basis. Check "
         "GF.ORBS_COMP and the list of dropped orbitals.");
 
-  // The back-rotation also assumes GF row j corresponds to impurity orbital j.
-  // That mapping breaks as soon as an orbital is dropped, since the surviving
-  // rows are then GF_orbs_comp minus todelete_p.
-  if(!todelete_p.empty())
-    throw std::runtime_error(
-        "In evaluate_GF: orbitals were dropped from the Green's function, so "
-        "its rows no longer map onto impurity orbitals 0..n_imp-1 and the "
-        "back-rotation would mix the wrong entries.");
+  // The back-rotation assumes GF row j corresponds to impurity orbital j. That
+  // mapping now always holds: RunGFCalc pads the GF back to the full
+  // GF_orbs_comp index space (with zeros where an orbital's add/remove vector
+  // vanished), so rows map onto GF_orbs_comp order, and hence onto impurity
+  // orbitals 0..n_imp-1 whenever GF_orbs_comp is the full impurity set.
+  // A zero row/col here means that orbital contributes nothing from the
+  // corresponding sector, which is the correct physical limit.
 
   Eigen::MatrixXd rotMat = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
   for(int j = 0; j < p.n_imp; j++)
@@ -235,7 +236,7 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   }
 
   if(gf_settings.writeGF_singlef)
-    macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+    macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, std::vector<int>{});
 
   return GF;
 }

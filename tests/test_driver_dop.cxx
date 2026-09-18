@@ -500,13 +500,13 @@ int main(int argc, char** argv) {
     macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
                                 ws, params.occs, gf_settings, todelete_h);
 
-    if(todelete_h != todelete_p)
-      throw std::runtime_error("Error: todelete_h != todelete_p");
-
-    GF = macis::sum_GFs(GF, GF_tmp, ws, gf_settings.GF_orbs_comp, todelete_p);
+    // RunGFCalc pads both sectors to the full GF_orbs_comp^2 index space, so
+    // they can be summed elementwise even when they dropped different orbitals.
+    for(size_t iw = 0; iw < ws.size(); iw++)
+      for(size_t k = 0; k < GF[iw].size(); k++) GF[iw][k] += GF_tmp[iw][k];
 
     if(gf_settings.writeGF_singlef)
-      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, todelete_p);
+      macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, std::vector<int>{});
   }
 
   return 0;
