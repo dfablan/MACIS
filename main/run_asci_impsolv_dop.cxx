@@ -5,6 +5,7 @@
 #include <spdlog/stopwatch.h>
 
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <macis/comp_observables.hpp>
@@ -219,6 +220,36 @@ int main(int argc, char** argv) {
   if(input.containsData("ASCI.E0_WFN")) {
     params.asci_E0 = input.getData<double>("ASCI.E0_WFN");
     params.compute_asci_E0 = false;
+  }
+
+  // load_asci_guess enforces these too, but only once the guess is actually read, which is
+  // after the FCIDUMP and the whole active space are set up. Checking here rejects an
+  // inconsistent input before the run has spent anything.
+  if(params.asci_wfn_fname.size()) {
+    if(params.asci_settings.nrots > 0)
+      throw std::runtime_error(
+          "ASCI.WFN_FILE with ASCI.NROTS > 0 is not supported: the guess is expressed in "
+          "the orbital basis of the run that wrote it, while NROTS > 0 rotates into the "
+          "natural-orbital basis. Set NROTS = 0 or drop ASCI.WFN_FILE.");
+    if(params.compute_asci_E0)
+      throw std::runtime_error(
+          "ASCI.WFN_FILE requires ASCI.E0_WFN: recomputing E0 for a guess is an O(ndets^2) "
+          "dense contraction and is not viable at production ndets. Supply the total energy "
+          "reported by the run that wrote the guess.");
+    // Supplying E0_WFN sets compute_asci_E0 = false, so the value is taken on faith: a nan
+    // would be subtracted from E_core/E_inactive and seed Davidson as nan, and every energy
+    // downstream would be nan without anything having reported an error.
+    if(!std::isfinite(params.asci_E0))
+      throw std::runtime_error(
+          "ASCI.E0_WFN is not a finite number. Supplying it turns off the solver's own E0 "
+          "computation, so a nan or inf is carried into the Davidson start rather than "
+          "caught. Supply the energy of the run that wrote the guess, or drop ASCI.WFN_FILE.");
+    if(params.asci_settings.max_refine_iter == 0)
+      throw std::runtime_error(
+          "ASCI.WFN_FILE requires ASCI.MAX_REFINE_ITER > 0: a converged guess is already at "
+          "ASCI.NTDETS_MAX, so asci_grow is a no-op and refinement is the only stage that "
+          "would diagonalize the guess; with MAX_REFINE_ITER = 0 the solver would return "
+          "ASCI.E0_WFN unchanged.");
   }
 
   bool mp2_guess = false;
