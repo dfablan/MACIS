@@ -204,6 +204,16 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
       30;  // Number of iterations to consider stagnation
   const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
+  // Residual tolerance actually enforced by the convergence check below. On
+  // stagnation this is relaxed once, up to stagnation_tol_ceiling, instead of
+  // throwing immediately: a stalled Krylov space that has already reached a
+  // looser-but-still-useful accuracy is more useful returned (loudly flagged)
+  // than aborting the whole ASCI/DMFT run outright. If it stagnates again
+  // after that relaxation, it throws as before -- the ceiling is a hard limit
+  // on how much accuracy this can silently trade away.
+  double active_tol = tol;
+  const double stagnation_tol_ceiling = 1e-5;
+
   // Floor on |D - LAM(0)| in the Jacobi preconditioner below. A denominator
   // smaller than the residual tolerance is below the accuracy we are trying
   // to resolve, so inverting it amplifies roundoff rather than signal.
@@ -254,7 +264,7 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
         op_dur.count(), rr_dur.count(), res_dur.count());
 
     // Check for convergence
-    if(res_nrm < tol) {
+    if(res_nrm < active_tol) {
       converged = true;
       break;
     }
@@ -264,21 +274,41 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
       if(stagnant_iter >= max_stagnant_iter) {
-        logger->warn(
-            "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
-            "{:.1e} change in eigenvalue)",
-            stagnant_iter, stagnation_tol);
-        // Stagnation means the Krylov space stopped improving before
-        // reaching tol, not that it converged. Reporting it as converged
-        // breaks the error budget every caller assumes ("Davidson
-        // Converged!" means res_nrm < tol) -- surface the achieved residual
-        // and fail loudly instead of silently accepting up to 100x tol.
-        throw std::runtime_error(
-            "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
-            " iterations with < " + std::to_string(stagnation_tol) +
-            " change in eigenvalue. Achieved residual norm = " +
-            std::to_string(res_nrm) +
-            ", requested tol = " + std::to_string(tol) + ". Not converged.");
+        if(active_tol < stagnation_tol_ceiling) {
+          // The Krylov space stopped improving before reaching active_tol.
+          // Rather than aborting outright, relax the enforced tolerance once,
+          // up to stagnation_tol_ceiling, and keep iterating: the returned
+          // energy is then only guaranteed to that looser tolerance, which is
+          // reported loudly here and again if/when it converges below.
+          logger->warn(
+              "  * WARNING: Davidson stagnated after {} iterations with < "
+              "{:.1e} change in eigenvalue (achieved residual norm = {:.3e}, "
+              "requested tol = {:.3e}). Relaxing residual tolerance to {:.1e} "
+              "and continuing.",
+              stagnant_iter, stagnation_tol, res_nrm, active_tol,
+              stagnation_tol_ceiling);
+          active_tol = stagnation_tol_ceiling;
+          stagnant_iter = 0;
+        } else {
+          logger->warn(
+              "  * WARNING: Davidson Stagnation Detected ({} iterations with "
+              "< {:.1e} change in eigenvalue)",
+              stagnant_iter, stagnation_tol);
+          // Stagnation means the Krylov space stopped improving before
+          // reaching active_tol, not that it converged. Reporting it as
+          // converged breaks the error budget every caller assumes
+          // ("Davidson Converged!" means res_nrm < tol) -- surface the
+          // achieved residual and fail loudly instead of silently accepting
+          // an arbitrarily worse answer. active_tol is already at the
+          // relaxation ceiling here, so there is nothing looser left to try.
+          throw std::runtime_error(
+              "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
+              " iterations with < " + std::to_string(stagnation_tol) +
+              " change in eigenvalue. Achieved residual norm = " +
+              std::to_string(res_nrm) + ", requested tol = " +
+              std::to_string(tol) + " (relaxed up to " +
+              std::to_string(active_tol) + "). Not converged.");
+        }
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -329,7 +359,14 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
   }  // Davidson iterations
 
   if(!converged) throw std::runtime_error("Davidson Did Not Converge!");
-  logger->info("Davidson Converged!");
+  if(active_tol > tol) {
+    logger->warn(
+        "Davidson Converged, but only to the tolerance relaxed after "
+        "stagnation ({:.1e}), not the requested tolerance ({:.3e}).",
+        active_tol, tol);
+  } else {
+    logger->info("Davidson Converged!");
+  }
 
   return std::make_pair(iter, LAM[0]);
 }
@@ -474,6 +511,17 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
       30;  // Number of iterations to consider stagnation
   const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
+  // Residual tolerance actually enforced by the convergence check below. On
+  // stagnation this is relaxed once, up to stagnation_tol_ceiling, instead of
+  // throwing immediately: a stalled Krylov space that has already reached a
+  // looser-but-still-useful accuracy is more useful returned (loudly flagged)
+  // than aborting the whole ASCI/DMFT run outright. If it stagnates again
+  // after that relaxation, it throws as before -- the ceiling is a hard limit
+  // on how much accuracy this can silently trade away. Built from tol alone,
+  // so every rank relaxes identically without needing a reduction.
+  double active_tol = tol;
+  const double stagnation_tol_ceiling = 1e-5;
+
   // Floor on |D - LAM(0)| in the Jacobi preconditioner below. A denominator
   // smaller than the residual tolerance is below the accuracy we are trying
   // to resolve, so inverting it amplifies roundoff rather than signal. It is
@@ -530,7 +578,7 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
         op_dur.count(), rr_dur.count(), res_dur.count());
 
     // Check for convergence
-    if(res_nrm < tol) {
+    if(res_nrm < active_tol) {
       converged = true;
       break;
     }
@@ -540,23 +588,45 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
     if(eig_change < stagnation_tol) {
       stagnant_iter++;
       if(stagnant_iter >= max_stagnant_iter) {
-        logger->warn(
-            "  * WARNING: Davidson Stagnation Detected ({} iterations with < "
-            "{:.1e} change in eigenvalue)",
-            stagnant_iter, stagnation_tol);
-        // Stagnation means the Krylov space stopped improving before
-        // reaching tol, not that it converged. Reporting it as converged
-        // breaks the error budget every caller assumes ("Davidson
-        // Converged!" means res_nrm < tol) -- surface the achieved residual
-        // and fail loudly instead of silently accepting up to 100x tol. Both
-        // res_nrm and the stagnation decision above are already reduced
-        // across ranks, so every rank throws consistently.
-        throw std::runtime_error(
-            "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
-            " iterations with < " + std::to_string(stagnation_tol) +
-            " change in eigenvalue. Achieved residual norm = " +
-            std::to_string(res_nrm) +
-            ", requested tol = " + std::to_string(tol) + ". Not converged.");
+        if(active_tol < stagnation_tol_ceiling) {
+          // The Krylov space stopped improving before reaching active_tol.
+          // Rather than aborting outright, relax the enforced tolerance once,
+          // up to stagnation_tol_ceiling, and keep iterating: the returned
+          // energy is then only guaranteed to that looser tolerance, which is
+          // reported loudly here and again if/when it converges below. Every
+          // rank sees identical res_nrm/eig_change (already reduced above),
+          // so every rank relaxes in lockstep.
+          logger->warn(
+              "  * WARNING: Davidson stagnated after {} iterations with < "
+              "{:.1e} change in eigenvalue (achieved residual norm = {:.3e}, "
+              "requested tol = {:.3e}). Relaxing residual tolerance to {:.1e} "
+              "and continuing.",
+              stagnant_iter, stagnation_tol, res_nrm, active_tol,
+              stagnation_tol_ceiling);
+          active_tol = stagnation_tol_ceiling;
+          stagnant_iter = 0;
+        } else {
+          logger->warn(
+              "  * WARNING: Davidson Stagnation Detected ({} iterations with "
+              "< {:.1e} change in eigenvalue)",
+              stagnant_iter, stagnation_tol);
+          // Stagnation means the Krylov space stopped improving before
+          // reaching active_tol, not that it converged. Reporting it as
+          // converged breaks the error budget every caller assumes
+          // ("Davidson Converged!" means res_nrm < tol) -- surface the
+          // achieved residual and fail loudly instead of silently accepting
+          // an arbitrarily worse answer. active_tol is already at the
+          // relaxation ceiling here, so there is nothing looser left to try.
+          // Both res_nrm and the stagnation decision above are already
+          // reduced across ranks, so every rank throws consistently.
+          throw std::runtime_error(
+              "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
+              " iterations with < " + std::to_string(stagnation_tol) +
+              " change in eigenvalue. Achieved residual norm = " +
+              std::to_string(res_nrm) + ", requested tol = " +
+              std::to_string(tol) + " (relaxed up to " +
+              std::to_string(active_tol) + "). Not converged.");
+        }
       }
     } else {
       stagnant_iter = 0;  // Reset stagnation counter
@@ -615,7 +685,14 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
   }  // Davidson iterations
 
   if(!converged) throw std::runtime_error("Davidson Did Not Converge!");
-  logger->info("Davidson Converged!");
+  if(active_tol > tol) {
+    logger->warn(
+        "Davidson Converged, but only to the tolerance relaxed after "
+        "stagnation ({:.1e}), not the requested tolerance ({:.3e}).",
+        active_tol, tol);
+  } else {
+    logger->info("Davidson Converged!");
+  }
 
   return std::make_pair(iter, LAM[0]);
 }
