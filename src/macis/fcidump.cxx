@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <iostream>
 #include <macis/util/fcidump.hpp>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -39,21 +40,6 @@ static std::vector<std::string> tokenize_ws(const std::string& line) {
 
 namespace {
 
-// True iff the *entire* token is a signed integer. Note that std::stoi alone is
-// not sufficient to decide this: it happily parses a leading integer prefix and
-// stops at the first foreign character, so stoi("0.5") returns 0 without
-// throwing. Requiring the full token to be consumed is what distinguishes an
-// orbital index from an integral.
-bool is_integer_token(const std::string& str) {
-  size_t pos = 0;
-  try {
-    (void)std::stoi(str, &pos);
-  } catch(const std::exception&) {
-    return false;
-  }
-  return pos == str.size();
-}
-
 int32_t parse_index(const std::string& str) {
   size_t pos = 0;
   int32_t idx = std::stoi(str, &pos);
@@ -70,29 +56,24 @@ double parse_integral(const std::string& str) {
   return val;
 }
 
-}  // namespace
+using fcidump_entry_t = std::tuple<int32_t, int32_t, int32_t, int32_t, double>;
 
-auto fcidump_line(const std::vector<std::string>& tokens) {
-  if(tokens.size() != 5) throw std::runtime_error("Invalid FCIDUMP Line");
+// The two accepted line layouts.
+enum class FCIDumpLayout {
+  IndexFirst,     // "<p> <q> <r> <s> <integral>", what write_fcidump emits
+  IntegralFirst,  // "<integral> <p> <q> <r> <s>", the Molpro/PySCF convention
+  Unknown         // no line in the file discriminates between the two
+};
 
-  // Two layouts are accepted: "<p> <q> <r> <s> <integral>" (what write_fcidump
-  // emits) and "<integral> <p> <q> <r> <s>" (the Molpro/PySCF convention).
-  // Decide by which end of the line is a bare integer.
-  const bool front_is_int = is_integer_token(tokens.front());
-  const bool back_is_int = is_integer_token(tokens.back());
-
-  bool idx_first;
-  if(front_is_int and not back_is_int)
-    idx_first = true;  // 1 1 1 1 0.5
-  else if(back_is_int)
-    idx_first = false;  // 0.5 1 1 1 1, and the all-integer tie ("4 1 1 1 1"),
-                        // where integral-first is the FCIDUMP standard
-  else
-    throw std::runtime_error("Invalid FCIDUMP Line");  // neither end an index
-
+// Parse `tokens` under one layout. Returns nullopt (and sets `why`) when the
+// layout is inconsistent with the line -- a non-integer or negative token where
+// an orbital index belongs, or an unparseable integral. Never throws.
+std::optional<fcidump_entry_t> try_layout(const std::vector<std::string>& tokens,
+                                          FCIDumpLayout layout,
+                                          std::string& why) {
+  const bool idx_first = layout == FCIDumpLayout::IndexFirst;
   const size_t i0 = idx_first ? 0 : 1;  // first index token
   const size_t ii = idx_first ? 4 : 0;  // integral token
-
   try {
     auto p = parse_index(tokens[i0 + 0]);
     auto q = parse_index(tokens[i0 + 1]);
@@ -100,11 +81,72 @@ auto fcidump_line(const std::vector<std::string>& tokens) {
     auto s = parse_index(tokens[i0 + 3]);
     return std::make_tuple(p, q, r, s, parse_integral(tokens[ii]));
   } catch(const std::exception& e) {
-    std::ostringstream oss;
-    oss << "Invalid FCIDUMP line [" << e.what() << "]:";
-    for(const auto& t : tokens) oss << " " << t;
-    throw std::runtime_error(oss.str());
+    why = e.what();
+    return std::nullopt;
   }
+}
+
+// Decide the layout once for the whole file, from the first line that parses
+// under exactly one of them.
+//
+// Deciding per line is not safe: when the integral happens to be integral
+// valued, *every* token is a bare integer and the line alone cannot say which
+// end is the integral. "4 3 0 0 -1" (a hopping of -1) is only index-first,
+// since -1 cannot be an orbital index -- but "1 1 1 1 14" parses both ways, as
+// V(1,1,1,1) = 14 or as an integral of 1 at (1,1,1,14), the latter silently
+// inflating norb. Any one unambiguous line in the file settles it for the rest.
+//
+// A line that parses under neither layout is skipped here so that the read pass
+// reports the error against the line that actually caused it.
+FCIDumpLayout detect_layout(const std::string& fname) {
+  std::ifstream file(fname);
+  std::string line;
+  while(std::getline(file, line)) {
+    auto tokens = tokenize_ws(line);
+    if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
+
+    std::string why;
+    const bool idx_ok =
+        try_layout(tokens, FCIDumpLayout::IndexFirst, why).has_value();
+    const bool int_ok =
+        try_layout(tokens, FCIDumpLayout::IntegralFirst, why).has_value();
+
+    if(idx_ok and not int_ok) return FCIDumpLayout::IndexFirst;
+    if(int_ok and not idx_ok) return FCIDumpLayout::IntegralFirst;
+  }
+  return FCIDumpLayout::Unknown;
+}
+
+}  // namespace
+
+// Parse one FCIDUMP line under the layout `detect_layout` found for the file.
+// Unknown means no line discriminated, so every line parses both ways: keep the
+// FCIDUMP standard (integral first) as it was, with index-first as a fallback.
+auto fcidump_line(const std::vector<std::string>& tokens,
+                  FCIDumpLayout layout = FCIDumpLayout::Unknown) {
+  if(tokens.size() != 5) throw std::runtime_error("Invalid FCIDUMP Line");
+
+  std::string why_idx, why_int;
+  if(layout == FCIDumpLayout::IndexFirst) {
+    if(auto entry = try_layout(tokens, layout, why_idx)) return *entry;
+  } else if(layout == FCIDumpLayout::IntegralFirst) {
+    if(auto entry = try_layout(tokens, layout, why_int)) return *entry;
+  } else {
+    if(auto entry = try_layout(tokens, FCIDumpLayout::IntegralFirst, why_int))
+      return *entry;
+    if(auto entry = try_layout(tokens, FCIDumpLayout::IndexFirst, why_idx))
+      return *entry;
+  }
+
+  std::ostringstream oss;
+  oss << "Invalid FCIDUMP line [";
+  if(not why_idx.empty() and not why_int.empty())
+    oss << "as <p q r s val>: " << why_idx << "; as <val p q r s>: " << why_int;
+  else
+    oss << (why_idx.empty() ? why_int : why_idx);
+  oss << "]:";
+  for(const auto& t : tokens) oss << " " << t;
+  throw std::runtime_error(oss.str());
 }
 
 enum LineClassification { Core, OneBody, TwoBody };
@@ -121,6 +163,7 @@ LineClassification line_classification(int p, int q, int r, int s) {
 namespace macis {
 
 uint32_t read_fcidump_norb(std::string fname) {
+  const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
   int32_t max_idx = 0;
@@ -128,7 +171,7 @@ uint32_t read_fcidump_norb(std::string fname) {
     auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
-    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto [p, q, r, s, integral] = fcidump_line(tokens, layout);
 
     max_idx = std::max(max_idx, std::max(p, std::max(q, std::max(r, s))));
   }
@@ -137,13 +180,14 @@ uint32_t read_fcidump_norb(std::string fname) {
 }
 
 double read_fcidump_core(std::string fname) {
+  const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
     auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
-    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto [p, q, r, s, integral] = fcidump_line(tokens, layout);
     auto lc = line_classification(p, q, r, s);
     if(lc == LineClassification::Core) {
       return integral;
@@ -159,13 +203,14 @@ void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
   if(T.extent(0) != norb)
     throw std::runtime_error("T is of improper dimension");
 
+  const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
     auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
-    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto [p, q, r, s, integral] = fcidump_line(tokens, layout);
     auto lc = line_classification(p, q, r, s);
     if(lc == LineClassification::OneBody) {
       p--;
@@ -192,13 +237,14 @@ void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
   if(V.extent(0) != norb)
     throw std::runtime_error("V is of improper dimension");
 
+  const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
     auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
-    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto [p, q, r, s, integral] = fcidump_line(tokens, layout);
     auto lc = line_classification(p, q, r, s);
     if(lc == LineClassification::TwoBody) {
       p--;
@@ -230,13 +276,14 @@ bool is_2body_diagonal(std::string fname) {
   auto norb = read_fcidump_norb(fname);
   bool all_diag = true;
 
+  const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
   while(std::getline(file, line)) {
     auto tokens = tokenize_ws(line);
     if(tokens.size() != 5) continue;  // not a valid FCIDUMP line
 
-    auto [p, q, r, s, integral] = fcidump_line(tokens);
+    auto [p, q, r, s, integral] = fcidump_line(tokens, layout);
     auto lc = line_classification(p, q, r, s);
     if(lc == LineClassification::TwoBody) {
       p--;
