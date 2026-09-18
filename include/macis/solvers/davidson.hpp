@@ -11,9 +11,11 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <lobpcgxx/lobpcg.hpp>
 #include <macis/util/mpi.hpp>
 #include <random>
@@ -202,6 +204,12 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
       30;  // Number of iterations to consider stagnation
   const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
+  // Floor on |D - LAM(0)| in the Jacobi preconditioner below. A denominator
+  // smaller than the residual tolerance is below the accuracy we are trying
+  // to resolve, so inverting it amplifies roundoff rather than signal.
+  const double denom_floor =
+      std::max(tol, std::numeric_limits<double>::epsilon());
+
   for(int64_t i = 1; i < max_m; ++i, ++iter) {
     const auto k = i + 1;  // Current subspace dimension after new vector
 
@@ -280,22 +288,29 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
     // Compute new vector
     // (D - LAM(0)*I) * W = -R ==> W = -(D - LAM(0)*I)**-1 * R
 
-    // Safety check for near-degeneracies in D
-    int degenerate_count = 0;
+    // Guard against determinants degenerate with the current Ritz value. The
+    // floor applies to the magnitude and preserves the sign, so the map stays
+    // continuous at the boundary: the previous guard replaced a denominator of
+    // 1e-12 by 1e-8, so two determinants at essentially the same energy could
+    // receive corrections four orders of magnitude apart, while anything just
+    // above 1e-12 still amplified by up to 1e12 unguarded. Flooring at tol
+    // keeps the largest boost on the most nearly degenerate determinants --
+    // which is what makes the preconditioner work -- but bounds it by 1/tol.
+    int floored_count = 0;
     for(auto j = 0; j < N; ++j) {
-      // R[j] = -R[j] / (D[j] - LAM[0]);
       double denominator = D[j] - LAM[0];
-      if(std::abs(denominator) < 1e-12) {
-        // Prevent division by zero or very small numbers
-        denominator = (denominator >= 0) ? 1e-8 : -1e-8;
-        degenerate_count++;
+      if(std::abs(denominator) < denom_floor) {
+        denominator = std::copysign(denom_floor, denominator);
+        floored_count++;
       }
       R[j] = -R[j] / denominator;
     }
 
-    if(degenerate_count > 0) {
-      logger->warn("  * WARNING: {} near-degenerate diagonal elements detected",
-                   degenerate_count);
+    if(floored_count > 0) {
+      logger->warn(
+          "  * WARNING: {} preconditioner denominators floored at {:.1e} "
+          "(near-degenerate with LAM(0))",
+          floored_count, denom_floor);
     }
 
     // Project new vector out from old vectors
@@ -459,6 +474,13 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
       30;  // Number of iterations to consider stagnation
   const double stagnation_tol = 1e-13;  // Tolerance for stagnation detection
 
+  // Floor on |D - LAM(0)| in the Jacobi preconditioner below. A denominator
+  // smaller than the residual tolerance is below the accuracy we are trying
+  // to resolve, so inverting it amplifies roundoff rather than signal. It is
+  // built from tol alone, so every rank uses the identical value.
+  const double denom_floor =
+      std::max(tol, std::numeric_limits<double>::epsilon());
+
   for(int64_t i = 1; i < max_m; ++i, ++iter) {
     const auto k = i + 1;  // Current subspace dimension after new vector
 
@@ -544,27 +566,34 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
     // Compute new vector
     // (D - LAM(0)*I) * W = -R ==> W = -(D - LAM(0)*I)**-1 * R
 
-    // Safety check for near-degeneracies in D
-    int degenerate_count = 0;
+    // Guard against determinants degenerate with the current Ritz value. The
+    // floor applies to the magnitude and preserves the sign, so the map stays
+    // continuous at the boundary: the previous guard replaced a denominator of
+    // 1e-12 by 1e-8, so two determinants at essentially the same energy could
+    // receive corrections four orders of magnitude apart, while anything just
+    // above 1e-12 still amplified by up to 1e12 unguarded. Flooring at tol
+    // keeps the largest boost on the most nearly degenerate determinants --
+    // which is what makes the preconditioner work -- but bounds it by 1/tol.
+    int floored_count = 0;
 
     for(auto j = 0; j < N_local; ++j) {
-      // R_local[j] = -R_local[j] / (D_local[j] - LAM[0]);
       double denominator = D_local[j] - LAM[0];
-      if(std::abs(denominator) < 1e-12) {
-        // Prevent division by zero or very small numbers
-        denominator = (denominator >= 0) ? 1e-8 : -1e-8;
-        degenerate_count++;
+      if(std::abs(denominator) < denom_floor) {
+        denominator = std::copysign(denom_floor, denominator);
+        floored_count++;
       }
       R_local[j] = -R_local[j] / denominator;
     }
 
     // allreduce is collective over comm: it must run on every rank every
-    // iteration, regardless of whether this rank itself saw a
-    // near-degeneracy, or a run where only some ranks do hangs the rest.
-    size_t total_degenerate_count = allreduce(degenerate_count, MPI_SUM, comm);
-    if(total_degenerate_count > 0) {
-      logger->warn("  * WARNING: {} near-degenerate diagonal elements detected",
-                   total_degenerate_count);
+    // iteration, regardless of whether this rank itself floored anything, or
+    // a run where only some ranks do hangs the rest.
+    size_t total_floored_count = allreduce(floored_count, MPI_SUM, comm);
+    if(total_floored_count > 0) {
+      logger->warn(
+          "  * WARNING: {} preconditioner denominators floored at {:.1e} "
+          "(near-degenerate with LAM(0))",
+          total_floored_count, denom_floor);
     }
 
     // Project new vector out form old vectors
