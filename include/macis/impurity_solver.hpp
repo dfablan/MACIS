@@ -293,12 +293,18 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
       psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings);
 
   if(gf_settings.writeGF_singlef) {
-    using dbl = std::numeric_limits<double>;
-    std::ofstream ofile("Sz_resolvent.dat");
-    ofile.precision(dbl::max_digits10);
-    for(size_t iii = 0; iii < ws.size(); iii++)
-      ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii]) << " "
-            << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+    // Guard the file write so only rank 0 touches the shared filename
+    // (all ranks compute identical R(w), so one write is sufficient).
+    bool write_file = true;
+    MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+    if(write_file) {
+      using dbl = std::numeric_limits<double>;
+      std::ofstream ofile("Sz_resolvent.dat");
+      ofile.precision(dbl::max_digits10);
+      for(size_t iii = 0; iii < ws.size(); iii++)
+        ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii])
+              << " " << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+    }
   }
 
   return R;

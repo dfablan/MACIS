@@ -8,6 +8,8 @@
 
 #include "macis/gf/gf.hpp"
 
+#include <macis/util/mpi.hpp>
+
 namespace macis {
 
 std::vector<std::complex<double>> GetGFFreqGrid(const GFSettings &settings) {
@@ -65,6 +67,11 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
   size_t nfreqs = ws.size();
   int GFmat_size = GF_orbs.size() - todelete.size();
 
+  // Only rank 0 writes the shared filenames (all ranks hold identical data).
+  bool write_file = true;
+  MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+  if(!write_file) return;
+
   if(GF_orbs.size() > 1) {
     std::string fname = is_part ? "LanGFMatrix_ADD.dat" : "LanGFMatrix_SUB.dat";
     std::ofstream ofile(fname);
@@ -106,6 +113,11 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
   using dbl = std::numeric_limits<double>;
   size_t nfreqs = ws.size();
   int GFmat_size = GF_orbs.size() - todelete.size();
+
+  // Only rank 0 writes the shared filenames (all ranks hold identical data).
+  bool write_file = true;
+  MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+  if(!write_file) return;
 
   if(GF_orbs.size() > 1) {
     std::string fname = "GF.dat";
