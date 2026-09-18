@@ -91,6 +91,42 @@ bool load_asci_guess(impurity_params<N>& p, std::vector<macis::wfn_t<N>>& dets,
 }
 
 /**
+ *  @brief The reference determinant the ASCI expansion is seeded from.
+ *
+ *  Plain canonical_hf_determinant fills the first nalpha/nbeta *raw indices*,
+ *  which is the Hartree-Fock reference only when the orbitals are already
+ *  ordered by energy. A bath fit is under no obligation to emit its poles in
+ *  energy order, so that filling can leave a deep bath level empty while
+ *  occupying a shallow one. Under SYMMETRIZE_DETS the numbering is known not
+ *  to be energy-ordered -- that mismatch is the whole reason the flag exists
+ *  -- so fill by the one-body diagonal there instead.
+ *
+ *  This also makes the reference G-closed for free in the usual case: the
+ *  generators have just been validated as exact symmetries of T_active, so
+ *  its diagonal is constant on each orbit, stable_sort keeps orbit members
+ *  contiguous, and the occupied prefix splits an orbit only if the Fermi cut
+ *  falls inside a tie group. The seed is closed under the group at the call
+ *  sites regardless, so that remaining case is handled rather than refused.
+ *
+ *  Gated on symmetrize_dets deliberately: every other impurity run keeps the
+ *  raw-index reference it has always had, bit for bit.
+ *
+ *  Spin-dependent runs order both spins by T_active. Td_active is validated
+ *  as permutation-invariant too, so closure is unaffected; only the beta
+ *  seed's quality is, and it is a seed.
+ */
+template <size_t N>
+macis::wfn_t<N> asci_reference_determinant(const impurity_params<N>& p) {
+  if(!p.asci_settings.symmetrize_dets)
+    return macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta);
+
+  const size_t n = p.n_active;
+  std::vector<double> orb_ens(n);
+  for(size_t q = 0; q < n; ++q) orb_ens[q] = p.T_active[q + q * n];
+  return macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta, orb_ens);
+}
+
+/**
  *  @brief Validate and finalize orbital-permutation symmetry enforcement
  *  (ASCI.SYMMETRIZE_DETS) at solver entry.
  *
@@ -101,6 +137,13 @@ bool load_asci_guess(impurity_params<N>& p, std::vector<macis::wfn_t<N>>& dets,
  *  themselves, never inferred from any assumption about the bath structure:
  *  any bath that is not permutation-symmetric fails here, whatever produced
  *  it.
+ *
+ *  An asymmetric HF reference is reported but not refused. The invariant the
+ *  ASCI machinery actually needs is that the *selected* determinant space be
+ *  G-closed, and symmetric_orbit_select provides that unconditionally: it
+ *  materializes each surviving orbit whole from its representative, whatever
+ *  the seed was. The seed itself is closed at the call sites so the guess and
+ *  HF paths stay uniform and the first candidate ranking is unbiased.
  *
  *  Idempotent: expanding an already-expanded group returns the same group, so
  *  repeated solver entries (e.g. the mu root-find wrappers) are safe.
@@ -126,7 +169,7 @@ void prepare_det_symmetry(impurity_params<N>& p) {
   const size_t n3 = n2 * n;
   const auto& gens = *stg.sym_group;
 
-  const auto hf_det = macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta);
+  const auto hf_det = asci_reference_determinant<N>(p);
 
   for(size_t ig = 0; ig < gens.size(); ++ig) {
     const auto& g = gens[ig];
@@ -180,14 +223,17 @@ void prepare_det_symmetry(impurity_params<N>& p) {
       }
     }
 
-    // The HF reference must map to itself, otherwise the initial seed cannot
-    // be closed without changing the reference
+    // The HF reference need not be individually invariant: the seed is closed
+    // under the group at the call sites below, which costs nothing when it
+    // already was. Report an asymmetric reference, since it means the orbital
+    // numbering does not put whole flavor multiplets in the occupied prefix --
+    // worth knowing, but not a reason to refuse.
     if(macis::permute_orbitals(hf_det, g) != hf_det)
-      throw std::runtime_error(
-          "ASCI.SYMMETRIZE_DETS: " + gname +
-          " does not leave the HF reference determinant invariant. The "
-          "filling must close whole flavor multiplets (nalpha - n_imp must "
-          "fill complete band groups in the bath prefix).");
+      std::cout << "* SYMMETRIZE_DETS: " << gname
+                << " does not leave the HF reference determinant invariant "
+                   "(the occupied prefix splits a flavor multiplet); the seed "
+                   "will be closed under the group instead."
+                << std::endl;
   }
 
   // Expand the generators to the full group and store it for the solvers
@@ -399,16 +445,17 @@ double SolveImpurityASCI (impurity_params<N>& p){
     {
       // HF Guess
       std::cout<<"Generating HF Guess for ASCI \n";
-      dets = {macis::canonical_hf_determinant<N>(nalpha, nbeta)};
+      dets = {asci_reference_determinant<N>(p)};
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
       C_local = {1.0};
     }
-    else if(asci_settings.symmetrize_dets and asci_settings.sym_group)
-    {
-      // The HF fallback is closed by construction (validated in
-      // prepare_det_symmetry); a guess from file need not be
+    // Close whatever seeded the expansion -- HF fallback or guess from file --
+    // under the group. E0 above is taken from the HF determinant before this
+    // call: close_guess_under_group rebuilds dets in bitset order, so dets[0]
+    // afterwards is not necessarily the reference. The added partners carry
+    // C = 0, so they leave that E0 correct.
+    if(asci_settings.symmetrize_dets and asci_settings.sym_group)
       close_guess_under_group(dets, C_local, *asci_settings.sym_group);
-    }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
     // console->info("ASCI Guess Size = {}", dets.size());
@@ -527,7 +574,7 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       // hf_det is needed whether or not a guess is loaded: it is the reference the
       // macro-iteration loop restarts from in each rotated basis, refreshed via
       // hf_determinant_byocc after every rotation below.
-      macis::wfn_t<N> hf_det = macis::canonical_hf_determinant<N>(nalpha, nbeta);
+      macis::wfn_t<N> hf_det = asci_reference_determinant<N>(p);
       std::vector<double> orb_occs(n_active,0.0);
 
       // A guess only seeds the first macro iteration. load_asci_guess requires
@@ -541,12 +588,13 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
         E0 = ham_gen.matrix_element(dets[0], dets[0]);
         C_local = {1.0};
       }
-      else if(asci_settings.symmetrize_dets and asci_settings.sym_group)
-      {
-        // The HF reference is closed by construction (validated in
-        // prepare_det_symmetry); a guess from file need not be
+      // Close whatever seeded the expansion -- HF fallback or guess from file --
+      // under the group. E0 above is taken from the HF determinant before this
+      // call: close_guess_under_group rebuilds dets in bitset order, so dets[0]
+      // afterwards is not necessarily the reference. The added partners carry
+      // C = 0, so they leave that E0 correct.
+      if(asci_settings.symmetrize_dets and asci_settings.sym_group)
         close_guess_under_group(dets, C_local, *asci_settings.sym_group);
-      }
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
     // console->info("ASCI Guess Size = {}", dets.size());

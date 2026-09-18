@@ -1,9 +1,16 @@
 # Plan: Orbital-permutation symmetry enforcement in the ASCI determinant search
 
-> **STATUS: NOT IMPLEMENTED** — written 2026-08-26. Implementation plan for closing the ASCI
-> determinant space under the band-permutation group so the solver cannot artificially break the
-> orbital symmetry. All line anchors verified against the current working trees on 2026-08-26
-> (MACIS fork branch `feature/spin_dep` HEAD `f07c825`; PolClassy_DMFT branch `extra-local-features`).
+> **STATUS: Steps 1–10 IMPLEMENTED and in production; Step 11 NOT IMPLEMENTED** — written
+> 2026-08-26, status revised 2026-08-28. Plan for closing the ASCI determinant space under the
+> band-permutation group so the solver cannot artificially break the orbital symmetry. All line
+> anchors verified against the current working trees on 2026-08-26 (MACIS fork branch
+> `feature/spin_dep` HEAD `f07c825`; PolClassy_DMFT branch `extra-local-features`).
+>
+> **2026-08-28:** the closure landed and works — U_30.00 held exact orbital symmetry for seven DMFT
+> iterations, against polarization from It_1 without it. It then broke anyway, because a *closed
+> space* does not imply a *symmetric CI vector* when the ground state is degenerate. That gap, and
+> the fix, are Step 11; the §11 bullet claiming coefficient symmetrization was unnecessary has been
+> corrected.
 >
 > Companion documents: `~/Code/DMFT/PolClassy_DMFT/docs/debugging-single-site-dmft.md`,
 > `~/Code/DMFT/PolClassy_DMFT/docs/plans/asci-stall-guards.md`,
@@ -434,6 +441,128 @@ on, compute `max_{g,p,q} |D[g(p),g(q)] - D[p,q]|` and log it (warn if > 1e-6, ne
 Davidson-tolerance asymmetry is expected). Cheap (n² per group element); gives an immediate health
 metric in production logs.
 
+### Step 11 — project the Davidson iterates onto the totally symmetric irrep
+
+> Added 2026-08-28 after the U_30.00 post-mortem below. This is the one part of the design that
+> production falsified: §11 previously listed "symmetrizing coefficients" as out of scope on the
+> grounds that Davidson already delivers them symmetric to `ci_res_tol` once the space is closed.
+> That holds only when the ground state is non-degenerate.
+
+#### Why closing the space is not enough
+
+Closing the determinant set makes the projected Hamiltonian commute with the group representation,
+`[H_V, O(g)] = 0`. What that buys is that eigenvectors **can be chosen** to transform as irreps —
+not that they must:
+
+- **Non-degenerate eigenvalue** — the eigenspace is 1-D, an invariant 1-D subspace admits only a
+  phase, so the eigenvector *is* symmetry-adapted and its 1-RDM *is* invariant. This is the case
+  §4 tacitly assumes, and it is the common one.
+- **Degenerate eigenvalue, multiplicity d > 1** — the eigenspace is a d-dimensional invariant
+  subspace carrying a reducible representation. *Every* vector in it is an eigenvector with the same
+  eigenvalue; only special combinations lie in a single irrep. The group constrains the
+  **subspace**, and nothing constrains which vector inside it the solver hands back.
+
+A symmetric start vector does not save it. `asci_reference_determinant` is validated G-closed
+(`impurity_solver.cpp:231`), so the Davidson seed is totally symmetric and in exact arithmetic every
+Krylov iterate would stay in that sector. In floating point, roundoff seeds components along the
+broken-symmetry members of the eigenspace. Such components are normally damped because they belong
+to *higher* eigenvalues — here they are exactly degenerate with the target, so there is no restoring
+force at all, and the Rayleigh–Ritz step (`davidson.hpp:224`, `:496`) returns an arbitrary basis of
+the degenerate eigenspace. An O(1e-16) perturbation is amplified to an O(1) polarization.
+
+At J = 0 the degeneracy is generic rather than exotic: the Kanamori interaction collapses to
+`(U/2) N(N-1)`, which is SU(2·nbands)-symmetric, so the atomic `n = 2` manifold of a 3-orbital
+impurity is 15-fold degenerate — and deep in the Mott phase the low-frequency hybridization that
+would split it vanishes.
+
+#### Evidence — `.../Nb15/J_0/U_30.00`, SLURM job 54699000, 2026-08-28
+
+Same point as §1, this time *with* `SYMMETRIZE_DETS = TRUE` (group order 6), 320k determinants,
+`nrots = 0`. Targets: `S → ln 15 = 2.708`, `docc/orb → 1/15 = 0.0667`.
+
+```
+It     std(Occs)      S    docc   check_rdm_symmetry (Step 10)   Davidson iters, last grow steps
+4-7       0.0000   2.78  0.0671   silent                         36-51
+8         0.2346   0.089 0.0010   9.999999999771e-01             8-15
+9            -     0.088 0.3313   1.999999999924e+00             8-14
+```
+
+Three things the numbers say:
+
+1. **The asymmetries are integers.** 1.000000000 and 2.000000000 electrons — a fully polarized single
+   determinant, not a `ci_res_tol`-scale leak. It_8 is one electron each in bands 0 and 2
+   (`docc → 0`); It_9 is band 2 doubly occupied (`docc → 1/3`). Both are members of the same
+   15-fold manifold, so this is *selection within* the multiplet, not the catastrophic refine stall
+   of `asci-stall-guards.md`.
+2. **The states are degenerate to within the truncation error.** With the cross-Hamiltonian
+   variational bound (`debugging-single-site-dmft.md` §2.1) anchored on It_7, `<Psi_7|H_8|Psi_7>`
+   and the polarized It_8 solve agree to **2 mHa**. There is nothing here for the solver to resolve.
+3. **Davidson noticed.** Iteration counts in the final grow steps fell from 36-51 to 8-15:
+   converging to an arbitrary member of a degenerate eigenspace is easy.
+
+Step 10's `check_rdm_symmetry` is what caught this, a full DMFT iteration before the downstream
+PolClassy GF guard aborted the run (`Solver.py:1288`; discarded weight 1.147 > 0.3 at It_9). It
+earned its keep; its "never throw" policy should be revisited once this step lands (point 4 below).
+
+#### How — the projector, and the sign that §1 does not need but this does
+
+**This is the one place where the "no fermionic sign bookkeeping" simplification stops applying.**
+§1 is right that set closure needs no signs, *precisely because coefficients are re-solved in the
+closed space*. The moment coefficients are transformed, signs are mandatory: the operator that
+commutes with `H` on Fock space is the **signed** one,
+
+    O(g)|D> = s_g(D) |g(D)>
+
+with `s_g(D)` the parity of the reordering that restores ascending orbital order in the image of
+`D`'s occupied list — computed independently for the alpha string (bits `[0, N/2)`) and the beta
+string (bits `[N/2, N)`), then multiplied. The unsigned bitstring map `permute_orbitals`
+(`determinant_symmetry.hpp:37`) does **not** commute with `H`; used as a projector it would project
+onto the wrong subspace and would not even be idempotent.
+
+The totally symmetric projector is then `P = (1/|G|) sum_g O(g)`, with `P = P† = P²`.
+
+1. **New utility, beside `permute_orbitals`:** `permute_orbitals_signed(w, perm, int& sgn)` — the
+   same loop, additionally accumulating the inversion parity of the image of the occupied list per
+   spin string. Leave `permute_orbitals` untouched: every existing set-closure call site is correct
+   as it stands and must not pay for the sign.
+2. **Index map, built once per `selected_ci_diag` call:** for each `g` in `*asci_settings.sym_group`,
+   arrays `img_g[i]` (index of `g(dets[i])` within `dets`) and `sgn_g[i]`. The list is G-closed by
+   construction (Steps 4 and 7), so every lookup must hit — assert, never fall back silently. Cost
+   `O(|G| ndets log ndets)` against a sorted copy: negligible beside one matvec.
+3. **Where to apply it.** Apply `P` to **every new vector immediately before it is orthogonalized
+   into the subspace** — the preconditioned residual at `davidson.hpp:317` (serial) and `:600`
+   (MPI). That single insertion keeps `span(V)` inside the symmetric sector for the whole run, so
+   Rayleigh–Ritz never has a degenerate eigenspace to rotate within and no separate projection of
+   the Ritz vector or of the restart is needed. Projecting the start vector is then a no-op worth
+   keeping as an assertion. Cost: one `O(|G| ndets)` gather-axpy per subspace vector — microseconds
+   against a matvec.
+4. **Tighten Step 10 once this lands.** With the projector on, a residual 1-RDM asymmetry above
+   `sym_tol` is a bug in the index map, not physics: `check_rdm_symmetry` should throw rather than
+   warn when `symmetrize_dets` and the projector are both active.
+
+**MPI caveat — why this is not free.** `p_davidson` slices vectors by row (`N_local`), and `img_g[i]`
+generally lands on another rank, so the projection needs a permutation-gather across ranks. Two ways
+out: (a) land the serial path first and require single-rank CI diagonalization when
+`symmetrize_dets` is on — the production runs here are `--ntasks=1`, so this costs nothing today;
+(b) precompute a fixed communication schedule once, since `img_g` is constant for the whole Davidson.
+
+#### Why not the alternatives
+
+- **`CI_NSTATES = 15` plus state averaging is not a cheaper substitute.** `selected_ci_diag.hpp:78-79`
+  (serial mirror `:151-152`) copies only root 0 into `C_local`, and `C_exc` is never passed by
+  `impurity_solver.cpp`. Raising `CI_NSTATES` today swaps Davidson for LOBPCG, pays ~15x, and hands
+  `form_rdms` and the band-Lanczos GF the same arbitrary vector. Making it work would need `C_exc`
+  plumbed into a state-averaged `form_rdms` **and** the GF run per root and summed — strictly more
+  work than the projector. It would also need a degeneracy *window* (`E_0 + tol`) rather than a fixed
+  root count: 15 is the atomic degeneracy, not the AIM's, and a partial orbit average is not
+  invariant.
+- **`symmetrize_solver_output` cannot substitute** (`debugging-single-site-dmft.md` §3.3):
+  group-averaging a polarized rho gives an incoherent mixture of polarized states. Measured at It_8,
+  `S = 0.089` against `S_sym = 1.18` and a true value near 2.78.
+- **`ASCI_init_guess` (`asci-stall-guards.md` R3) sidesteps rather than solves it.** Warm-starting
+  keeps Davidson on whichever root the previous iteration found: the right immediate mitigation, and
+  orthogonal to this step, but it pins an arbitrary choice rather than making the correct one.
+
 ---
 
 ## 6. Size-budget and refine-invariant summary
@@ -609,6 +738,7 @@ multiplets: bath prefix 6 = 2×3):
 | 1. MACIS core | Steps 1–6, 8, 9 + tests 9.1–9.3 | Yes — fully testable with hand-written `input.in`/FCIDUMP; no python changes needed |
 | 1b. MACIS quality | Step 7 (seed closure), Step 10 (RDM check) | Yes — pure additions on top of Phase 1 |
 | 2. PolClassy | P1–P4 + production A/B (9.4) | Depends on the Phase-1 binary being deployed |
+| 1c. Symmetric CI vector | Step 11 (projector on the Davidson iterates) | Yes — pure addition; needed only when the ground state is degenerate (J = 0), see §5 Step 11 |
 
 ## 11. Out of scope
 
@@ -616,8 +746,9 @@ multiplets: bath prefix 6 = 2×3):
   basis (2D irreps mix bath orbitals by rotation); would require CI-space projectors or
   signed/generalized permutations. The python-side `symmetrize_fct` Manhattan-class averaging
   (capped at 2×2 clusters) remains the only site-channel mitigation.
-- Symmetrizing coefficients (Davidson already delivers them symmetric to `ci_res_tol` once the space
-  is closed).
+- ~~Symmetrizing coefficients (Davidson already delivers them symmetric to `ci_res_tol` once the
+  space is closed).~~ **Falsified in production 2026-08-28 — true only for a non-degenerate
+  ground state; now Step 11.**
 - `wfn_t<128>` instantiations, molecular point-group symmetry, `SolveImpurityCheapASCI` /
   `SolveImpurityED` (ED is exact and needs no fix; cheap-ASCI can call the same closure later).
 - Automatic HF-orbit seeding when the reference is not G-invariant (v1 throws with a clear message).
@@ -640,5 +771,7 @@ multiplets: bath prefix 6 = 2×3):
 - `main/run_asci_impsolv_dop.cxx:176-203` — keyword plumbing (+ mirror
   `main/run_asci_impsolv_mu_vs_n.cxx:155-171`)
 - `tests/determinant_symmetry.cxx` — **new**; `tests/CMakeLists.txt`
+- `include/macis/solvers/davidson.hpp:317` / `:600` — Step 11 projector insertion point (residual, before Gram-Schmidt); `:224` / `:496` — Rayleigh–Ritz, where an unprojected degenerate eigenspace gets rotated arbitrarily
+- `include/macis/solvers/selected_ci_diag.hpp:78-79`, `:151-152` — only root 0 reaches `C_local`; `C_exc` is never consumed (Step 11, "why not the alternatives")
 - PolClassy_DMFT: `constANDparams.py` (:217, :486, :544), `Solver.py` (:392-429, :865-883, new
   `band_permutation_generators` helper)
