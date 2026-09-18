@@ -324,8 +324,8 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
       std::ofstream ofile("Sz_resolvent.dat");
       ofile.precision(dbl::max_digits10);
       for(size_t iii = 0; iii < ws.size(); iii++)
-        ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii])
-              << " " << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+        ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii]) << " "
+              << real(R[iii]) << " " << imag(R[iii]) << std::endl;
     }
   }
 

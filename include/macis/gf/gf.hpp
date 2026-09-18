@@ -643,9 +643,9 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   // sector elementwise.
   if(nvecs == 0) {
     const int norbs = (int)GF_orbs_comp.size();
-    GF.assign(ws.size(), std::vector<std::complex<double>>(
-                             (size_t)norbs * (size_t)norbs,
-                             std::complex<double>(0., 0.)));
+    GF.assign(ws.size(),
+              std::vector<std::complex<double>>((size_t)norbs * (size_t)norbs,
+                                                std::complex<double>(0., 0.)));
     if(writeGF) write_GF(GF, ws, GF_orbs_comp, std::vector<int>{}, is_part);
     return;
   }
@@ -702,12 +702,12 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   }
 
   // PAD THE REDUCED GF BACK TO THE FULL GF_orbs_comp INDEX SPACE.
-  // BuildWfn4Lanczos dropped the orbitals listed in `todelete` (their add/remove
-  // vector vanished), so the nvecs x nvecs matrix computed above is indexed by
-  // the surviving orbitals only. Scatter it back into a full GF_orbs_comp^2
-  // matrix with zeros in the dropped rows/cols, so the particle and hole sectors
-  // can be summed elementwise even when they dropped different orbitals, and so
-  // the caller can index the GF by impurity orbital directly.
+  // BuildWfn4Lanczos dropped the orbitals listed in `todelete` (their
+  // add/remove vector vanished), so the nvecs x nvecs matrix computed above is
+  // indexed by the surviving orbitals only. Scatter it back into a full
+  // GF_orbs_comp^2 matrix with zeros in the dropped rows/cols, so the particle
+  // and hole sectors can be summed elementwise even when they dropped different
+  // orbitals, and so the caller can index the GF by impurity orbital directly.
   {
     const int norbs = (int)GF_orbs_comp.size();
     std::vector<int> surv;
@@ -716,14 +716,13 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
         surv.push_back(i);
 
     std::vector<std::vector<std::complex<double>>> GF_full(
-        ws.size(), std::vector<std::complex<double>>(
-                       (size_t)norbs * (size_t)norbs,
-                       std::complex<double>(0., 0.)));
+        ws.size(),
+        std::vector<std::complex<double>>((size_t)norbs * (size_t)norbs,
+                                          std::complex<double>(0., 0.)));
     for(size_t iw = 0; iw < ws.size(); iw++)
       for(size_t i = 0; i < surv.size(); i++)
         for(size_t j = 0; j < surv.size(); j++)
-          GF_full[iw][surv[i] * norbs + surv[j]] =
-              GF[iw][i * surv.size() + j];
+          GF_full[iw][surv[i] * norbs + surv[j]] = GF[iw][i * surv.size() + j];
     GF.swap(GF_full);
   }
 
@@ -768,7 +767,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 // * @brief Routine to sum two Green function matrices.
 //
 //*/
-//inline const std::vector<std::vector<std::complex<double>>> sum_GFs(
+// inline const std::vector<std::vector<std::complex<double>>> sum_GFs(
 //    const std::vector<std::vector<std::complex<double>>> &GF1,
 //    const std::vector<std::vector<std::complex<double>>> &GF2,
 //    const std::vector<std::complex<double>> &ws,
@@ -778,25 +777,28 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 //  int GFmat_size = GF_orbs.size() - todelete.size();
 //
 //  // The two GFs must already be GFmat_size x GFmat_size. They will not be if
-//  // todelete was not the list actually produced by RunGFCalc, in which case the
+//  // todelete was not the list actually produced by RunGFCalc, in which case
+//  the
 //  // loops below would read past the end of every row.
 //  if(GFmat_size <= 0)
 //    throw std::runtime_error(
 //        "In sum_GFs: every requested GF orbital was dropped, nothing to sum");
 //  if(GF1.size() < nfreqs || GF2.size() < nfreqs)
 //    throw std::runtime_error(
-//        "In sum_GFs: fewer GF frequencies than entries in the frequency grid");
+//        "In sum_GFs: fewer GF frequencies than entries in the frequency
+//        grid");
 //  const size_t expected = size_t(GFmat_size) * size_t(GFmat_size);
 //  for(size_t iii = 0; iii < nfreqs; iii++)
 //    if(GF1[iii].size() != expected || GF2[iii].size() != expected)
 //      throw std::runtime_error(
 //          "In sum_GFs: GF matrix dimension does not match GF_orbs.size() - "
-//          "todelete.size(). Did the caller forget to forward the todelete list "
-//          "returned by RunGFCalc?");
+//          "todelete.size(). Did the caller forget to forward the todelete list
+//          " "returned by RunGFCalc?");
 //
 //  std::vector<std::vector<std::complex<double>>> GF(
 //      nfreqs, std::vector<std::complex<double>>(GFmat_size * GFmat_size,
-//                                                std::complex<double>(0., 0.)));
+//                                                std::complex<double>(0.,
+//                                                0.)));
 //
 //  if(GF_orbs.size() > 1) {
 //    for(int iii = 0; iii < nfreqs; iii++) {

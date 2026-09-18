@@ -305,8 +305,8 @@ auto davidson(int64_t N, int64_t max_m, const Functor& op, const double* D,
               "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
               " iterations with < " + std::to_string(stagnation_tol) +
               " change in eigenvalue. Achieved residual norm = " +
-              std::to_string(res_nrm) + ", requested tol = " +
-              std::to_string(tol) + " (relaxed up to " +
+              std::to_string(res_nrm) +
+              ", requested tol = " + std::to_string(tol) + " (relaxed up to " +
               std::to_string(active_tol) + "). Not converged.");
         }
       }
@@ -623,8 +623,8 @@ auto p_davidson(int64_t N_local, int64_t max_m, const Functor& op,
               "Davidson: Stagnated after " + std::to_string(stagnant_iter) +
               " iterations with < " + std::to_string(stagnation_tol) +
               " change in eigenvalue. Achieved residual norm = " +
-              std::to_string(res_nrm) + ", requested tol = " +
-              std::to_string(tol) + " (relaxed up to " +
+              std::to_string(res_nrm) +
+              ", requested tol = " + std::to_string(tol) + " (relaxed up to " +
               std::to_string(active_tol) + "). Not converged.");
         }
       }
