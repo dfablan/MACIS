@@ -427,3 +427,153 @@ TEST_CASE(
             Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
   }
 }
+
+TEST_CASE(
+    "Dynamical properties - subtract_mean cancels the elastic pole") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Same setup as the T^3 Lehmann test above, but comparing the plain
+  // resolvent of O against the fluctuation resolvent of delta_O = O - <O>.
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const size_t norb = n_active;
+
+  std::vector<double> T(norb * norb, 0.0);
+  std::vector<double> V(norb * norb * norb * norb, 0.0);
+  for(size_t p = 0; p < norb; ++p) {
+    T[p * norb + p] = -1.0 - 0.1 * double(p);
+    for(size_t q = 0; q < norb; ++q)
+      if(p != q) T[p * norb + q] = -0.25;
+  }
+  for(size_t p = 0; p < norb; ++p)
+    V[((p * norb + p) * norb + p) * norb + p] = 1.0;
+
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), norb, norb),
+      macis::rank4_span<double>(V.data(), norb, norb, norb, norb));
+
+  std::vector<macis::wfn_t<N>> dets;
+  std::vector<int> orbs = {0, 1, 2, 3};
+  for(size_t a0 = 0; a0 < orbs.size(); ++a0)
+    for(size_t a1 = a0 + 1; a1 < orbs.size(); ++a1)
+      for(size_t b0 = 0; b0 < orbs.size(); ++b0)
+        for(size_t b1 = b0 + 1; b1 < orbs.size(); ++b1)
+          dets.push_back(make_det({orbs[a0], orbs[a1]}, {orbs[b0], orbs[b1]}));
+  const int ndet = int(dets.size());
+
+  Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+
+  macis::GFSettings settings;
+  settings.nLanIts = 200;
+  settings.saveGFmats = false;
+  const double eta = 0.2;
+  std::vector<std::complex<double>> ws;
+  for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0) ws.emplace_back(w, eta);
+
+  const auto w3 = macis::make_orbital_cartan_weights(2, 1, 3);
+  auto op = [&](const macis::wfn_t<N>& d) {
+    return macis::weighted_imp_value<N>(d, w3, macis::DiagChannel::Charge,
+                                        n_imp, n_active);
+  };
+
+  auto R_plain = macis::RunResolventDiagonal<N, int32_t>(
+      psi0, ham_gen, dets, op, n_imp, E0, ws, settings,
+      /*subtract_mean=*/false);
+  auto R_delta = macis::RunResolventDiagonal<N, int32_t>(
+      psi0, ham_gen, dets, op, n_imp, E0, ws, settings,
+      /*subtract_mean=*/true);
+  REQUIRE(R_plain.size() == ws.size());
+  REQUIRE(R_delta.size() == ws.size());
+
+  // v = O|psi0> and its mean <O> = <psi0|O|psi0> (psi0 is normalized).
+  Eigen::VectorXd v(ndet);
+  for(int k = 0; k < ndet; ++k) v(k) = psi0(k) * op(dets[k]);
+  const double Omean = psi0.dot(v);
+  const Eigen::VectorXd delta_v = v - Omean * psi0;
+  const Eigen::VectorXd delta_overlaps =
+      es.eigenvectors().transpose() * delta_v;
+
+  // The fluctuation is orthogonal to the reference state by construction, so
+  // the elastic (n = 0) overlap must vanish.
+  REQUIRE(std::abs(delta_overlaps(0)) < 1e-10);
+
+  SECTION("delta resolvent equals the inelastic-only Lehmann sum") {
+    for(size_t iw = 0; iw < ws.size(); ++iw) {
+      std::complex<double> ref(0.0, 0.0);
+      for(int n = 0; n < ndet; ++n) {
+        const double wn = es.eigenvalues()(n) - E0;
+        ref += (delta_overlaps(n) * delta_overlaps(n)) / (ws[iw] - wn);
+      }
+      REQUIRE(std::real(R_delta[iw]) ==
+              Approx(std::real(ref)).epsilon(1e-6).margin(1e-8));
+      REQUIRE(std::imag(R_delta[iw]) ==
+              Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
+    }
+  }
+
+  SECTION("plain minus delta equals the elastic pole <O>^2 / w") {
+    // The n = 0 term of the plain resolvent sits at w_0 = 0 with weight
+    // |<0|O|psi0>|^2 = <O>^2; subtracting the mean removes exactly it.
+    for(size_t iw = 0; iw < ws.size(); ++iw) {
+      const std::complex<double> elastic = Omean * Omean / ws[iw];
+      REQUIRE(std::real(R_plain[iw] - R_delta[iw]) ==
+              Approx(std::real(elastic)).epsilon(1e-6).margin(1e-8));
+      REQUIRE(std::imag(R_plain[iw] - R_delta[iw]) ==
+              Approx(std::imag(elastic)).epsilon(1e-6).margin(1e-8));
+    }
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - subtract_mean zeroes an operator proportional to "
+    "the identity") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // O = c*I is the degenerate case: delta_O = 0 identically, so the resolvent
+  // must be exactly zero everywhere rather than NaN from dividing by ||v|| = 0.
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const size_t norb = n_active;
+
+  std::vector<double> T(norb * norb, 0.0);
+  std::vector<double> V(norb * norb * norb * norb, 0.0);
+  for(size_t p = 0; p < norb; ++p) T[p * norb + p] = -1.0 - 0.1 * double(p);
+  for(size_t p = 0; p < norb; ++p)
+    V[((p * norb + p) * norb + p) * norb + p] = 1.0;
+
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), norb, norb),
+      macis::rank4_span<double>(V.data(), norb, norb, norb, norb));
+
+  std::vector<macis::wfn_t<N>> dets;
+  std::vector<int> orbs = {0, 1, 2, 3};
+  for(size_t a0 = 0; a0 < orbs.size(); ++a0)
+    for(size_t a1 = a0 + 1; a1 < orbs.size(); ++a1)
+      for(size_t b0 = 0; b0 < orbs.size(); ++b0)
+        for(size_t b1 = b0 + 1; b1 < orbs.size(); ++b1)
+          dets.push_back(make_det({orbs[a0], orbs[a1]}, {orbs[b0], orbs[b1]}));
+
+  Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+
+  macis::GFSettings settings;
+  settings.nLanIts = 200;
+  settings.saveGFmats = false;
+  std::vector<std::complex<double>> ws;
+  for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0) ws.emplace_back(w, 0.2);
+
+  auto const_op = [](const macis::wfn_t<N>&) { return 3.0; };
+  auto R = macis::RunResolventDiagonal<N, int32_t>(
+      psi0, ham_gen, dets, const_op, n_imp, E0, ws, settings,
+      /*subtract_mean=*/true);
+
+  REQUIRE(R.size() == ws.size());
+  for(const auto& r : R) REQUIRE(std::abs(r) == Approx(0.0).margin(1e-14));
+}

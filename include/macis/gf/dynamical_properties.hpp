@@ -357,6 +357,22 @@ inline std::vector<double> make_orbital_cartan_weights(size_t nbands,
  *        resolvent of the resulting state v = O |wfn0> is then evaluated via
  *        RunResolventGS.
  *
+ *        With subtract_mean = true, the operator is replaced by its
+ *        fluctuation delta_O = O - <O> (<O> = <wfn0|O|wfn0>/<wfn0|wfn0>) and
+ *        the resolvent of the modified start vector
+ *
+ *          delta_v = O |wfn0> - <O> |wfn0>
+ *
+ *        is evaluated instead. For a reference state that is an eigenstate of
+ *        H, expanding (O - <O>) G (O - <O>) with G = 1/(w - (H - E0)) and
+ *        G |wfn0> = |wfn0>/w cancels the elastic (n = 0) pole exactly, so
+ *
+ *          R_delta(w) = sum_{n>0} |<0|O|n>|^2 / (w - w_n)
+ *
+ *        is the purely inelastic Lehmann sum. This is the same continued
+ *        fraction with a different start vector, not an extra correction
+ *        term; no change to the Lanczos routine is involved.
+ *
  *        Note: v = O |wfn0> is generally NOT an eigenstate of H, and need not
  *        be normalized (the |v|^2 numerator is handled by the underlying
  *        Lanczos routine).
@@ -379,6 +395,8 @@ inline std::vector<double> make_orbital_cartan_weights(size_t nbands,
  * @param[in] const std::vector<std::complex<double>> &ws: Frequency grid over
  *            which to evaluate the resolvent.
  * @param[in] const GFSettings &settings: Parameters (nLanIts, saveGFmats).
+ * @param[in] bool subtract_mean: If true, evaluate the resolvent of the
+ *            fluctuation delta_O = O - <O> instead of O (see above).
  *
  * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
  *
@@ -389,7 +407,7 @@ std::vector<std::complex<double>> RunResolventDiagonal(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
     const std::vector<std::bitset<nbits>> &base_dets, ScalarFn scalar_fn,
     size_t n_imp, double E0, const std::vector<std::complex<double>> &ws,
-    const GFSettings &settings) {
+    const GFSettings &settings, bool subtract_mean = false) {
   // decompose_det packs the impurity occupation into a uint64_t (n_imp bits
   // per spin), so 2 * n_imp must fit in 64 bits.
   if(2 * n_imp > 64)
@@ -400,11 +418,20 @@ std::vector<std::complex<double>> RunResolventDiagonal(
   Eigen::VectorXd v =
       apply_diagonal_operator<nbits>(wfn0, base_dets, scalar_fn);
 
-  // If O |wfn0> vanishes (e.g. Sz_imp on an Sz_tot = 0 state with
-  // n_imp == n_active, or any traceless operator on an orbitally
-  // unpolarized determinant set), the resolvent is identically zero. Return
-  // early to avoid feeding a zero start vector into the Lanczos routine
-  // (which would divide by ||v||).
+  // Optionally subtract the reference expectation <O> so that v becomes
+  // delta_O |wfn0>. The denominator is <wfn0|wfn0> (not 1) because wfn0 need
+  // not be normalized, consistently with the rest of this header.
+  if(subtract_mean) {
+    const double Omean = wfn0.dot(v) / wfn0.squaredNorm();
+    v -= Omean * wfn0;
+  }
+
+  // If O |wfn0> (or delta_O |wfn0>) vanishes (e.g. Sz_imp on an Sz_tot = 0
+  // state with n_imp == n_active, any traceless operator on an orbitally
+  // unpolarized determinant set, or O proportional to the identity when
+  // subtract_mean is set), the resolvent is identically zero. Return early to
+  // avoid feeding a zero start vector into the Lanczos routine (which would
+  // divide by ||v||).
   const double zero_thresh = 1.E-12;
   if(v.squaredNorm() <= zero_thresh)
     return std::vector<std::complex<double>>(ws.size(),
@@ -425,6 +452,10 @@ std::vector<std::complex<double>> RunResolventDiagonal(
  *        Sz-Sz spin response, with poles at the spin excitation energies
  *        relative to the ground state.
  *
+ *        With subtract_mean = true, the fluctuation
+ *        delta_Sz = Sz_imp - <Sz_imp> is used instead, dropping the elastic
+ *        pole (see RunResolventDiagonal).
+ *
  * @tparam nbits: Number of bits in the Slater determinant bitset type.
  * @tparam index_t: Integer index type for the sparse Hamiltonian.
  *
@@ -441,6 +472,8 @@ std::vector<std::complex<double>> RunResolventDiagonal(
  * @param[in] const std::vector<std::complex<double>> &ws: Frequency grid over
  *            which to evaluate the resolvent.
  * @param[in] const GFSettings &settings: Parameters (nLanIts, saveGFmats).
+ * @param[in] bool subtract_mean: If true, evaluate the fluctuation resolvent
+ *            of Sz_imp - <Sz_imp>.
  *
  * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
  *
@@ -451,12 +484,13 @@ std::vector<std::complex<double>> RunResolventSz(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
     const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
     size_t n_active, double E0, const std::vector<std::complex<double>> &ws,
-    const GFSettings &settings) {
+    const GFSettings &settings, bool subtract_mean = false) {
   const auto sz_operator = [&](const std::bitset<nbits> &d) {
     return sz_imp_value<nbits>(d, n_imp, n_active);
   };
   return RunResolventDiagonal<nbits, index_t>(
-      wfn0, Hgen, base_dets, sz_operator, n_imp, E0, ws, settings);
+      wfn0, Hgen, base_dets, sz_operator, n_imp, E0, ws, settings,
+      subtract_mean);
 }
 
 /**
@@ -472,8 +506,7 @@ std::vector<std::complex<double>> RunResolventSz(
  *        generators (make_orbital_cartan_weights, DiagChannel::Charge),
  *        staggered spin (make_staggered_spin_weights, DiagChannel::Spin),
  *        and, via make_uniform_spin_weights, the existing Sz_imp response
- *        (RunResolventSz is kept as a separate, unchanged-signature
- *        entry point for that case).
+ *        (RunResolventSz is kept as a separate entry point for that case).
  *
  * @tparam nbits: Number of bits in the Slater determinant bitset type.
  * @tparam index_t: Integer index type for the sparse Hamiltonian.
@@ -495,6 +528,8 @@ std::vector<std::complex<double>> RunResolventSz(
  * @param[in] const std::vector<std::complex<double>> &ws: Frequency grid over
  *            which to evaluate the resolvent.
  * @param[in] const GFSettings &settings: Parameters (nLanIts, saveGFmats).
+ * @param[in] bool subtract_mean: If true, evaluate the fluctuation resolvent
+ *            of O - <O> instead of O (see RunResolventDiagonal).
  *
  * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
  *
@@ -506,12 +541,13 @@ std::vector<std::complex<double>> RunResolventWeighted(
     const std::vector<std::bitset<nbits>> &base_dets,
     const std::vector<double> &w, DiagChannel ch, size_t n_imp,
     size_t n_active, double E0, const std::vector<std::complex<double>> &ws,
-    const GFSettings &settings) {
+    const GFSettings &settings, bool subtract_mean = false) {
   const auto op = [&](const std::bitset<nbits> &d) {
     return weighted_imp_value<nbits>(d, w, ch, n_imp, n_active);
   };
   return RunResolventDiagonal<nbits, index_t>(wfn0, Hgen, base_dets, op,
-                                              n_imp, E0, ws, settings);
+                                              n_imp, E0, ws, settings,
+                                              subtract_mean);
 }
 
 }  // namespace macis

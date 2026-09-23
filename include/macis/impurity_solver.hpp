@@ -331,13 +331,17 @@ inline void write_resolvent_singlef(
  *            generator.
  * @param[in] macis::GFSettings &gf_settings: GF/resolvent settings (frequency
  *            grid, nLanIts, saveGFmats, writeGF_singlef).
+ * @param[in] bool subtract_mean: If true, evaluate the resolvent of the
+ *            fluctuation Sz_imp - <Sz_imp> instead of Sz_imp, dropping the
+ *            elastic pole (see macis::RunResolventDiagonal).
  *
  * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
  */
 template <size_t N>
 auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
                            macis::SDBuildHamiltonianGenerator<N> &ham_gen,
-                           macis::GFSettings &gf_settings) {
+                           macis::GFSettings &gf_settings,
+                           bool subtract_mean = false) {
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
 
@@ -351,10 +355,11 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
   double E0 = EASCI - (p.E_core + p.E_inactive);
 
   std::vector<std::complex<double>> R = macis::RunResolventSz<N>(
-      psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings);
+      psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings,
+      subtract_mean);
 
   if(gf_settings.writeGF_singlef)
-    detail::write_resolvent_singlef("Sz", ws, R);
+    detail::write_resolvent_singlef(subtract_mean ? "Sz_delta" : "Sz", ws, R);
 
   return R;
 }
@@ -397,6 +402,9 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
  * @param[in] macis::DiagChannel channel: Charge or Spin channel.
  * @param[in] const std::string &label: Used to name the output file
  *            "<label>_resolvent.dat".
+ * @param[in] bool subtract_mean: If true, evaluate the resolvent of the
+ *            fluctuation O - <O> instead of O, dropping the elastic pole (see
+ *            macis::RunResolventDiagonal).
  *
  * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
  *
@@ -409,7 +417,8 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
                                  macis::GFSettings &gf_settings,
                                  const std::vector<double> &w,
                                  macis::DiagChannel channel,
-                                 const std::string &label) {
+                                 const std::string &label,
+                                 bool subtract_mean = false) {
   // Rotation guard (§6 of PLAN_orbital_resolvent.md): the impurity block of
   // orb_rot must be the identity, not merely unitary (contrast evaluate_GF's
   // check above), because there is no free index left on R(w) to rotate an
@@ -449,7 +458,7 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
 
   std::vector<std::complex<double>> R = macis::RunResolventWeighted<N>(
       psi0, ham_gen, p.dets, w, channel, p.n_imp, p.n_active, E0, ws,
-      gf_settings);
+      gf_settings, subtract_mean);
 
   if(gf_settings.writeGF_singlef)
     detail::write_resolvent_singlef(label, ws, R);

@@ -568,6 +568,15 @@ int main(int argc, char** argv) {
         "nsites = " +
         std::to_string(nsites));
 
+  // Optionally evaluate every resolvent channel above on the fluctuation
+  // delta_O = O - <O> instead of O, which cancels the elastic pole and
+  // leaves the purely inelastic response (see macis::RunResolventDiagonal).
+  // The delta results are written to "<label>_delta_resolvent.dat" so they
+  // do not clobber the plain ones.
+  bool delta_resolvent = false;
+  OPT_KEYWORD("GF.DELTA_RESOLVENT", delta_resolvent, bool);
+  const std::string delta_suffix = delta_resolvent ? "_delta" : "";
+
   if(testGF || sz_resolvent || orb_resolvent || stag_sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
@@ -631,20 +640,21 @@ int main(int argc, char** argv) {
       GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
     if(sz_resolvent)
-      macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings);
+      macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings,
+                                              delta_resolvent);
 
     if(orb_resolvent) {
       const auto w3 =
           macis::make_orbital_cartan_weights(params.nbands, nsites, 3);
       macis::evaluate_resolvent_diagonal<nwfn_bits>(
           E0, params, ham_gen, gf_settings, w3, macis::DiagChannel::Charge,
-          "T3");
+          "T3" + delta_suffix, delta_resolvent);
       if(params.nbands == 3) {
         const auto w8 =
             macis::make_orbital_cartan_weights(params.nbands, nsites, 8);
         macis::evaluate_resolvent_diagonal<nwfn_bits>(
             E0, params, ham_gen, gf_settings, w8, macis::DiagChannel::Charge,
-            "T8");
+            "T8" + delta_suffix, delta_resolvent);
       }
     }
 
@@ -653,7 +663,7 @@ int main(int argc, char** argv) {
           macis::make_staggered_spin_weights(params.nbands, nsites);
       macis::evaluate_resolvent_diagonal<nwfn_bits>(
           E0, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
-          "StagSz");
+          "StagSz" + delta_suffix, delta_resolvent);
     }
   }
   
