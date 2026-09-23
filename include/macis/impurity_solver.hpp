@@ -241,6 +241,65 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   return GF;
 }
 
+namespace detail {
+
+// Frequency grid shared by evaluate_resolvent_sz and
+// evaluate_resolvent_diagonal: real axis as in evaluate_GF, but on the
+// imaginary axis a BOSONIC Matsubara grid (even multiples of pi/beta), since
+// every diagonal-operator resolvent in this header (Sz-Sz, orbital, staggered
+// spin, ...) is a bosonic correlator, unlike the fermionic GF which lives on
+// odd multiples (2*i+1)*pi/beta.
+//
+// The grid starts at nu_1 = 2*pi/beta, NOT at nu_0 = 0. w = 0 is a point on
+// the REAL axis, which is exactly where the poles of the continued fraction
+// sit, and there is no i*eta broadening on the Matsubara axis to keep it away
+// from them. E0 comes from Davidson at CI_RES_TOL, while the smallest
+// eigenvalue of the Lanczos tridiagonal matrix is the exact ground state of H
+// in the Krylov space, so the two differ by O(CI_RES_TOL) with an essentially
+// arbitrary sign. That plants a spurious pole at w ~ delta -> 0 whose
+// contribution to R is -weight/delta at w = 0 and only
+// -weight*delta/(nu^2 + delta^2) ~ 0 at every nu >> delta. The nu = 0 value
+// was therefore the only unusable point on the grid (observed: static
+// susceptibilities wrong by orders of magnitude, and negative), while
+// nu >= nu_1 is smooth. Recover the static limit by extrapolating R(i*nu)
+// from the lowest few Matsubara points instead.
+inline std::vector<std::complex<double>> build_bosonic_resolvent_grid(
+    const macis::GFSettings &gf_settings) {
+  std::vector<std::complex<double>> ws(gf_settings.nws,
+                                       std::complex<double>(0., 0.));
+  for(int i = 0; i < gf_settings.nws; i++)
+    if(gf_settings.imag_freq) {
+      //  BOSONIC MATSUBARA GRID, STARTING AT nu_1 = 2*pi/beta
+      ws[i] = std::complex<double>(
+          0., 2. * double(i + 1) * M_PI / gf_settings.beta);
+    } else {
+      std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
+      std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
+      ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
+    }
+  return ws;
+}
+
+// Writes a diagonal-operator resolvent to "<label>_resolvent.dat" (columns:
+// Re(w) Im(w) Re(R) Im(R)), guarding the write so only rank 0 touches the
+// shared filename (all ranks compute identical R(w), so one write suffices).
+inline void write_resolvent_singlef(
+    const std::string &label, const std::vector<std::complex<double>> &ws,
+    const std::vector<std::complex<double>> &R) {
+  bool write_file = true;
+  MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+  if(write_file) {
+    using dbl = std::numeric_limits<double>;
+    std::ofstream ofile(label + "_resolvent.dat");
+    ofile.precision(dbl::max_digits10);
+    for(size_t iii = 0; iii < ws.size(); iii++)
+      ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii])
+            << " " << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+  }
+}
+
+}  // namespace detail
+
 /**
  * @brief Evaluates the dynamical impurity Sz-Sz response, i.e. the retarded
  *        resolvent of the impurity Sz operator on the ASCI ground state:
@@ -253,10 +312,18 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
  *        same real grid as evaluate_GF but on a bosonic Matsubara grid
  *        (even multiples of pi/beta) on the imaginary axis, since the Sz-Sz
  *        response is a bosonic correlator. The grid starts at nu_1 = 2*pi/beta
- *        and deliberately EXCLUDES nu_0 = 0: see the comment on the grid
- *        construction below. The result R(w) is written to
- *        "Sz_resolvent.dat" (columns: Re(w) Im(w) Re(R) Im(R)) when
- *        gf_settings.writeGF_singlef is set, and returned to the caller.
+ *        and deliberately EXCLUDES nu_0 = 0: see build_bosonic_resolvent_grid.
+ *        The result R(w) is written to "Sz_resolvent.dat" (columns: Re(w)
+ *        Im(w) Re(R) Im(R)) when gf_settings.writeGF_singlef is set, and
+ *        returned to the caller.
+ *
+ *        Unlike evaluate_resolvent_diagonal, this does NOT require the
+ *        impurity block of orb_rot to be the identity: Sz_imp sums uniformly
+ *        over every impurity orbital and is invariant under the
+ *        block-diagonal, spin-conserving natural-orbital rotations used by
+ *        SolveImpurityASCI_rot (see sz_imp_value / §6 of
+ *        PLAN_orbital_resolvent.md), so it remains valid on the rotated
+ *        production path.
  *
  * @param[in] double EASCI: ASCI ground-state energy (including core/inactive).
  * @param[in] macis::impurity_params<N> &p: Impurity problem parameters.
@@ -276,36 +343,8 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
 
   std::cout << "EASCI = " << EASCI << std::endl;
 
-  // Frequency grid: real axis as in evaluate_GF, but on the imaginary axis
-  // use a BOSONIC Matsubara grid (even multiples of pi/beta): the Sz-Sz
-  // resolvent is a spin (bosonic) correlator, unlike the fermionic GF which
-  // lives on odd multiples (2*i+1)*pi/beta.
-  //
-  // The grid starts at nu_1 = 2*pi/beta, NOT at nu_0 = 0. w = 0 is a point on
-  // the REAL axis, which is exactly where the poles of the continued fraction
-  // sit, and there is no i*eta broadening on the Matsubara axis to keep it
-  // away from them. E0 comes from Davidson at CI_RES_TOL, while the smallest
-  // eigenvalue of the Lanczos tridiagonal matrix is the exact ground state of
-  // H in the Krylov space, so the two differ by O(CI_RES_TOL) with an
-  // essentially arbitrary sign. That plants a spurious pole at w ~ delta -> 0
-  // whose contribution to R is -weight/delta at w = 0 and only
-  // -weight*delta/(nu^2 + delta^2) ~ 0 at every nu >> delta. The nu = 0 value
-  // was therefore the only unusable point on the grid (observed: static
-  // susceptibilities wrong by orders of magnitude, and negative), while
-  // nu >= nu_1 is smooth. Recover the static limit by extrapolating R(i*nu)
-  // from the lowest few Matsubara points instead.
-  std::vector<std::complex<double>> ws(gf_settings.nws,
-                                       std::complex<double>(0., 0.));
-  for(int i = 0; i < gf_settings.nws; i++)
-    if(gf_settings.imag_freq) {
-      //  BOSONIC MATSUBARA GRID, STARTING AT nu_1 = 2*pi/beta
-      ws[i] = std::complex<double>(
-          0., 2. * double(i + 1) * M_PI / gf_settings.beta);
-    } else {
-      std::complex<double> w0(gf_settings.wmin, gf_settings.eta);
-      std::complex<double> wf(gf_settings.wmax, gf_settings.eta);
-      ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
-    }
+  std::vector<std::complex<double>> ws =
+      detail::build_bosonic_resolvent_grid(gf_settings);
 
   // Reference energy relative to the active-space Hamiltonian (matching the
   // shift used for the Green's function in evaluate_GF).
@@ -314,20 +353,106 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
   std::vector<std::complex<double>> R = macis::RunResolventSz<N>(
       psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings);
 
-  if(gf_settings.writeGF_singlef) {
-    // Guard the file write so only rank 0 touches the shared filename
-    // (all ranks compute identical R(w), so one write is sufficient).
-    bool write_file = true;
-    MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
-    if(write_file) {
-      using dbl = std::numeric_limits<double>;
-      std::ofstream ofile("Sz_resolvent.dat");
-      ofile.precision(dbl::max_digits10);
-      for(size_t iii = 0; iii < ws.size(); iii++)
-        ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii])
-              << " " << real(R[iii]) << " " << imag(R[iii]) << std::endl;
-    }
+  if(gf_settings.writeGF_singlef)
+    detail::write_resolvent_singlef("Sz", ws, R);
+
+  return R;
+}
+
+/**
+ * @brief Evaluates the dynamical impurity response of a general
+ *        per-orbital-weighted diagonal operator O on the ASCI ground state:
+ *
+ *          R(w) = <psi0| O  1/(w - (H - E0))  O |psi0>,
+ *          O = macis::weighted_imp_value(., w, channel, n_imp, n_active)
+ *
+ *        Generalizes evaluate_resolvent_sz to an arbitrary diagonal impurity
+ *        operator (orbital Cartan generators T^3/T^8, staggered spin, ...),
+ *        specified by a per-impurity-orbital weight vector w and a channel
+ *        (see macis::DiagChannel and the make_*_weights builders in
+ *        dynamical_properties.hpp). Reuses the same frequency grid
+ *        construction, E0 shift and output format as evaluate_resolvent_sz;
+ *        the result is written to "<label>_resolvent.dat" when
+ *        gf_settings.writeGF_singlef is set.
+ *
+ *        Unlike Sz_imp, an orbital- or site-resolved operator is NOT
+ *        invariant under the natural-orbital rotation used by
+ *        SolveImpurityASCI_rot: such a rotation scrambles exactly the
+ *        orbital/site distinction these operators measure, and, because O is
+ *        contracted on both sides of R(w), there is no surviving free index
+ *        to rotate the result back through afterwards (unlike evaluate_GF's
+ *        Green's function). O therefore has to be correct in the SAME basis
+ *        as p.dets before it is applied, so this function throws unless the
+ *        impurity block of p.orb_rot is the identity (see §6 of
+ *        PLAN_orbital_resolvent.md).
+ *
+ * @param[in] double EASCI: ASCI ground-state energy (including core/inactive).
+ * @param[in] macis::impurity_params<N> &p: Impurity problem parameters.
+ * @param[in] macis::SDBuildHamiltonianGenerator<N> &ham_gen: Hamiltonian
+ *            generator.
+ * @param[in] macis::GFSettings &gf_settings: GF/resolvent settings (frequency
+ *            grid, nLanIts, saveGFmats, writeGF_singlef).
+ * @param[in] const std::vector<double> &w: Per-impurity-orbital weight, size
+ *            p.n_imp.
+ * @param[in] macis::DiagChannel channel: Charge or Spin channel.
+ * @param[in] const std::string &label: Used to name the output file
+ *            "<label>_resolvent.dat".
+ *
+ * @returns std::vector<std::complex<double>>: R(w) along the frequency grid.
+ *
+ * @throws std::runtime_error if the impurity block of p.orb_rot is not the
+ *         identity within 1e-10.
+ */
+template <size_t N>
+auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
+                                 macis::SDBuildHamiltonianGenerator<N> &ham_gen,
+                                 macis::GFSettings &gf_settings,
+                                 const std::vector<double> &w,
+                                 macis::DiagChannel channel,
+                                 const std::string &label) {
+  // Rotation guard (§6 of PLAN_orbital_resolvent.md): the impurity block of
+  // orb_rot must be the identity, not merely unitary (contrast evaluate_GF's
+  // check above), because there is no free index left on R(w) to rotate an
+  // orbital-resolved operator back through once it has been applied.
+  if(p.n_imp > 0) {
+    Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Zero(p.n_imp, p.n_imp);
+    for(int j = 0; j < p.n_imp; j++)
+      for(int k = 0; k < p.n_imp; k++)
+        rotBlock(j, k) = p.orb_rot[j + k * p.n_active];
+    const Eigen::MatrixXd dev =
+        rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+    const double identity_tol = 1.e-10;
+    if(dev.cwiseAbs().maxCoeff() > identity_tol)
+      throw std::runtime_error(
+          "In evaluate_resolvent_diagonal (label = \"" + label +
+          "\"): the impurity block of orb_rot is not the identity (max "
+          "deviation from the identity is " +
+          std::to_string(dev.cwiseAbs().maxCoeff()) +
+          "). Orbital-resolved diagonal operators (orbital T^3/T^8, "
+          "staggered spin, ...) are only meaningful in the unrotated "
+          "impurity basis that p.dets is expressed in: a natural-orbital "
+          "rotation scrambles exactly the orbital/site distinction they "
+          "measure, and R(w) has no surviving free index to rotate back "
+          "through afterwards. Set CI.EXPANSION = CAS or ASCI.NROTS = 0 to "
+          "disable the rotation.");
   }
+
+  Eigen::VectorXd psi0 =
+      Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
+
+  std::cout << "EASCI = " << EASCI << std::endl;
+
+  std::vector<std::complex<double>> ws =
+      detail::build_bosonic_resolvent_grid(gf_settings);
+
+  double E0 = EASCI - (p.E_core + p.E_inactive);
+
+  std::vector<std::complex<double>> R = macis::RunResolventWeighted<N>(
+      psi0, ham_gen, p.dets, w, channel, p.n_imp, p.n_active, E0, ws,
+      gf_settings);
+
+  if(gf_settings.writeGF_singlef)
+    detail::write_resolvent_singlef(label, ws, R);
 
   return R;
 }

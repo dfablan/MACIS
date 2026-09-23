@@ -12,6 +12,7 @@
 #include <macis/csr_hamiltonian.hpp>
 #include <macis/gf/dynamical_properties.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
+#include <utility>
 
 #include "ut_common.hpp"
 
@@ -236,5 +237,193 @@ TEST_CASE(
   for(const auto& r : R) {
     REQUIRE(std::real(r) == Approx(0.0).margin(1e-10));
     REQUIRE(std::imag(r) == Approx(0.0).margin(1e-10));
+  }
+}
+
+TEST_CASE("Dynamical properties - weighted_imp_value orbital-to-bit map") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // decompose_det packs impurity occupations in REVERSE (impurity_rdm.hpp:
+  // "if(alpha[n_imp - 1 - p]) out.imp_up |= (1ULL << p);"). weighted_imp_value
+  // must un-reverse that mapping so that w[i] is applied to impurity orbital
+  // i as laid out by the caller (make_det: alpha orbital i -> bit i), not to
+  // whatever bit position decompose_det happens to store it at. A distinct
+  // weight per orbital (rather than a uniform one) is what catches the
+  // reversal: getting it backwards would silently swap w[i] <-> w[n_imp-1-i].
+  const size_t n_imp = 3;
+  const size_t n_active = 5;
+  const std::vector<double> w = {2.0, 5.0, -3.0};
+
+  for(size_t i = 0; i < n_imp; ++i) {
+    // Single spin-up electron in impurity orbital i, nothing else occupied.
+    auto det = make_det(/*alpha*/ {int(i)}, /*beta*/ {});
+    const double val = macis::weighted_imp_value<N>(
+        det, w, macis::DiagChannel::Charge, n_imp, n_active);
+    REQUIRE(val == Approx(w[i]).epsilon(1e-12));
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - sz_imp_value matches weighted_imp_value with "
+    "uniform spin weights") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const auto w = macis::make_uniform_spin_weights(/*nbands=*/2, /*nsites=*/1);
+  REQUIRE(w.size() == n_imp);
+
+  auto detA = make_det(/*alpha*/ {0, 2}, /*beta*/ {1, 3});
+  auto detB = make_det(/*alpha*/ {0, 1}, /*beta*/ {2, 3});
+  auto detC = make_det(/*alpha*/ {2, 3}, /*beta*/ {0, 1});
+
+  for(auto [det, expected] :
+      {std::pair{detA, 0.0}, std::pair{detB, 1.0}, std::pair{detC, -1.0}}) {
+    const double via_weighted = macis::weighted_imp_value<N>(
+        det, w, macis::DiagChannel::Spin, n_imp, n_active);
+    const double via_sz = macis::sz_imp_value<N>(det, n_imp, n_active);
+    REQUIRE(via_weighted == Approx(expected).margin(1e-12));
+    REQUIRE(via_weighted == Approx(via_sz).margin(1e-12));
+  }
+}
+
+TEST_CASE("Dynamical properties - weight builders are traceless / validate") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  auto sum = [](const std::vector<double>& v) {
+    double s = 0.0;
+    for(double x : v) s += x;
+    return s;
+  };
+
+  SECTION("orbital Cartan generators sum to zero") {
+    REQUIRE(sum(macis::make_orbital_cartan_weights(2, 1, 3)) ==
+            Approx(0.0).margin(1e-12));
+    REQUIRE(sum(macis::make_orbital_cartan_weights(3, 1, 3)) ==
+            Approx(0.0).margin(1e-12));
+    REQUIRE(sum(macis::make_orbital_cartan_weights(3, 1, 8)) ==
+            Approx(0.0).margin(1e-12));
+    // Two-site cluster: still band-uniform across sites, still traceless.
+    REQUIRE(sum(macis::make_orbital_cartan_weights(3, 2, 8)) ==
+            Approx(0.0).margin(1e-12));
+  }
+
+  SECTION("T^3 vs T^8 agree in magnitude structure for 3 degenerate bands") {
+    const auto w3 = macis::make_orbital_cartan_weights(3, 1, 3);
+    const auto w8 = macis::make_orbital_cartan_weights(3, 1, 8);
+    REQUIRE(w3 == std::vector<double>{0.5, -0.5, 0.0});
+    const double c = 1.0 / (2.0 * std::sqrt(3.0));
+    REQUIRE(w8[0] == Approx(c).epsilon(1e-12));
+    REQUIRE(w8[1] == Approx(c).epsilon(1e-12));
+    REQUIRE(w8[2] == Approx(-2.0 * c).epsilon(1e-12));
+  }
+
+  SECTION("make_orbital_cartan_weights throws for nbands == 1") {
+    REQUIRE_THROWS_AS(macis::make_orbital_cartan_weights(1, 1, 3),
+                      std::runtime_error);
+  }
+
+  SECTION("make_orbital_cartan_weights throws for T^8 unless nbands == 3") {
+    REQUIRE_THROWS_AS(macis::make_orbital_cartan_weights(2, 1, 8),
+                      std::runtime_error);
+  }
+
+  SECTION("make_orbital_cartan_weights throws for an invalid which") {
+    REQUIRE_THROWS_AS(macis::make_orbital_cartan_weights(3, 1, 2),
+                      std::runtime_error);
+  }
+
+  SECTION("make_staggered_spin_weights requires nsites == 2") {
+    REQUIRE_THROWS_AS(macis::make_staggered_spin_weights(2, 1),
+                      std::runtime_error);
+    const auto w = macis::make_staggered_spin_weights(2, 2);
+    REQUIRE(w.size() == 4);
+    REQUIRE(sum(w) == Approx(0.0).margin(1e-12));
+  }
+
+  SECTION("make_uniform_spin_weights has the expected size and values") {
+    const auto w = macis::make_uniform_spin_weights(3, 2);
+    REQUIRE(w.size() == 6);
+    for(double x : w) REQUIRE(x == Approx(1.0).margin(1e-12));
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - RunResolventWeighted (orbital T^3) vs exact "
+    "Lehmann sum") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Mirrors "RunResolventSz vs exact Lehmann sum" above, with the impurity
+  // Sz operator replaced by the orbital isospin generator T^3 (weights
+  // (+1/2, -1/2) on the two impurity bands, CHARGE channel).
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const size_t norb = n_active;
+
+  std::vector<double> T(norb * norb, 0.0);
+  std::vector<double> V(norb * norb * norb * norb, 0.0);
+  for(size_t p = 0; p < norb; ++p) {
+    T[p * norb + p] = -1.0 - 0.1 * double(p);
+    for(size_t q = 0; q < norb; ++q)
+      if(p != q) T[p * norb + q] = -0.25;
+  }
+  for(size_t p = 0; p < norb; ++p)
+    V[((p * norb + p) * norb + p) * norb + p] = 1.0;
+
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), norb, norb),
+      macis::rank4_span<double>(V.data(), norb, norb, norb, norb));
+
+  std::vector<macis::wfn_t<N>> dets;
+  std::vector<int> orbs = {0, 1, 2, 3};
+  for(size_t a0 = 0; a0 < orbs.size(); ++a0)
+    for(size_t a1 = a0 + 1; a1 < orbs.size(); ++a1)
+      for(size_t b0 = 0; b0 < orbs.size(); ++b0)
+        for(size_t b1 = b0 + 1; b1 < orbs.size(); ++b1)
+          dets.push_back(make_det({orbs[a0], orbs[a1]}, {orbs[b0], orbs[b1]}));
+  const int ndet = int(dets.size());
+
+  Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+
+  macis::GFSettings settings;
+  settings.nLanIts = 200;
+  settings.saveGFmats = false;
+  const double eta = 0.2;
+  std::vector<std::complex<double>> ws;
+  for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0) ws.emplace_back(w, eta);
+
+  const auto w3 = macis::make_orbital_cartan_weights(/*nbands=*/2,
+                                                      /*nsites=*/1,
+                                                      /*which=*/3);
+  auto R = macis::RunResolventWeighted<N, int32_t>(
+      psi0, ham_gen, dets, w3, macis::DiagChannel::Charge, n_imp, n_active,
+      E0, ws, settings);
+  REQUIRE(R.size() == ws.size());
+
+  // Exact Lehmann reference: v = T^3 |psi0>.
+  Eigen::VectorXd v(ndet);
+  for(int k = 0; k < ndet; ++k)
+    v(k) = psi0(k) * macis::weighted_imp_value<N>(dets[k], w3,
+                                                   macis::DiagChannel::Charge,
+                                                   n_imp, n_active);
+
+  const double vnorm2 = v.squaredNorm();
+  REQUIRE(vnorm2 > 1e-8);
+
+  Eigen::VectorXd overlaps = es.eigenvectors().transpose() * v;
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    std::complex<double> ref(0.0, 0.0);
+    for(int n = 0; n < ndet; ++n) {
+      const double wn = es.eigenvalues()(n) - E0;
+      ref += (overlaps(n) * overlaps(n)) / (ws[iw] - wn);
+    }
+    REQUIRE(std::real(R[iw]) ==
+            Approx(std::real(ref)).epsilon(1e-6).margin(1e-8));
+    REQUIRE(std::imag(R[iw]) ==
+            Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
   }
 }

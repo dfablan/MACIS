@@ -550,7 +550,25 @@ int main(int argc, char** argv) {
   bool sz_resolvent = false;
   OPT_KEYWORD("GF.SZ_RESOLVENT", sz_resolvent, bool);
 
-  if(testGF || sz_resolvent) {
+  // Optionally compute the orbital-isospin resolvents T^3 (any nbands >= 2)
+  // and T^8 (nbands == 3 only) -- the orbital partner of Sz_resolvent, used
+  // to measure the orbital screening scale omega_orb (see
+  // PLAN_orbital_resolvent.md).
+  bool orb_resolvent = false;
+  OPT_KEYWORD("GF.ORB_RESOLVENT", orb_resolvent, bool);
+
+  // Optionally compute the staggered (q = pi) Sz resolvent Sz(site 0) -
+  // Sz(site 1), invisible to GF.SZ_RESOLVENT's uniform (q = 0) channel.
+  // Requires nsites == 2.
+  bool stag_sz_resolvent = false;
+  OPT_KEYWORD("GF.STAG_SZ_RESOLVENT", stag_sz_resolvent, bool);
+  if(stag_sz_resolvent && nsites != 2)
+    throw std::runtime_error(
+        "GF.STAG_SZ_RESOLVENT requires nsites == 2 (n_imp / nbands), got "
+        "nsites = " +
+        std::to_string(nsites));
+
+  if(testGF || sz_resolvent || orb_resolvent || stag_sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -614,6 +632,29 @@ int main(int argc, char** argv) {
 
     if(sz_resolvent)
       macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings);
+
+    if(orb_resolvent) {
+      const auto w3 =
+          macis::make_orbital_cartan_weights(params.nbands, nsites, 3);
+      macis::evaluate_resolvent_diagonal<nwfn_bits>(
+          E0, params, ham_gen, gf_settings, w3, macis::DiagChannel::Charge,
+          "T3");
+      if(params.nbands == 3) {
+        const auto w8 =
+            macis::make_orbital_cartan_weights(params.nbands, nsites, 8);
+        macis::evaluate_resolvent_diagonal<nwfn_bits>(
+            E0, params, ham_gen, gf_settings, w8, macis::DiagChannel::Charge,
+            "T8");
+      }
+    }
+
+    if(stag_sz_resolvent) {
+      const auto w_stag =
+          macis::make_staggered_spin_weights(params.nbands, nsites);
+      macis::evaluate_resolvent_diagonal<nwfn_bits>(
+          E0, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
+          "StagSz");
+    }
   }
   
 #ifdef MACIS_ENABLE_MPI
