@@ -554,8 +554,11 @@ int main(int argc, char** argv) {
   // and T^8 (nbands == 3 only) -- the orbital partner of Sz_resolvent, used
   // to measure the orbital screening scale omega_orb (see
   // PLAN_orbital_resolvent.md).
-  bool orb_resolvent = false;
-  OPT_KEYWORD("GF.ORB_RESOLVENT", orb_resolvent, bool);
+  bool tz_resolvent = false;
+  OPT_KEYWORD("GF.TZ_RESOLVENT", tz_resolvent, bool);
+
+  bool spin_orb_matrix_resolvent = false;
+  OPT_KEYWORD("GF.SPIN_ORB_MATRIX_RESOLVENT", spin_orb_matrix_resolvent, bool);
 
   // Optionally compute the staggered (q = pi) Sz resolvent Sz(site 0) -
   // Sz(site 1), invisible to GF.SZ_RESOLVENT's uniform (q = 0) channel.
@@ -577,7 +580,8 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("GF.DELTA_RESOLVENT", delta_resolvent, bool);
   const std::string delta_suffix = delta_resolvent ? "_delta" : "";
 
-  if(testGF || sz_resolvent || orb_resolvent || stag_sz_resolvent) {
+  if(testGF || sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
+     stag_sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -616,6 +620,8 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ASTHRES", gf_settings.asThres, double);
     OPT_KEYWORD("GF.USE_BANDLAN", gf_settings.use_bandLan, bool);
     OPT_KEYWORD("GF.NLANITS", gf_settings.nLanIts, int);
+    OPT_KEYWORD("GF.ORB_DEFLATE_TOL", gf_settings.orb_deflate_tol, double);
+    OPT_KEYWORD("GF.ORB_MIN_CAPTURE", gf_settings.orb_min_capture, double);
     OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
     OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
     OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
@@ -643,7 +649,7 @@ int main(int argc, char** argv) {
       macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings,
                                               delta_resolvent);
 
-    if(orb_resolvent) {
+    if(tz_resolvent) {
       const auto w3 =
           macis::make_orbital_cartan_weights(params.nbands, nsites, 3);
       macis::evaluate_resolvent_diagonal<nwfn_bits>(
@@ -657,6 +663,11 @@ int main(int argc, char** argv) {
             "T8" + delta_suffix, delta_resolvent);
       }
     }
+
+    if(spin_orb_matrix_resolvent)
+      macis::evaluate_resolvent_orbital_matrix<nwfn_bits>(
+          E0, params, ham_gen, gf_settings, "R_mu_nu_gamma_delta" + delta_suffix,
+          delta_resolvent);
 
     if(stag_sz_resolvent) {
       const auto w_stag =

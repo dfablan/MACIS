@@ -11,7 +11,7 @@
 > is kept as an unchanged-signature thin wrapper. `evaluate_resolvent_diagonal` in
 > `impurity_solver.hpp` adds the §6 identity-rotation guard; `evaluate_resolvent_sz` deliberately
 > does **not** go through that guard (Sz_imp is rotation-invariant, so gating it would have been a
-> regression on the production rotated-ASCI path). `GF.ORB_RESOLVENT` / `GF.STAG_SZ_RESOLVENT` are
+> regression on the production rotated-ASCI path). `GF.TZ_RESOLVENT` / `GF.STAG_SZ_RESOLVENT` are
 > wired up in `main/run_asci_impsolv_dop.cxx`. §5.1 unit tests are in `tests/dynamical_properties.cxx`.
 > §5.2 physics-level checks (T^3 vs T^8 agreement at `delta_CFS = 0`, sum rule against `tauz_tauz`,
 > `omega_orb` vs `omega_sf` trends) are runtime DMFT-loop checks, not unit tests, and are left for a
@@ -231,7 +231,7 @@ within `1e-10`. Model the message on the existing `evaluate_GF` unitarity check
 Add keywords next to `GF.SZ_RESOLVENT` (line 520) and calls next to line 585:
 
 ```
-GF.ORB_RESOLVENT    bool          # run T^3 (and T^8 when nbands == 3)
+GF.TZ_RESOLVENT     bool          # run T^3 (and T^8 when nbands == 3)
 GF.STAG_SZ_RESOLVENT bool         # run staggered Sz; requires nsites == 2
 ```
 

@@ -38,6 +38,11 @@ $S_z^{\rm imp}$ is then a good quantum number. This is the zero-norm case alread
 that annihilates some combination of bilinears produces another exact null direction, and near-null
 directions appear whenever a symmetry is weakly broken.
 
+> **Review note (2026-09-24).** The provable null needs $n_{\rm imp}=n_{\rm active}$, which never
+> holds in a DMFT solve with a bath. In production, deflation will rarely discard anything. It is
+> still worth keeping, because it costs nothing and covers the bath-free and symmetric test cases.
+> "Required" overstates how often it fires.
+
 So rank deflation is **required infrastructure**, not a diagnostic. Making it explicit is what
 buys the generality: the deflation is precisely where symmetry enters, and it is *measured* from
 the ground state rather than assumed.
@@ -188,7 +193,17 @@ $$\boxed{\;R(z) = B\,\tilde R(z)\,B^{T}\;}$$
 
 The discarded directions satisfy $\|\Phi u\|^2=u^{T}\mathcal{G}u\approx 0$ — they are combinations
 of bilinears that annihilate the ground state, so projecting them out is exact, not an
-approximation. **That null space is the symmetry content of the problem, measured rather than
+approximation.
+
+> **Review note (2026-09-24).** It is exact only up to the tolerance. `tol` is applied to Gram
+> eigenvalues, i.e. to *squared* norms. At `1e-10` a discarded direction can carry amplitude
+> $\|\Phi u\|\sim\sqrt{10^{-10}}\,\|\Phi\|=10^{-5}\|\Phi\|$, and the cross terms it drops
+> put a relative error of about $10^{-5}$ on $R$. Apply the tolerance to singular values
+> ($\sqrt{\lambda_k/\lambda_{\max}}$), or lower the default to about `1e-14`. Imperfect
+> orthonormality of $\Psi$ (error $\sim\epsilon\,\lambda_{\max}/\lambda_k$) is *not* a problem:
+> `BandResolvent` re-orthonormalises through `QRdecomp_tr` and folds $R$ back into the `S`
+> matrix. The result is therefore exactly $\Psi^T G\Psi$ for the $\Psi$ actually passed in, and
+> $B\tilde R B^T = U_rU_r^T\,\Phi^TG\Phi\,U_rU_r^T$ holds regardless. **That null space is the symmetry content of the problem, measured rather than
 assumed.**
 
 Feeding `BandResolvent` an already-orthonormal set also removes its failure mode entirely: its
@@ -205,6 +220,11 @@ construction at `bandlan.cxx:300-308` reduces to the eigenvector matrix.
   convention, dagger in the right place, no index-reversal bookkeeping.
 - Needs `nLanIts` comfortably above $r$; `GetEigsysBand` uses `min(nvecs, nLanIts-1)`
   (`bandlan.cxx:280`).
+- **Review note:** `nLanIts` is the *total* Krylov dimension, not a count per seed. The default
+  1000 with $r=36$ is only about 28 block steps, far less resolved than the scalar $S_z$ run with
+  the same setting. On real-frequency grids, raise `GF.NLANITS` roughly $\propto r$. `bandH`
+  and the eigensolve in `GetEigsysBand` are dense $n_{\rm Lan}^2$ / $n_{\rm Lan}^3$, so this is
+  cheap up to a few thousand.
 - Memory is $2r$ vectors of length $L$ (`bandlan.hpp:164`), not $r\cdot n_{\rm Lan}$. Cost is $r$
   matvecs per iteration.
 - Watch stdout for `FOUND A ZERO VECTOR AT POSITION` (`bandlan.hpp:225`): the early-exit branch is
@@ -242,9 +262,9 @@ Rank-0 write guard as in `detail::write_resolvent_singlef` (`impurity_solver.hpp
 
 ### 2.5 Driver — `main/run_asci_impsolv_dop.cxx`
 
-Three edits mirroring the `GF.ORB_RESOLVENT` block (`:557-558`, `:571`, `:640-654`):
+Three edits mirroring the `GF.TZ_RESOLVENT` block (`:557-558`, `:571`, `:640-654`):
 
-1. `bool orb_matrix_resolvent = false;` + `OPT_KEYWORD("GF.ORB_MATRIX_RESOLVENT", ..., bool)` near
+1. `bool spin_orb_matrix_resolvent = false;` + `OPT_KEYWORD("GF.SPIN_ORB_MATRIX_RESOLVENT", ..., bool)` near
    `:564`, plus `GF.ORB_DEFLATE_TOL` (`double`, default `1e-10`) and `GF.ORB_MIN_CAPTURE`
    (`double`, default `0.95`, warn-only — see §1.3).
 2. Add the flag to the gating disjunction at `:571`.
@@ -285,6 +305,116 @@ $S_{\mu\mu}=2S_z^\mu$. Stage 1/2 work directly with $S_{\mu\nu}$, i.e. the `.tex
 State the convention in the output header. Physics-plan §6 is written in the $S_z^\alpha$
 convention and is inconsistent with its own §1 shorthand by exactly this factor — worth fixing in
 that note.
+
+---
+
+## Extension: the charge channel $N_{\mu\nu}$
+
+Everything above is written for the spin bilinear $S_{\mu\nu}$. `~/Work/Notes/Sz_Resolvent/
+Orbital_Channels_and_Observable_Choice.md` classifies the full set of one-body impurity bilinears
+and puts this extension in context; the relevant points from it are collected here rather than
+re-derived.
+
+### What the operator is
+
+$$N_{\mu\nu}=\sum_\sigma c^\dagger_{\mu\sigma}c_{\nu\sigma}=c^\dagger_{\mu\uparrow}c_{\nu\uparrow}+c^\dagger_{\mu\downarrow}c_{\nu\downarrow},$$
+
+the same-sign companion of $S_{\mu\nu}=c^\dagger_{\mu\uparrow}c_{\nu\uparrow}-c^\dagger_{\mu\downarrow}c_{\nu\downarrow}$.
+`Orbital_Channels_and_Observable_Choice.md` §1 shows $N_{\mu\nu}$ transforms as a $3\otimes3$ tensor
+under $SO(3)_{\rm orb}$ exactly as $S_{\mu\nu}$ does, decomposing $1\oplus3\oplus5$ (singlet $N_{\rm
+imp}$, orbital-moment triplet $L^\gamma$, quadrupole quintet $Q$, with $T^3,T^8$ two of the five
+$Q$ components). Together the two channels are the full $18=9+9$-dimensional classification
+(spin $0,1$) $\times$ (orbital $l=0,1,2$) — §2 of that note.
+
+### Why this is a small change, not a new derivation
+
+Stage 1's sign machinery is already channel-agnostic. `apply_spin_bilinear` differs from an
+`N_{\mu\nu}` builder only in the relative sign between the two spin-block terms — the
+`(spin ? -1.0 : 1.0)` factor in the per-determinant loop becomes `+1.0` unconditionally for charge.
+Everything downstream — Gram, deflation, `BandResolvent`, back-transform (Stage 2) — operates on
+whichever seeds it is handed and needs no change.
+
+Concretely:
+
+1. **`dynamical_properties.hpp`**: generalize `apply_spin_bilinear` /
+   `spin_bilinear_capture_fraction` to take a `DiagChannel ch` (reusing the enum already defined at
+   `dynamical_properties.hpp:306`, matching the existing `weighted_imp_value` convention rather than
+   inventing a new tag), and rename to `apply_orbital_bilinear` /
+   `orbital_bilinear_capture_fraction` since "spin" no longer describes both branches. Same for
+   `RunResolventOrbitalMatrix` (→ `RunResolventOrbitalBilinearMatrix`, taking `DiagChannel channel`).
+2. **`impurity_solver.hpp`**: `evaluate_resolvent_orbital_matrix` gets the same `DiagChannel`
+   parameter, forwarded through; fold it into the output label (`"Sz"` vs `"N"`) so the two channels
+   don't overwrite each other's `.dat` files.
+3. **`run_asci_impsolv_dop.cxx`**: a second keyword, `GF.CHARGE_ORB_MATRIX_RESOLVENT` (bool
+   `charge_orb_matrix_resolvent`), mirroring `GF.SPIN_ORB_MATRIX_RESOLVENT` rather than folding both
+   into one flag — consistent with the existing one-flag-per-physical-channel pattern
+   (`sz_resolvent`, `tz_resolvent`, `stag_sz_resolvent`).
+
+### What the charge channel actually buys, and what does not need it
+
+Per the note's §2/§3/§7 table, most of the charge sector is already reachable with the existing
+diagonal machinery:
+
+- **$l=0$** ($N_{\rm imp}$): trivial, uniform `CHARGE` weights, already available via
+  `evaluate_resolvent_diagonal` — no new code needed.
+- **$l=2$** (the quadrupole $Q$): 2 of 5 components ($T^3$, `GF.TZ_RESOLVENT`; $T^8$) are already
+  diagonal-operator accessible and implemented. The matrix resolvent's contribution here is the
+  remaining 3 off-diagonal quintet components plus the full $5\times5$ block including frozen
+  weights $w_0^{\alpha\beta}$ (Stage 3 item 4 above, "Frozen weights", mirrored for charge).
+- **$l=1$** ($L^\gamma$, the orbital angular momentum): **genuinely off-diagonal in the
+  determinant basis** — note §7. This is the piece the diagonal-operator interface (§9 of the older
+  `PLAN_orbital_resolvent.md`) cannot reach at all. It is exactly what Stage 1's bit-flip
+  construction was built for: $\mu\neq\nu$ seeds via `single_excitation_sign` require no new
+  machinery beyond the sign generalization above. **The charge-channel matrix resolvent is the
+  first thing in this codebase that reaches $L^\gamma$**, not just a parallel run of what the
+  diagonal path already does for $Q$.
+
+### A physics wrinkle: the diagonal trace is not a null direction here
+
+The spin channel's exact null direction ($\sum_\mu S_{\mu\mu}\ket{\psi_0}=0$ at $n_{\rm imp}=n_{\rm
+active}$, $S_z^{\rm tot}=0$) has no charge analogue in the same form. At $n_{\rm imp}=n_{\rm
+active}$, $\sum_\mu N_{\mu\mu}=N_{\rm tot}$ is conserved with eigenvalue $N_{\rm tot}\neq0$
+generically, so $\sum_\mu N_{\mu\mu}\ket{\psi_0}=N_{\rm tot}\ket{\psi_0}$ — **parallel to the
+ground state, not annihilated by it**. This is not a Gram rank deficiency ($\|\Phi u\|^2=N_{\rm
+tot}^2\neq0$ for that direction), but it means that particular seed is *entirely* elastic content at
+$n_{\rm imp}=n_{\rm active}$, and dominated by the elastic pole away from it. `subtract_mean`
+(already threaded through `RunResolventOrbitalMatrix`, see the review section above) is effectively
+mandatory for any diagonal-block charge element, more so than for spin, where it is only needed
+away from half filling. Add a test analogous to the spin deflation test (`orbital matrix resolvent
+deflates the exact null direction`) that checks $\sum_\mu N_{\mu\mu}\ket{\psi_0}\parallel\ket{\psi_0}$
+instead of $=0$, and confirms `subtract_mean` removes that pole from every diagonal-block element.
+
+### Cross-channel test from the note
+
+Spin and charge sectors cannot mix under $H$ ($S$-type operators are spin triplet, $N$-type spin
+singlet — note §1), so the spin/charge cross-block of a combined Gram matrix is exactly zero; this
+is a free correctness check if both channels are ever seeded together, though the plan above keeps
+them as two independent runs rather than one $2M\times2M$ problem, matching the driver's
+one-flag-per-channel pattern.
+
+The note's §5.2 gives a stronger quantitative check once both channels exist: at the Kanamori
+$J=0$ point ($U'=U$), the symmetry enlarges to $SU(6)$ and every one-body bilinear shares one
+resolvent function after normalization by $\operatorname{tr}(T^aT^b)$, i.e.
+$s_0=s_1=s_2=q_1=q_2$ (note's notation: $s$ = spin-channel, $q$ = charge-channel, subscript =
+orbital $l$). $s_0=s_2=q_2$ is checkable today with the diagonal machinery alone (see the note's
+Table 1); with the charge matrix resolvent, $q_1=s_1$ becomes reachable too, closing the loop and
+**validating the spin- and charge-channel sign/normalization conventions against each other** —
+something the existing $T^3$ vs $T^8$ check (both in `CHARGE`) cannot do, since it never touches
+the spin-channel normalization.
+
+The same orbitally-non-degenerate-ground-state caveat as the $T^3=T^8$ check (note §5.1: `Wigner
+Eckart` with multiplicity one requires the ground state not be orbitally degenerate) applies to any
+charge-channel quintet agreement, and should be checked (ground-state $L$, dimension) before
+reading a mismatch there as a code bug either.
+
+### Tests to mirror
+
+Every Stage 1/2 test added for the spin path (occupied-orbital sign case, adjoint
+$N_{\mu\nu}^\dagger=N_{\nu\mu}$, diagonal-trace-parallel-to-$\psi_0$ in place of the null-direction
+test, diagonal-block vs `RunResolventWeighted`+`DiagChannel::Charge` — already supported via
+`make_orbital_cartan_weights` — sum rule, `subtract_mean` pole cancellation) has a direct
+charge-channel analogue and should be added alongside it, plus the $J=0$ $SU(6)$ cross-channel
+identity above once both channels are implemented.
 
 ---
 
@@ -377,7 +507,7 @@ cmake --build build --target macis_test -j
 (The existing `build/` tree looks incompletely configured — no `tests/` or `main/` subdirectories,
 empty `CMAKE_BUILD_TYPE`. Expect to re-run configure, ideally `-DCMAKE_BUILD_TYPE=Release`.)
 
-- The trace direction $\sum_\mu R_{\mu\mu;\gamma\gamma}$ must reproduce the existing
+- The trace direction $\sum_{\mu,\gamma} R_{\mu\mu;\gamma\gamma}$ (summed over **both** indices) must reproduce the existing
   `Sz_resolvent.dat` up to the factor of 4. Free regression check; run it first.
 - Degenerate-band case: assert the Gram matrix and $R$ show the expected degeneracies with no
   crystal field. Any splitting means a symmetry-broken bath — which this machinery will now show
@@ -400,3 +530,64 @@ empty `CMAKE_BUILD_TYPE`. Expect to re-run configure, ideally `-DCMAKE_BUILD_TYP
 | `main/run_asci_impsolv_dop.cxx` | `OPT_KEYWORD:87-90`, keywords `:548-570`, gate `:571`, calls `:630-658` |
 | `src/macis/impurity_solver.cpp` | `SolveImpurityED:313`, `p.dets` fill `:372-373` |
 | `tests/dynamical_properties.cxx` | `make_det:24`, `dense_hamiltonian:34`, mirror target `:352-429` |
+
+---
+
+## Review of the first implementation (2026-09-24)
+
+Stages 1–2 plus the driver keyword are implemented as uncommitted changes. The algorithm matches
+§2.1, and no correctness bug was found in what is there. The inline **Review notes** above cover
+the plan itself. The implementation issues are below, most important first.
+
+1. **`GF.DELTA_RESOLVENT` is silently ignored on this path.** The driver comment says the option
+   applies to "every resolvent channel above", but `evaluate_resolvent_orbital_matrix` takes no
+   `subtract_mean`. For odd electron counts (a doublet ground state) or `spin_dep` runs,
+   $\langle S_{\mu\mu}\rangle\neq0$ and the elastic pole survives. Fix: before the Gram step,
+   `seeds -= psi0 * (psi0.transpose() * seeds)`. $\mathcal G$ then becomes the fluctuation
+   covariance and the sum rule still holds with it. Thread `subtract_mean` through and append
+   `delta_suffix` to the label.
+   **Fixed:** `RunResolventOrbitalMatrix` and `evaluate_resolvent_orbital_matrix` now take
+   `subtract_mean`, and the driver passes `delta_resolvent` with label `"Sz" + delta_suffix`, so
+   the output goes to `Sz_delta_orbital_resolvent.dat` / `Sz_delta_gram.dat`. Capture fractions
+   still describe the bare operator, since the subtracted component $\langle S\rangle\psi_0$ is
+   in-basis.
+2. **Stage 1 was only validated against itself.** The original Lehmann test built its reference
+   overlaps with `apply_spin_bilinear`, so a sign or index error would cancel out. The original
+   hand-built case uses adjacent orbitals (sign always $+1$) and exercises only the spin-up term.
+   *Addressed by the new tests below.*
+3. **Tests from §Verification were missing** (#2 adjoint, #4 fractional capture, #6 deflation,
+   #7 diagonal block, #8 sum rule). The `gram == gram^T` check is tautological for
+   $\Phi^T\Phi$. *Now added, see below.*
+4. **A doc comment is misplaced.** The new code was inserted between `apply_diagonal_operator`'s
+   doxygen block and its function, so that comment now documents `apply_spin_bilinear`. The new
+   functions and the `GF.SPIN_ORB_MATRIX_RESOLVENT` keyword have no docs, unlike their neighbours.
+5. **Duplicated pass and memory use.**
+   - `spin_bilinear_capture_fraction` repeats the loop in `apply_spin_bilinear`. In-basis images
+     are already in the seed, so only *leaked* images need the map:
+     `capture = |seed|^2 / (|seed|^2 + leaked)`, from one pass that returns both.
+   - Diagonal pairs have capture $\equiv 1$ and can be skipped.
+   - `seeds`, `psi` and `vecs` are three dense $L\times M$ copies, about 3 GB each at
+     $L=10^7$, $M=36$. Free `seeds` once `psi` exists, or write `vecs` directly.
+6. **Minor.**
+   - The orb_rot guard is copied from `evaluate_resolvent_diagonal`; factor it into `detail::`.
+   - The output label `"Sz"` yields `Sz_gram.dat`; consider `"Smunu"`.
+   - The long-format file has $n_\omega M^2$ rows (about 1.3M at $M=36$, $n_\omega=1000$).
+
+### Tests added (`tests/dynamical_properties.cxx`)
+
+Shared helpers were added to the anonymous namespace: `orbital_matrix_integrals`,
+`half_filled_fci_dets`, `spin_bilinear_seeds` and `lehmann_element`.
+
+| test case | covers |
+|---|---|
+| `spin bilinear signs across an occupied orbital` | Stage 1 #1: $S_{20}$ hopping over occupied orbital 1 in both spin blocks (sign $-1$, opposite overall signs from the spin-down term), the reverse hop $S_{02}$, and a fractional capture of exactly $1/9$ where two sources interfere on one leaked image. Squaring before accumulating would give $0.18/0.92$ instead. |
+| `spin bilinear adjoint on the FCI space` | Stage 1 #2: $S_{\mu\nu}^T=S_{\nu\mu}$ as $36\times36$ matrices, independent of any wave function |
+| `orbital matrix resolvent deflates the exact null direction` | Stage 2 #6: $n_{\rm imp}=n_{\rm active}=4$, asserts $\sum_\mu S_{\mu\mu}\ket{\psi_0}=0$, $r=M-1=15$, and an element-by-element Lehmann match |
+| `orbital matrix diagonal block vs RunResolventWeighted` | Stage 2 #7: $R_{\mu\mu;\mu\mu}=4R_w[e_\mu]$ and $R_{00;00}+R_{11;11}+2R_{00;11}=4R_w[(1,1)]$ in the Spin channel. This path shares no code with Stage 1 (conventions 3 vs 1). |
+| `orbital matrix resolvent subtract_mean cancels the elastic pole` | item 1: on a (2α, 1β) doublet with $\langle S_{\mu\mu}\rangle\neq0$, ${\rm plain}-{\rm delta}=m_km_l/z$ for every element, and the fluctuation Gram equals $\mathcal G-mm^T$ |
+| `orbital matrix resolvent sum rule` | Stage 2 #8: ${\rm Re}[zR(z)]=\mathcal G$ at $z=10^6 i$ (the $M_1/z$ term is purely imaginary there), plus `result.gram` equal to an independent $\Phi^T\Phi$ |
+
+**Not yet compiled or run.** This machine has no MPI (`cmake` fails at
+`find_package(MPI)` with `MACIS_ENABLE_MPI=ON`). The `r = M-1` assertion assumes the 15
+remaining seed directions are independent. That holds generically for this Hamiltonian, which has
+no spatial symmetry, but it has not been confirmed numerically.

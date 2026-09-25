@@ -50,6 +50,8 @@ struct GFSettings {
   std::vector<bool> is_up_basis = std::vector<bool>(0);
   std::vector<bool> is_up_comp = std::vector<bool>(0);
   int nLanIts = 1000;
+  double orb_deflate_tol = 1.E-12; // Eigenvalues lambda of the Gram matrix such that lambda < orb_deflate_tol * lambda_max are discarded in the orbital-resolvent calculation.
+  double orb_min_capture = 0.95; //minimal tolerated fraction of the weight of O_\mu_\nu |Psi_0> to land inside the ASCI basis.
   bool writeGF = false;
   bool writeGF_singlef = false;
   bool print = false;

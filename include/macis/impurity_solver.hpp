@@ -298,6 +298,49 @@ inline void write_resolvent_singlef(
   }
 }
 
+inline void write_orbital_resolvent_matrix(
+    const std::string &label, size_t n_imp,
+    const std::vector<std::complex<double>> &ws,
+    const macis::OrbitalResolventResult &result) {
+  bool write_file = true;
+  MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+  if(!write_file) return;
+
+  using dbl = std::numeric_limits<double>;
+  const size_t npairs = n_imp * n_imp;
+  std::ofstream resolvent_file(label + "_orbital_resolvent.dat");
+  resolvent_file.precision(dbl::max_digits10);
+  resolvent_file << "# S_munu = c^dagger_(mu,up)c_(nu,up) - "
+                    "c^dagger_(mu,dn)c_(nu,dn); diagonal trace response is "
+                    "4 times the Sz convention\n";
+  resolvent_file << "# Re(w) Im(w) mu nu gamma delta Re(R) Im(R)\n";
+  for(size_t iw = 0; iw < ws.size(); ++iw)
+    for(size_t k = 0; k < npairs; ++k)
+      for(size_t l = 0; l < npairs; ++l)
+        resolvent_file << std::scientific << real(ws[iw]) << " " << imag(ws[iw])
+                        << " " << k / n_imp << " " << k % n_imp << " "
+                        << l / n_imp << " " << l % n_imp << " "
+                        << real(result.resolvent[iw][k * npairs + l]) << " "
+                        << imag(result.resolvent[iw][k * npairs + l]) << "\n";
+
+  std::ofstream gram_file(label + "_gram.dat");
+  gram_file.precision(dbl::max_digits10);
+  gram_file << "# retained_rank " << result.rank << "\n";
+  gram_file << "# pair mu nu capture\n";
+  for(size_t k = 0; k < npairs; ++k)
+    gram_file << k << " " << k / n_imp << " " << k % n_imp << " "
+              << std::scientific << result.capture(k) << "\n";
+  gram_file << "# eigenvalue\n";
+  for(Eigen::Index k = 0; k < result.gram_eigenvalues.size(); ++k)
+    gram_file << std::scientific << result.gram_eigenvalues(k) << "\n";
+  gram_file << "# pair_k mu nu pair_l gamma delta gram\n";
+  for(size_t k = 0; k < npairs; ++k)
+    for(size_t l = 0; l < npairs; ++l)
+      gram_file << k << " " << k / n_imp << " " << k % n_imp << " " << l
+                << " " << l / n_imp << " " << l % n_imp << " "
+                << std::scientific << result.gram(k, l) << "\n";
+}
+
 }  // namespace detail
 
 /**
@@ -464,6 +507,42 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
     detail::write_resolvent_singlef(label, ws, R);
 
   return R;
+}
+
+template <size_t N>
+auto evaluate_resolvent_orbital_matrix(
+    double EASCI, macis::impurity_params<N> &p,
+    macis::SDBuildHamiltonianGenerator<N> &ham_gen,
+    macis::GFSettings &gf_settings, const std::string &label,
+    bool subtract_mean = false) {
+  if(p.n_imp > 0) {
+    Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Zero(p.n_imp, p.n_imp);
+    for(int j = 0; j < p.n_imp; ++j)
+      for(int k = 0; k < p.n_imp; ++k)
+        rotBlock(j, k) = p.orb_rot[j + k * p.n_active];
+    const Eigen::MatrixXd dev =
+        rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+    if(dev.cwiseAbs().maxCoeff() > 1.e-10)
+      throw std::runtime_error(
+          "In evaluate_resolvent_orbital_matrix: the impurity block of orb_rot "
+          "is not the identity. Set CI.EXPANSION = CAS or ASCI.NROTS = 0.");
+  }
+
+  Eigen::VectorXd psi0 =
+      Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
+  const auto ws = detail::build_bosonic_resolvent_grid(gf_settings);
+  const double E0 = EASCI - (p.E_core + p.E_inactive);
+  auto result = macis::RunResolventOrbitalMatrix<N>(
+      psi0, ham_gen, p.dets, p.n_imp, E0, ws, gf_settings, subtract_mean);
+  for(Eigen::Index pair = 0; pair < result.capture.size(); ++pair)
+    if(result.capture(pair) < gf_settings.orb_min_capture)
+      std::cerr << "WARNING: orbital spin seed (" << pair / p.n_imp << ", "
+                << pair % p.n_imp << ") capture fraction "
+                << result.capture(pair) << " is below GF.ORB_MIN_CAPTURE = "
+                << gf_settings.orb_min_capture << std::endl;
+  if(gf_settings.writeGF_singlef)
+    detail::write_orbital_resolvent_matrix(label, p.n_imp, ws, result);
+  return result;
 }
 
 template <size_t N>
