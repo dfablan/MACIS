@@ -120,8 +120,8 @@ std::vector<std::complex<double>> RunResolventGS(
 template <size_t nbits>
 Eigen::VectorXd apply_spin_bilinear(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
-    const std::map<std::bitset<nbits>, size_t,
-                   bitset_less_comparator<nbits>> &det_index,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &det_index,
     size_t mu, size_t nu) {
   assert(wfn0.size() == Eigen::Index(dets.size()));
   Eigen::VectorXd out = Eigen::VectorXd::Zero(wfn0.size());
@@ -147,14 +147,16 @@ Eigen::VectorXd apply_spin_bilinear(
   return out;
 }
 
-//Estimate the ratio between the norm of the in-basis component of S_{mu nu}|wfn0> and the norm of
-//the full S_{mu nu}|wfn0> vector. Some determinants can be lost if the determinant basis is not complete, 
-//so this is a measure of how much of S_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means all determinants are captured, while a value of 0.0 means none are captured.
+// Estimate the ratio between the norm of the in-basis component of S_{mu
+// nu}|wfn0> and the norm of the full S_{mu nu}|wfn0> vector. Some determinants
+// can be lost if the determinant basis is not complete, so this is a measure of
+// how much of S_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means
+// all determinants are captured, while a value of 0.0 means none are captured.
 template <size_t nbits>
 double spin_bilinear_captured_fraction(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
-    const std::map<std::bitset<nbits>, size_t,
-                   bitset_less_comparator<nbits>> &det_index,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &det_index,
     size_t mu, size_t nu) {
   assert(wfn0.size() == Eigen::Index(dets.size()));
   std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> images;
@@ -201,14 +203,16 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     bool subtract_mean = false) {
   if(n_imp > nbits / 2)
     throw std::runtime_error(
-        "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital capacity");
+        "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
+        "capacity");
   if(settings.orb_deflate_tol < 0.0)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: orb_deflate_tol must be non-negative");
 
   const size_t npairs = n_imp * n_imp;
   std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>> det_index;
-  for(size_t k = 0; k < base_dets.size(); ++k) det_index.emplace(base_dets[k], k);
+  for(size_t k = 0; k < base_dets.size(); ++k)
+    det_index.emplace(base_dets[k], k);
 
   Eigen::MatrixXd seeds(base_dets.size(), npairs);
   Eigen::VectorXd capture(npairs);
@@ -216,8 +220,8 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     for(size_t nu = 0; nu < n_imp; ++nu) {
       const size_t pair = mu * n_imp + nu;
       seeds.col(pair) = apply_spin_bilinear(wfn0, base_dets, det_index, mu, nu);
-      capture(pair) = spin_bilinear_captured_fraction(
-          wfn0, base_dets, det_index, mu, nu);
+      capture(pair) =
+          spin_bilinear_captured_fraction(wfn0, base_dets, det_index, mu, nu);
     }
 
   // Optionally replace each seed S_{mu nu}|wfn0> by the fluctuation
@@ -233,14 +237,14 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   result.gram = seeds.transpose() * seeds;
   result.capture = std::move(capture);
   result.resolvent.assign(ws.size(), std::vector<std::complex<double>>(
-                                       npairs * npairs, {0.0, 0.0}));
+                                         npairs * npairs, {0.0, 0.0}));
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(result.gram);
   if(eig.info() != Eigen::Success)
-    throw std::runtime_error("RunResolventOrbitalMatrix: Gram eigensolve failed");
+    throw std::runtime_error(
+        "RunResolventOrbitalMatrix: Gram eigensolve failed");
   result.gram_eigenvalues = eig.eigenvalues();
-  const double lambda_max = eig.eigenvalues().size()
-                                ? eig.eigenvalues().maxCoeff()
-                                : 0.0;
+  const double lambda_max =
+      eig.eigenvalues().size() ? eig.eigenvalues().maxCoeff() : 0.0;
   if(lambda_max <= 0.0) return result;
 
   std::vector<Eigen::Index> retained;
@@ -256,7 +260,8 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     Ur.col(i) = eig.eigenvectors().col(retained[i]);
     lambdas(i) = eig.eigenvalues()(retained[i]);
   }
-  Eigen::MatrixXd psi = seeds * Ur * lambdas.cwiseSqrt().cwiseInverse().asDiagonal();
+  Eigen::MatrixXd psi =
+      seeds * Ur * lambdas.cwiseSqrt().cwiseInverse().asDiagonal();
   std::vector<double> vecs(psi.size());
   for(size_t i = 0; i < result.rank; ++i)
     for(Eigen::Index k = 0; k < psi.rows(); ++k)
@@ -391,8 +396,7 @@ template <size_t nbits>
 inline double sz_imp_value(const std::bitset<nbits> &det, size_t n_imp,
                            size_t n_active) {
   const std::vector<double> w(n_imp, 1.0);
-  return weighted_imp_value<nbits>(det, w, DiagChannel::Spin, n_imp,
-                                   n_active);
+  return weighted_imp_value<nbits>(det, w, DiagChannel::Spin, n_imp, n_active);
 }
 
 /**
@@ -410,7 +414,7 @@ inline double sz_imp_value(const std::bitset<nbits> &det, size_t n_imp,
  * @date 18/09/2026
  */
 inline std::vector<double> make_uniform_spin_weights(size_t nbands,
-                                                      size_t nsites) {
+                                                     size_t nsites) {
   return std::vector<double>(nbands * nsites, 1.0);
 }
 
@@ -432,7 +436,7 @@ inline std::vector<double> make_uniform_spin_weights(size_t nbands,
  * @date 18/09/2026
  */
 inline std::vector<double> make_staggered_spin_weights(size_t nbands,
-                                                        size_t nsites) {
+                                                       size_t nsites) {
   if(nsites != 2)
     throw std::runtime_error(
         "make_staggered_spin_weights: requires nsites == 2, got nsites = " +
@@ -473,8 +477,8 @@ inline std::vector<double> make_staggered_spin_weights(size_t nbands,
  * @date 18/09/2026
  */
 inline std::vector<double> make_orbital_cartan_weights(size_t nbands,
-                                                        size_t nsites,
-                                                        int which) {
+                                                       size_t nsites,
+                                                       int which) {
   if(nbands == 1)
     throw std::runtime_error(
         "make_orbital_cartan_weights: no traceless orbital generator exists "
@@ -511,7 +515,7 @@ inline std::vector<double> make_orbital_cartan_weights(size_t nbands,
 
   const double sum = std::accumulate(w.begin(), w.end(), 0.0);
   assert(std::abs(sum) < 1e-10 &&
-        "make_orbital_cartan_weights: generator is not traceless");
+         "make_orbital_cartan_weights: generator is not traceless");
   (void)sum;
   return w;
 }
@@ -659,9 +663,9 @@ std::vector<std::complex<double>> RunResolventSz(
   const auto sz_operator = [&](const std::bitset<nbits> &d) {
     return sz_imp_value<nbits>(d, n_imp, n_active);
   };
-  return RunResolventDiagonal<nbits, index_t>(
-      wfn0, Hgen, base_dets, sz_operator, n_imp, E0, ws, settings,
-      subtract_mean);
+  return RunResolventDiagonal<nbits, index_t>(wfn0, Hgen, base_dets,
+                                              sz_operator, n_imp, E0, ws,
+                                              settings, subtract_mean);
 }
 
 /**
@@ -710,15 +714,14 @@ template <size_t nbits, typename index_t = int32_t>
 std::vector<std::complex<double>> RunResolventWeighted(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
     const std::vector<std::bitset<nbits>> &base_dets,
-    const std::vector<double> &w, DiagChannel ch, size_t n_imp,
-    size_t n_active, double E0, const std::vector<std::complex<double>> &ws,
+    const std::vector<double> &w, DiagChannel ch, size_t n_imp, size_t n_active,
+    double E0, const std::vector<std::complex<double>> &ws,
     const GFSettings &settings, bool subtract_mean = false) {
   const auto op = [&](const std::bitset<nbits> &d) {
     return weighted_imp_value<nbits>(d, w, ch, n_imp, n_active);
   };
-  return RunResolventDiagonal<nbits, index_t>(wfn0, Hgen, base_dets, op,
-                                              n_imp, E0, ws, settings,
-                                              subtract_mean);
+  return RunResolventDiagonal<nbits, index_t>(wfn0, Hgen, base_dets, op, n_imp,
+                                              E0, ws, settings, subtract_mean);
 }
 
 }  // namespace macis

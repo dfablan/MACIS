@@ -9,10 +9,10 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <complex>
-#include <map>
 #include <macis/csr_hamiltonian.hpp>
 #include <macis/gf/dynamical_properties.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
+#include <map>
 #include <utility>
 
 #include "ut_common.hpp"
@@ -448,19 +448,19 @@ TEST_CASE(
   for(double w = -6.0; w <= 6.0 + 1e-9; w += 1.0) ws.emplace_back(w, eta);
 
   const auto w3 = macis::make_orbital_cartan_weights(/*nbands=*/2,
-                                                      /*nsites=*/1,
-                                                      /*which=*/3);
+                                                     /*nsites=*/1,
+                                                     /*which=*/3);
   auto R = macis::RunResolventWeighted<N, int32_t>(
-      psi0, ham_gen, dets, w3, macis::DiagChannel::Charge, n_imp, n_active,
-      E0, ws, settings);
+      psi0, ham_gen, dets, w3, macis::DiagChannel::Charge, n_imp, n_active, E0,
+      ws, settings);
   REQUIRE(R.size() == ws.size());
 
   // Exact Lehmann reference: v = T^3 |psi0>.
   Eigen::VectorXd v(ndet);
   for(int k = 0; k < ndet; ++k)
-    v(k) = psi0(k) * macis::weighted_imp_value<N>(dets[k], w3,
-                                                   macis::DiagChannel::Charge,
-                                                   n_imp, n_active);
+    v(k) =
+        psi0(k) * macis::weighted_imp_value<N>(
+                      dets[k], w3, macis::DiagChannel::Charge, n_imp, n_active);
 
   const double vnorm2 = v.squaredNorm();
   REQUIRE(vnorm2 > 1e-8);
@@ -479,8 +479,7 @@ TEST_CASE(
   }
 }
 
-TEST_CASE(
-    "Dynamical properties - subtract_mean cancels the elastic pole") {
+TEST_CASE("Dynamical properties - subtract_mean cancels the elastic pole") {
   ROOT_ONLY(MPI_COMM_WORLD);
 
   // Same setup as the T^3 Lehmann test above, but comparing the plain
@@ -656,7 +655,8 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
   REQUIRE(spin01(0) == Approx(0.0).margin(1e-12));
   REQUIRE(spin01(1) == Approx(0.3).epsilon(1e-12));
 
-  const auto diagonal = macis::apply_spin_bilinear<N>(coeffs, dets, index, 0, 0);
+  const auto diagonal =
+      macis::apply_spin_bilinear<N>(coeffs, dets, index, 0, 0);
   const auto weighted = macis::apply_diagonal_operator<N>(
       coeffs, dets, [](const macis::wfn_t<N>& det) {
         return macis::weighted_imp_value<N>(det, {1.0, 0.0},
@@ -670,7 +670,8 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
   const std::vector<macis::wfn_t<N>> truncated_dets = {det0};
   const Eigen::VectorXd truncated_coeffs =
       (Eigen::VectorXd(1) << 0.3).finished();
-  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> truncated_index;
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>>
+      truncated_index;
   truncated_index.emplace(det0, 0);
   REQUIRE(macis::spin_bilinear_capture_fraction<N>(
               truncated_coeffs, truncated_dets, truncated_index, 0, 1) ==
@@ -986,7 +987,8 @@ TEST_CASE(
   const auto delta = macis::RunResolventOrbitalMatrix<N, int32_t>(
       psi0, ham_gen, dets, n_imp, E0, ws, settings, /*subtract_mean=*/true);
 
-  const Eigen::MatrixXd gram_delta = seeds.transpose() * seeds - m * m.transpose();
+  const Eigen::MatrixXd gram_delta =
+      seeds.transpose() * seeds - m * m.transpose();
   REQUIRE((delta.gram - gram_delta).cwiseAbs().maxCoeff() ==
           Approx(0.0).margin(1e-12));
 
@@ -994,8 +996,8 @@ TEST_CASE(
     for(size_t k = 0; k < M; ++k)
       for(size_t l = 0; l < M; ++l) {
         const std::complex<double> elastic = m(k) * m(l) / ws[iw];
-        const auto diff = plain.resolvent[iw][k * M + l] -
-                          delta.resolvent[iw][k * M + l];
+        const auto diff =
+            plain.resolvent[iw][k * M + l] - delta.resolvent[iw][k * M + l];
         REQUIRE(std::real(diff) ==
                 Approx(std::real(elastic)).epsilon(1e-6).margin(1e-8));
         REQUIRE(std::imag(diff) ==

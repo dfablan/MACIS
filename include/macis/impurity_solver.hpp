@@ -293,8 +293,8 @@ inline void write_resolvent_singlef(
     std::ofstream ofile(label + "_resolvent.dat");
     ofile.precision(dbl::max_digits10);
     for(size_t iii = 0; iii < ws.size(); iii++)
-      ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii])
-            << " " << real(R[iii]) << " " << imag(R[iii]) << std::endl;
+      ofile << std::scientific << real(ws[iii]) << " " << imag(ws[iii]) << " "
+            << real(R[iii]) << " " << imag(R[iii]) << std::endl;
   }
 }
 
@@ -318,10 +318,10 @@ inline void write_orbital_resolvent_matrix(
     for(size_t k = 0; k < npairs; ++k)
       for(size_t l = 0; l < npairs; ++l)
         resolvent_file << std::scientific << real(ws[iw]) << " " << imag(ws[iw])
-                        << " " << k / n_imp << " " << k % n_imp << " "
-                        << l / n_imp << " " << l % n_imp << " "
-                        << real(result.resolvent[iw][k * npairs + l]) << " "
-                        << imag(result.resolvent[iw][k * npairs + l]) << "\n";
+                       << " " << k / n_imp << " " << k % n_imp << " "
+                       << l / n_imp << " " << l % n_imp << " "
+                       << real(result.resolvent[iw][k * npairs + l]) << " "
+                       << imag(result.resolvent[iw][k * npairs + l]) << "\n";
 
   std::ofstream gram_file(label + "_gram.dat");
   gram_file.precision(dbl::max_digits10);
@@ -336,9 +336,9 @@ inline void write_orbital_resolvent_matrix(
   gram_file << "# pair_k mu nu pair_l gamma delta gram\n";
   for(size_t k = 0; k < npairs; ++k)
     for(size_t l = 0; l < npairs; ++l)
-      gram_file << k << " " << k / n_imp << " " << k % n_imp << " " << l
-                << " " << l / n_imp << " " << l % n_imp << " "
-                << std::scientific << result.gram(k, l) << "\n";
+      gram_file << k << " " << k / n_imp << " " << k % n_imp << " " << l << " "
+                << l / n_imp << " " << l % n_imp << " " << std::scientific
+                << result.gram(k, l) << "\n";
 }
 
 }  // namespace detail
@@ -397,9 +397,9 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
   // shift used for the Green's function in evaluate_GF).
   double E0 = EASCI - (p.E_core + p.E_inactive);
 
-  std::vector<std::complex<double>> R = macis::RunResolventSz<N>(
-      psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0, ws, gf_settings,
-      subtract_mean);
+  std::vector<std::complex<double>> R =
+      macis::RunResolventSz<N>(psi0, ham_gen, p.dets, p.n_imp, p.n_active, E0,
+                               ws, gf_settings, subtract_mean);
 
   if(gf_settings.writeGF_singlef)
     detail::write_resolvent_singlef(subtract_mean ? "Sz_delta" : "Sz", ws, R);
@@ -503,8 +503,7 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
       psi0, ham_gen, p.dets, w, channel, p.n_imp, p.n_active, E0, ws,
       gf_settings, subtract_mean);
 
-  if(gf_settings.writeGF_singlef)
-    detail::write_resolvent_singlef(label, ws, R);
+  if(gf_settings.writeGF_singlef) detail::write_resolvent_singlef(label, ws, R);
 
   return R;
 }
