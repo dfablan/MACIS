@@ -664,7 +664,7 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
                2.0;
       });
   REQUIRE((diagonal - weighted).squaredNorm() == Approx(0.0).margin(1e-12));
-  REQUIRE(macis::spin_bilinear_capture_fraction<N>(coeffs, dets, index, 0, 1) ==
+  REQUIRE(macis::spin_bilinear_captured_fraction<N>(coeffs, dets, index, 0, 1) ==
           Approx(1.0).margin(1e-12));
 
   const std::vector<macis::wfn_t<N>> truncated_dets = {det0};
@@ -673,7 +673,7 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
   std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>>
       truncated_index;
   truncated_index.emplace(det0, 0);
-  REQUIRE(macis::spin_bilinear_capture_fraction<N>(
+  REQUIRE(macis::spin_bilinear_captured_fraction<N>(
               truncated_coeffs, truncated_dets, truncated_index, 0, 1) ==
           Approx(0.0).margin(1e-12));
 }
@@ -716,7 +716,7 @@ TEST_CASE(
   // beta hop (-1 * -1 * 0.5 = +0.5) and from Db via the alpha hop
   // (-1 * -0.7 = +0.7), which interfere to 1.2. Capture = 0.18 / (0.18 + 1.44)
   // = 1/9. Squaring before accumulating would give 0.18 / 0.92 instead.
-  REQUIRE(macis::spin_bilinear_capture_fraction<N>(coeffs, dets, index, 2, 0) ==
+  REQUIRE(macis::spin_bilinear_captured_fraction<N>(coeffs, dets, index, 2, 0) ==
           Approx(1.0 / 9.0).epsilon(1e-12));
 }
 
