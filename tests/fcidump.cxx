@@ -122,4 +122,42 @@ TEST_CASE("FCIDUMP") {
       REQUIRE(T_int[i] == Approx(T_idx[i]));
     for(size_t i = 0; i < norb4; ++i) REQUIRE(V_int[i] == Approx(V_idx[i]));
   }
+
+  // The (pointer, LD) overloads must honour an LD larger than the file's norb:
+  // the integrals go to the leading norb block, and nothing else is touched.
+  SECTION("Leading Dimension") {
+    const size_t norb = 2, LD = 5;
+    const double pad = 99.0;
+    // The readers write only the entries listed in the file, so the reference
+    // starts from the same fill value as the padded arrays.
+    std::vector<double> T_ref(norb * norb, pad),
+        V_ref(norb * norb * norb * norb, pad);
+    macis::read_fcidump_1body(layout_index_first_fcidump, T_ref.data(), norb);
+    macis::read_fcidump_2body(layout_index_first_fcidump, V_ref.data(), norb);
+
+    std::vector<double> T(LD * LD, pad), V(LD * LD * LD * LD, pad);
+    macis::read_fcidump_1body(layout_index_first_fcidump, T.data(), LD);
+    macis::read_fcidump_2body(layout_index_first_fcidump, V.data(), LD);
+
+    for(size_t q = 0; q < LD; ++q)
+      for(size_t p = 0; p < LD; ++p) {
+        const double ref = (p < norb and q < norb) ? T_ref[p + q * norb] : pad;
+        REQUIRE(T[p + q * LD] == Approx(ref));
+      }
+    for(size_t s = 0; s < LD; ++s)
+      for(size_t r = 0; r < LD; ++r)
+        for(size_t q = 0; q < LD; ++q)
+          for(size_t p = 0; p < LD; ++p) {
+            const bool in = p < norb and q < norb and r < norb and s < norb;
+            const double ref =
+                in ? V_ref[p + norb * (q + norb * (r + norb * s))] : pad;
+            REQUIRE(V[p + LD * (q + LD * (r + LD * s))] == Approx(ref));
+          }
+
+    // An LD smaller than norb cannot hold the integrals
+    REQUIRE_THROWS(
+        macis::read_fcidump_1body(layout_index_first_fcidump, T.data(), 1));
+    REQUIRE_THROWS(
+        macis::read_fcidump_2body(layout_index_first_fcidump, V.data(), 1));
+  }
 }

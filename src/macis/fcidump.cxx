@@ -196,7 +196,14 @@ double read_fcidump_core(std::string fname) {
   return 0.0;
 }
 
-void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
+namespace {
+
+// Shared by the col_major_span overload and the (pointer, LDT) overload. The
+// latter passes a layout_stride submdspan: converting it to col_major_span
+// (layout_left) would drop LDT and write the integrals at the wrong offsets
+// whenever LDT != norb.
+template <typename SpanType>
+void read_fcidump_1body_impl(const std::string& fname, SpanType T) {
   if(T.extent(0) != T.extent(1)) throw std::runtime_error("T must be square");
 
   auto norb = read_fcidump_norb(fname);
@@ -221,14 +228,30 @@ void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
   }
 }
 
-void read_fcidump_1body(std::string fname, double* T, size_t LDT) {
-  auto norb = read_fcidump_norb(fname);
-  col_major_span<double, 2> T_map(T, LDT, norb);
-  read_fcidump_1body(
-      fname, Kokkos::submdspan(T_map, std::pair{0, norb}, Kokkos::full_extent));
+}  // namespace
+
+void read_fcidump_1body(std::string fname, col_major_span<double, 2> T) {
+  read_fcidump_1body_impl(fname, T);
 }
 
-void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
+void read_fcidump_1body(std::string fname, double* T, size_t LDT) {
+  size_t norb = read_fcidump_norb(fname);
+  if(LDT < norb)
+    throw std::runtime_error(
+        "read_fcidump_1body: LDT = " + std::to_string(LDT) +
+        " < NORB = " + std::to_string(norb) + " in " + fname);
+  col_major_span<double, 2> T_map(T, LDT, norb);
+  read_fcidump_1body_impl(fname,
+                          Kokkos::submdspan(T_map, std::pair{size_t(0), norb},
+                                            Kokkos::full_extent));
+}
+
+namespace {
+
+// See read_fcidump_1body_impl: the (pointer, LDV) overload passes a
+// layout_stride view that must not be converted to layout_left.
+template <typename SpanType>
+void read_fcidump_2body_impl(const std::string& fname, SpanType V) {
   if(V.extent(0) != V.extent(1)) throw std::runtime_error("V must be square");
   if(V.extent(0) != V.extent(2)) throw std::runtime_error("V must be square");
   if(V.extent(0) != V.extent(3)) throw std::runtime_error("V must be square");
@@ -264,12 +287,22 @@ void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
   }
 }
 
+}  // namespace
+
+void read_fcidump_2body(std::string fname, col_major_span<double, 4> V) {
+  read_fcidump_2body_impl(fname, V);
+}
+
 void read_fcidump_2body(std::string fname, double* V, size_t LDV) {
-  auto norb = read_fcidump_norb(fname);
+  size_t norb = read_fcidump_norb(fname);
+  if(LDV < norb)
+    throw std::runtime_error(
+        "read_fcidump_2body: LDV = " + std::to_string(LDV) +
+        " < NORB = " + std::to_string(norb) + " in " + fname);
   col_major_span<double, 4> V_map(V, LDV, LDV, LDV, norb);
-  auto sl = std::pair{0, norb};
-  read_fcidump_2body(fname,
-                     Kokkos::submdspan(V_map, sl, sl, sl, Kokkos::full_extent));
+  auto sl = std::pair{size_t(0), norb};
+  read_fcidump_2body_impl(
+      fname, Kokkos::submdspan(V_map, sl, sl, sl, Kokkos::full_extent));
 }
 
 bool is_2body_diagonal(std::string fname) {

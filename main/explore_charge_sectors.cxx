@@ -945,15 +945,9 @@ int main(int argc, char** argv) {
           throw std::runtime_error(
               loc_fname + " has " + std::to_string(nloc) +
               " orbitals, but CI.NIMP = " + std::to_string(p.n_imp));
-        // Read into an n_imp x n_imp buffer and copy: the (double*, LDT)
-        // overload of read_fcidump_1body drops LDT when it differs from the
-        // file's norb (the strided submdspan is converted to layout_left) and
-        // would scatter the block.
-        std::vector<double> Tloc(nloc * nloc, 0.0);
-        macis::read_fcidump_1body(loc_fname, Tloc.data(), nloc);
-        for(size_t j = 0; j < nloc; ++j)
-          for(size_t i = 0; i < nloc; ++i)
-            p.T[i + j * p.norb] = Tloc[i + j * nloc];
+        // read_fcidump_1body writes only the entries present in the file, i.e.
+        // the n_imp x n_imp impurity block of the LDT = norb matrix.
+        macis::read_fcidump_1body(loc_fname, p.T.data(), p.norb);
         // The mu search shifts the impurity diagonal of both spin channels by
         // the same amount (set_impurity_diagonal), so do the same to Td.
         if(p.spin_dep)

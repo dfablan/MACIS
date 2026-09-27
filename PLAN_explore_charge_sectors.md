@@ -177,14 +177,21 @@ Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives wer
   µ = 2) reproduces the µ = 2 run exactly. `wfn.out` written by `run_asci_impsolv_dop` is reused for
   NROTS = 0 and skipped with the correct message for NROTS > 0 and for a mismatched sector.
 - **Not verified:** multi-rank MPI (see problem 4); steps 1 and 2 of the plan on the real data.
+- **Unit tests** (`macis_test`, single rank): 29 of 30 pass. The failing one, `ASCI Symmetric
+  Search` (`tests/determinant_symmetry.cxx:318`, |E_sym − E_unsym| = 0.286 > 0.1), fails the same
+  way on the base commit and has nothing to do with these changes.
 
-### Problems found (existing code, not fixed here)
-1. **`read_fcidump_1body(fname, T, LDT)` ignores LDT** (`src/macis/fcidump.cxx:224`). It builds a
-   strided `submdspan` and passes it as a `layout_left` span, so the leading dimension is lost when
-   LDT differs from the file's norb, and the values land in the wrong elements. Reading the
-   n_imp-orbital locFCIDUMP into the norb×norb `T` filled bath hoppings with garbage and made Davidson
-   break down. The new main works around it by reading into an n_imp×n_imp buffer. Production calls
-   it with LDT == norb and is not affected, but the overload should be fixed.
+### Problems found in existing code (1 fixed, 2–4 still open)
+1. **FIXED — `read_fcidump_1body(fname, T, LDT)` ignored LDT** (`src/macis/fcidump.cxx`), and
+   `read_fcidump_2body(fname, V, LDV)` had the same bug. Both built a strided `submdspan` and passed
+   it as a `layout_left` span, so the leading dimension was lost when it differed from the file's
+   norb, and the values landed in the wrong elements. Reading the n_imp-orbital locFCIDUMP into the
+   norb×norb `T` filled bath hoppings with garbage. Fix: the span code is now a template shared by
+   both overloads, and the pointer overloads pass the strided view unchanged. An LD smaller than
+   norb now throws. Callers with LD == norb (all production calls) get the same values as before.
+   The new "Leading Dimension" section in `tests/fcidump.cxx` fails on the old code and passes on the
+   new. `explore_charge_sectors` now calls `read_fcidump_1body(loc, T, norb)` directly (it no longer
+   needs the buffer workaround). Its µ-overlay energies are unchanged.
 2. **A conserved parity traps Davidson in the wrong block.** With a band-diagonal bath and pair
    hopping, each band's electron-number parity is conserved. `selected_ci_diag` starts from the
    lowest diagonal element (`p_diagonal_guess`) and never leaves that parity block, so ASCI (and even
