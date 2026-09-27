@@ -557,8 +557,18 @@ int main(int argc, char** argv) {
   bool tz_resolvent = false;
   OPT_KEYWORD("GF.TZ_RESOLVENT", tz_resolvent, bool);
 
+  // Optionally compute the full n_imp^2 x n_imp^2 matrix resolvent of the
+  // orbital spin bilinears S_munu (see PLAN_orbital_resolved_susceptibility.md).
   bool spin_orb_matrix_resolvent = false;
   OPT_KEYWORD("GF.SPIN_ORB_MATRIX_RESOLVENT", spin_orb_matrix_resolvent, bool);
+
+  // Same for the orbital charge bilinears N_munu, the only path that reaches
+  // the orbital angular momentum L (off-diagonal in the determinant basis).
+  // Best combined with GF.DELTA_RESOLVENT: <N_mumu> is an orbital occupation,
+  // so the plain resolvent is dominated by the elastic pole.
+  bool charge_orb_matrix_resolvent = false;
+  OPT_KEYWORD("GF.CHARGE_ORB_MATRIX_RESOLVENT", charge_orb_matrix_resolvent,
+              bool);
 
   // Optionally compute the staggered (q = pi) Sz resolvent Sz(site 0) -
   // Sz(site 1), invisible to GF.SZ_RESOLVENT's uniform (q = 0) channel.
@@ -581,7 +591,7 @@ int main(int argc, char** argv) {
   const std::string delta_suffix = delta_resolvent ? "_delta" : "";
 
   if(testGF || sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
-     stag_sz_resolvent) {
+     charge_orb_matrix_resolvent || stag_sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -666,8 +676,20 @@ int main(int argc, char** argv) {
 
     if(spin_orb_matrix_resolvent)
       macis::evaluate_resolvent_orbital_matrix<nwfn_bits>(
-          E0, params, ham_gen, gf_settings, "R_mu_nu_gamma_delta" + delta_suffix,
-          delta_resolvent);
+          E0, params, ham_gen, gf_settings, macis::DiagChannel::Spin,
+          "R_mu_nu_gamma_delta" + delta_suffix, delta_resolvent);
+
+    if(charge_orb_matrix_resolvent) {
+      if(!delta_resolvent && world_rank == 0)
+        std::cerr << "WARNING: GF.CHARGE_ORB_MATRIX_RESOLVENT without "
+                     "GF.DELTA_RESOLVENT keeps the elastic pole of the "
+                     "orbital occupations, which dominates the diagonal "
+                     "block."
+                  << std::endl;
+      macis::evaluate_resolvent_orbital_matrix<nwfn_bits>(
+          E0, params, ham_gen, gf_settings, macis::DiagChannel::Charge,
+          "N_mu_nu_gamma_delta" + delta_suffix, delta_resolvent);
+    }
 
     if(stag_sz_resolvent) {
       const auto w_stag =

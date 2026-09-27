@@ -416,6 +416,41 @@ test, diagonal-block vs `RunResolventWeighted`+`DiagChannel::Charge` — already
 charge-channel analogue and should be added alongside it, plus the $J=0$ $SU(6)$ cross-channel
 identity above once both channels are implemented.
 
+### Implementation status (2026-09-27)
+
+Implemented and tested; builds with MPI in Release, and all 23 `Dynamical properties*` tests pass on
+one rank. Differences from the text above:
+
+- `apply_spin_bilinear` / `spin_bilinear_captured_fraction` are renamed to `apply_orbital_bilinear`
+  / `orbital_bilinear_captured_fraction` and take a `DiagChannel`. `RunResolventOrbitalMatrix` keeps
+  its name (it was already channel-neutral) and takes `DiagChannel channel` after `n_imp`. The
+  `DiagChannel` enum moved above these functions, and the misplaced `apply_diagonal_operator` doc
+  comment (review item 4) moved back onto its function.
+- The spin output label stays `R_mu_nu_gamma_delta` so existing post-processing keeps working; the
+  charge channel writes `N_mu_nu_gamma_delta[_delta]_orbital_resolvent.dat` with its own header.
+  The driver warns when `GF.CHARGE_ORB_MATRIX_RESOLVENT` is used without `GF.DELTA_RESOLVENT`.
+- **Correction to the physics wrinkle above:** the trace direction is not a Gram null direction for
+  the bare seeds ($r=M$), but with `subtract_mean` it is exactly null, since
+  $(N_{\rm tot}-\langle N_{\rm tot}\rangle)\ket{\psi_0}=0$, so deflation gives $r=M-1$. The test
+  asserts both.
+- The diagonal-block cross-check has factor **1** in the charge channel ($N_{\mu\mu}=n_\mu$), not
+  the 4 of the spin channel.
+
+New tests, each confirmed to fail under a deliberate mutation (charge using the spin sign, or
+$U'\neq U$ in the $SU(4)$ model):
+
+| test case | covers |
+|---|---|
+| `charge bilinear signs across an occupied orbital` | same-sign spin blocks; $N_{02}$ gives $+0.2$ where $S_{02}$ gives $-1.2$; capture $9/11$ vs $1/9$ (destructive vs constructive interference); $N_{00}$ = `weighted_imp_value` Charge, factor 1 |
+| `charge bilinear adjoint and trace on the FCI space` | $N_{\mu\nu}^T=N_{\nu\mu}$ and $\sum_\mu N_{\mu\mu}=4\,I$ on the 36-dimensional space |
+| `charge matrix resolvent trace direction is parallel to psi0` | $\sum_\mu N_{\mu\mu}\ket{\psi_0}=4\ket{\psi_0}$; $r=M$ plain, $r=M-1$ with `subtract_mean`; both match Lehmann element by element |
+| `charge matrix diagonal block vs RunResolventWeighted` | $R_{\mu\mu;\mu\mu}=R_w[e_\mu]$, $(1,\pm1)$ combinations (incl. $T^3$), plain and fluctuation |
+| `charge matrix resolvent elastic pole and sum rule` | $\langle n_\mu\rangle>0.5$; plain $-$ delta $=m_km_l/z$ for all elements; Lehmann match; both Gram matrices are the zeroth moment |
+| `spin and charge matrix resolvents agree at the SU(4) point` | two orbitals with private baths, $U'=U$, $J=0$, non-degenerate ground state: $R^S_{01;01}=R^N_{01;01}=R^S_{10;10}=R^N_{10;10}$, and $S_{00}\mp S_{11}$, $N_{00}-N_{11}$ each give $2R_{01;01}$ |
+
+Still open: the 2-rank MPI run of these tests hung (see `PLAN_capture_basis_expansion.md`, Open
+issues), and the capture-gated basis expansion for $J=0$ applies to $N_{\mu\nu}$ unchanged.
+
 ---
 
 ## Optional later: symmetry-adapted seeding

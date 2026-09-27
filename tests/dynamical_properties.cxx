@@ -73,18 +73,44 @@ std::vector<macis::wfn_t<N>> half_filled_fci_dets() {
   return dets;
 }
 
-// All n_imp^2 seeds S_{mu nu}|psi0> as columns, pair index mu * n_imp + nu.
-Eigen::MatrixXd spin_bilinear_seeds(const Eigen::VectorXd& psi0,
-                                    const std::vector<macis::wfn_t<N>>& dets,
-                                    size_t n_imp) {
+// All n_imp^2 seeds O_{mu nu}|psi0> as columns, pair index mu * n_imp + nu,
+// with O = S (Spin) or N (Charge).
+Eigen::MatrixXd bilinear_seeds(
+    const Eigen::VectorXd& psi0, const std::vector<macis::wfn_t<N>>& dets,
+    size_t n_imp, macis::DiagChannel ch = macis::DiagChannel::Spin) {
   std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
   for(size_t k = 0; k < dets.size(); ++k) index.emplace(dets[k], k);
   Eigen::MatrixXd seeds(dets.size(), n_imp * n_imp);
   for(size_t mu = 0; mu < n_imp; ++mu)
     for(size_t nu = 0; nu < n_imp; ++nu)
       seeds.col(mu * n_imp + nu) =
-          macis::apply_spin_bilinear<N>(psi0, dets, index, mu, nu);
+          macis::apply_orbital_bilinear<N>(psi0, dets, index, mu, nu, ch);
   return seeds;
+}
+
+// Matrix of O_{mu nu} over `dets`, built column by column from unit vectors.
+Eigen::MatrixXd bilinear_matrix(const std::vector<macis::wfn_t<N>>& dets,
+                                size_t mu, size_t nu, macis::DiagChannel ch) {
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
+  for(size_t k = 0; k < dets.size(); ++k) index.emplace(dets[k], k);
+  const Eigen::Index L = dets.size();
+  Eigen::MatrixXd O(L, L);
+  for(Eigen::Index j = 0; j < L; ++j)
+    O.col(j) = macis::apply_orbital_bilinear<N>(Eigen::VectorXd::Unit(L, j),
+                                                dets, index, mu, nu, ch);
+  return O;
+}
+
+// Every element of two flattened M x M resolvents agrees.
+void require_resolvents_close(const std::vector<std::complex<double>>& a,
+                              const std::vector<std::complex<double>>& b) {
+  REQUIRE(a.size() == b.size());
+  for(size_t i = 0; i < a.size(); ++i) {
+    REQUIRE(std::real(a[i]) ==
+            Approx(std::real(b[i])).epsilon(1e-6).margin(1e-8));
+    REQUIRE(std::imag(a[i]) ==
+            Approx(std::imag(b[i])).epsilon(1e-6).margin(1e-8));
+  }
 }
 
 // Exact Lehmann matrix sum_n <phi_k|n><n|phi_l> / (z - (E_n - E0)).
@@ -611,7 +637,7 @@ TEST_CASE("Dynamical properties - orbital matrix resolvent vs Lehmann") {
   settings.nLanIts = 100;
 
   const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, ws, settings);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings);
   REQUIRE(result.rank > 0);
   REQUIRE(result.rank <= n_imp * n_imp);
   REQUIRE(result.gram.isApprox(result.gram.transpose(), 1e-12));
@@ -623,8 +649,8 @@ TEST_CASE("Dynamical properties - orbital matrix resolvent vs Lehmann") {
   Eigen::MatrixXd seeds(dets.size(), n_imp * n_imp);
   for(size_t mu = 0; mu < n_imp; ++mu)
     for(size_t nu = 0; nu < n_imp; ++nu)
-      seeds.col(mu * n_imp + nu) =
-          macis::apply_spin_bilinear<N>(psi0, dets, index, mu, nu);
+      seeds.col(mu * n_imp + nu) = macis::apply_orbital_bilinear<N>(
+          psi0, dets, index, mu, nu, macis::DiagChannel::Spin);
   const Eigen::MatrixXd overlaps = es.eigenvectors().transpose() * seeds;
   for(size_t iw = 0; iw < ws.size(); ++iw)
     for(size_t k = 0; k < n_imp * n_imp; ++k)
@@ -651,12 +677,13 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
   std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
   for(size_t k = 0; k < dets.size(); ++k) index.emplace(dets[k], k);
 
-  const auto spin01 = macis::apply_spin_bilinear<N>(coeffs, dets, index, 0, 1);
+  const auto spin01 = macis::apply_orbital_bilinear<N>(
+      coeffs, dets, index, 0, 1, macis::DiagChannel::Spin);
   REQUIRE(spin01(0) == Approx(0.0).margin(1e-12));
   REQUIRE(spin01(1) == Approx(0.3).epsilon(1e-12));
 
-  const auto diagonal =
-      macis::apply_spin_bilinear<N>(coeffs, dets, index, 0, 0);
+  const auto diagonal = macis::apply_orbital_bilinear<N>(
+      coeffs, dets, index, 0, 0, macis::DiagChannel::Spin);
   const auto weighted = macis::apply_diagonal_operator<N>(
       coeffs, dets, [](const macis::wfn_t<N>& det) {
         return macis::weighted_imp_value<N>(det, {1.0, 0.0},
@@ -664,8 +691,9 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
                2.0;
       });
   REQUIRE((diagonal - weighted).squaredNorm() == Approx(0.0).margin(1e-12));
-  REQUIRE(macis::spin_bilinear_captured_fraction<N>(
-              coeffs, dets, index, 0, 1) == Approx(1.0).margin(1e-12));
+  REQUIRE(macis::orbital_bilinear_captured_fraction<N>(
+              coeffs, dets, index, 0, 1, macis::DiagChannel::Spin) ==
+          Approx(1.0).margin(1e-12));
 
   const std::vector<macis::wfn_t<N>> truncated_dets = {det0};
   const Eigen::VectorXd truncated_coeffs =
@@ -673,9 +701,9 @@ TEST_CASE("Dynamical properties - orbital spin bilinears and capture") {
   std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>>
       truncated_index;
   truncated_index.emplace(det0, 0);
-  REQUIRE(macis::spin_bilinear_captured_fraction<N>(
-              truncated_coeffs, truncated_dets, truncated_index, 0, 1) ==
-          Approx(0.0).margin(1e-12));
+  REQUIRE(macis::orbital_bilinear_captured_fraction<N>(
+              truncated_coeffs, truncated_dets, truncated_index, 0, 1,
+              macis::DiagChannel::Spin) == Approx(0.0).margin(1e-12));
 }
 
 TEST_CASE(
@@ -699,14 +727,16 @@ TEST_CASE(
 
   // Da and Db also map under S_{20}, but only onto |alpha{1,2}, beta{1,2}>,
   // which is outside the basis and dropped.
-  const auto s20 = macis::apply_spin_bilinear<N>(coeffs, dets, index, 2, 0);
+  const auto s20 = macis::apply_orbital_bilinear<N>(coeffs, dets, index, 2, 0,
+                                                    macis::DiagChannel::Spin);
   REQUIRE(s20(0) == Approx(0.0).margin(1e-12));
   REQUIRE(s20(1) == Approx(-0.3).epsilon(1e-12));
   REQUIRE(s20(2) == Approx(0.3).epsilon(1e-12));
 
   // The reverse hop S_{02} brings both images back onto D with the same
   // signs: -0.5 (alpha) + (-1)(-1)(-0.7) (beta) = -1.2.
-  const auto s02 = macis::apply_spin_bilinear<N>(coeffs, dets, index, 0, 2);
+  const auto s02 = macis::apply_orbital_bilinear<N>(coeffs, dets, index, 0, 2,
+                                                    macis::DiagChannel::Spin);
   REQUIRE(s02(0) == Approx(-1.2).epsilon(1e-12));
   REQUIRE(s02(1) == Approx(0.0).margin(1e-12));
   REQUIRE(s02(2) == Approx(0.0).margin(1e-12));
@@ -716,8 +746,9 @@ TEST_CASE(
   // beta hop (-1 * -1 * 0.5 = +0.5) and from Db via the alpha hop
   // (-1 * -0.7 = +0.7), which interfere to 1.2. Capture = 0.18 / (0.18 + 1.44)
   // = 1/9. Squaring before accumulating would give 0.18 / 0.92 instead.
-  REQUIRE(macis::spin_bilinear_captured_fraction<N>(
-              coeffs, dets, index, 2, 0) == Approx(1.0 / 9.0).epsilon(1e-12));
+  REQUIRE(macis::orbital_bilinear_captured_fraction<N>(
+              coeffs, dets, index, 2, 0, macis::DiagChannel::Spin) ==
+          Approx(1.0 / 9.0).epsilon(1e-12));
 }
 
 TEST_CASE("Dynamical properties - spin bilinear adjoint on the FCI space") {
@@ -735,8 +766,9 @@ TEST_CASE("Dynamical properties - spin bilinear adjoint on the FCI space") {
   auto op_matrix = [&](size_t mu, size_t nu) {
     Eigen::MatrixXd S(L, L);
     for(Eigen::Index j = 0; j < L; ++j)
-      S.col(j) = macis::apply_spin_bilinear<N>(Eigen::VectorXd::Unit(L, j),
-                                               dets, index, mu, nu);
+      S.col(j) = macis::apply_orbital_bilinear<N>(Eigen::VectorXd::Unit(L, j),
+                                                  dets, index, mu, nu,
+                                                  macis::DiagChannel::Spin);
     return S;
   };
   for(size_t mu = 0; mu < n_orb; ++mu)
@@ -772,7 +804,7 @@ TEST_CASE(
   const double E0 = es.eigenvalues()(0);
   const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
 
-  const Eigen::MatrixXd seeds = spin_bilinear_seeds(psi0, dets, n_imp);
+  const Eigen::MatrixXd seeds = bilinear_seeds(psi0, dets, n_imp);
   Eigen::VectorXd trace = Eigen::VectorXd::Zero(dets.size());
   for(size_t mu = 0; mu < n_imp; ++mu) trace += seeds.col(mu * n_imp + mu);
   REQUIRE(trace.norm() == Approx(0.0).margin(1e-12));
@@ -781,7 +813,7 @@ TEST_CASE(
   macis::GFSettings settings;
   settings.nLanIts = 100;
   const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, ws, settings);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings);
   REQUIRE(result.rank == M - 1);
   // SelfAdjointEigenSolver sorts ascending: the discarded mode is first.
   REQUIRE(result.gram_eigenvalues(0) ==
@@ -830,7 +862,7 @@ TEST_CASE(
   settings.nLanIts = 100;
 
   const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, ws, settings);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings);
   auto weighted = [&](const std::vector<double>& w) {
     return macis::RunResolventWeighted<N, int32_t>(
         psi0, ham_gen, dets, w, macis::DiagChannel::Spin, n_imp, n_active, E0,
@@ -885,8 +917,8 @@ TEST_CASE("Dynamical properties - orbital matrix resolvent sum rule") {
   settings.nLanIts = 100;
 
   const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, {z}, settings);
-  const Eigen::MatrixXd seeds = spin_bilinear_seeds(psi0, dets, n_imp);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, {z}, settings);
+  const Eigen::MatrixXd seeds = bilinear_seeds(psi0, dets, n_imp);
   const Eigen::MatrixXd gram = seeds.transpose() * seeds;
   REQUIRE((result.gram - gram).cwiseAbs().maxCoeff() ==
           Approx(0.0).margin(1e-12));
@@ -978,14 +1010,15 @@ TEST_CASE(
   macis::GFSettings settings;
   settings.nLanIts = 100;
 
-  const Eigen::MatrixXd seeds = spin_bilinear_seeds(psi0, dets, n_imp);
+  const Eigen::MatrixXd seeds = bilinear_seeds(psi0, dets, n_imp);
   const Eigen::VectorXd m = seeds.transpose() * psi0;
   REQUIRE(m.cwiseAbs().maxCoeff() > 1e-3);
 
   const auto plain = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, ws, settings);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings);
   const auto delta = macis::RunResolventOrbitalMatrix<N, int32_t>(
-      psi0, ham_gen, dets, n_imp, E0, ws, settings, /*subtract_mean=*/true);
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings,
+      /*subtract_mean=*/true);
 
   const Eigen::MatrixXd gram_delta =
       seeds.transpose() * seeds - m * m.transpose();
@@ -1003,4 +1036,339 @@ TEST_CASE(
         REQUIRE(std::imag(diff) ==
                 Approx(std::imag(elastic)).epsilon(1e-6).margin(1e-8));
       }
+}
+
+TEST_CASE(
+    "Dynamical properties - charge bilinear signs across an occupied orbital") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Same determinants as the spin test above, but N_{20} has the same sign in
+  // both spin blocks: N_{20}|D> = -|alpha{1,2}, beta{0,1}> - |alpha{0,1},
+  // beta{1,2}>.
+  const auto D = make_det({0, 1}, {0, 1});
+  const auto Da = make_det({1, 2}, {0, 1});
+  const auto Db = make_det({0, 1}, {1, 2});
+  const std::vector<macis::wfn_t<N>> dets = {D, Da, Db};
+  const Eigen::VectorXd coeffs =
+      (Eigen::Vector3d() << 0.3, 0.5, -0.7).finished();
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
+  for(size_t k = 0; k < dets.size(); ++k) index.emplace(dets[k], k);
+  const auto charge = macis::DiagChannel::Charge;
+
+  const auto n20 =
+      macis::apply_orbital_bilinear<N>(coeffs, dets, index, 2, 0, charge);
+  REQUIRE(n20(0) == Approx(0.0).margin(1e-12));
+  REQUIRE(n20(1) == Approx(-0.3).epsilon(1e-12));
+  REQUIRE(n20(2) == Approx(-0.3).epsilon(1e-12));
+
+  // Reverse hop onto D: -0.5 (alpha) + (-1)(-0.7) (beta) = +0.2, where the
+  // spin channel gives -1.2.
+  const auto n02 =
+      macis::apply_orbital_bilinear<N>(coeffs, dets, index, 0, 2, charge);
+  REQUIRE(n02(0) == Approx(0.2).epsilon(1e-12));
+  REQUIRE(n02(1) == Approx(0.0).margin(1e-12));
+  REQUIRE(n02(2) == Approx(0.0).margin(1e-12));
+
+  // Capture of N_{20}: the leaked image X = |alpha{1,2}, beta{1,2}> gets
+  // -0.5 from Da (beta hop, no spin sign) and +0.7 from Db, which now
+  // interfere destructively to 0.2. Capture = 0.18 / (0.18 + 0.04) = 9/11,
+  // against 1/9 in the spin channel: the channel changes the interference.
+  REQUIRE(macis::orbital_bilinear_captured_fraction<N>(coeffs, dets, index, 2,
+                                                       0, charge) ==
+          Approx(9.0 / 11.0).epsilon(1e-12));
+
+  // N_{mu mu} = n_mu matches the Charge channel of weighted_imp_value with no
+  // extra factor (the spin channel needs 2x).
+  const auto n00 =
+      macis::apply_orbital_bilinear<N>(coeffs, dets, index, 0, 0, charge);
+  const auto weighted = macis::apply_diagonal_operator<N>(
+      coeffs, dets, [](const macis::wfn_t<N>& det) {
+        return macis::weighted_imp_value<N>(det, {1.0, 0.0, 0.0},
+                                            macis::DiagChannel::Charge, 3, 3);
+      });
+  REQUIRE((n00 - weighted).squaredNorm() == Approx(0.0).margin(1e-12));
+}
+
+TEST_CASE(
+    "Dynamical properties - charge bilinear adjoint and trace on the FCI "
+    "space") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // N_{mu nu}^T = N_{nu mu} on the closed FCI space, and with every orbital
+  // included sum_mu N_{mu mu} = N_tot = 4 on the (2 alpha, 2 beta) sector.
+  const size_t n_orb = 4;
+  const auto dets = half_filled_fci_dets();
+  const Eigen::Index L = dets.size();
+  const auto charge = macis::DiagChannel::Charge;
+  Eigen::MatrixXd trace = Eigen::MatrixXd::Zero(L, L);
+  for(size_t mu = 0; mu < n_orb; ++mu) {
+    trace += bilinear_matrix(dets, mu, mu, charge);
+    for(size_t nu = 0; nu < n_orb; ++nu) {
+      const Eigen::MatrixXd N_munu = bilinear_matrix(dets, mu, nu, charge);
+      const Eigen::MatrixXd N_numu = bilinear_matrix(dets, nu, mu, charge);
+      REQUIRE((N_munu.transpose() - N_numu).cwiseAbs().maxCoeff() ==
+              Approx(0.0).margin(1e-14));
+      if(mu != nu) REQUIRE(N_munu.cwiseAbs().maxCoeff() > 0.5);
+    }
+  }
+  REQUIRE(
+      (trace - 4.0 * Eigen::MatrixXd::Identity(L, L)).cwiseAbs().maxCoeff() ==
+      Approx(0.0).margin(1e-14));
+}
+
+TEST_CASE(
+    "Dynamical properties - charge matrix resolvent trace direction is "
+    "parallel to psi0") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // With n_imp = n_active, sum_mu N_{mu mu}|psi0> = N_tot|psi0> = 4|psi0>:
+  // not a null direction (unlike the spin trace), so all M modes are kept,
+  // but that direction is pure elastic weight. With subtract_mean it becomes
+  // exactly zero and is deflated, r = M - 1. Both must match Lehmann.
+  const size_t n_imp = 4;
+  const size_t M = n_imp * n_imp;
+  const auto charge = macis::DiagChannel::Charge;
+  std::vector<double> T, V;
+  orbital_matrix_integrals(T, V);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), n_imp, n_imp),
+      macis::rank4_span<double>(V.data(), n_imp, n_imp, n_imp, n_imp));
+  auto dets = half_filled_fci_dets();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+
+  const Eigen::MatrixXd seeds = bilinear_seeds(psi0, dets, n_imp, charge);
+  Eigen::VectorXd trace = Eigen::VectorXd::Zero(dets.size());
+  for(size_t mu = 0; mu < n_imp; ++mu) trace += seeds.col(mu * n_imp + mu);
+  REQUIRE((trace - 4.0 * psi0).norm() == Approx(0.0).margin(1e-12));
+
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+  const auto plain = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, charge, E0, ws, settings);
+  const auto delta = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, charge, E0, ws, settings,
+      /*subtract_mean=*/true);
+  REQUIRE(plain.rank == M);
+  REQUIRE(delta.rank == M - 1);
+  REQUIRE(delta.gram_eigenvalues(0) ==
+          Approx(0.0).margin(1e-12 * delta.gram_eigenvalues.maxCoeff()));
+
+  const Eigen::VectorXd m = seeds.transpose() * psi0;
+  const Eigen::MatrixXd delta_seeds = seeds - psi0 * m.transpose();
+  const Eigen::MatrixXd overlaps = es.eigenvectors().transpose() * seeds;
+  const Eigen::MatrixXd delta_overlaps =
+      es.eigenvectors().transpose() * delta_seeds;
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    std::vector<std::complex<double>> ref(M * M), delta_ref(M * M);
+    for(size_t k = 0; k < M; ++k)
+      for(size_t l = 0; l < M; ++l) {
+        ref[k * M + l] = lehmann_element(es, overlaps, k, l, E0, ws[iw]);
+        delta_ref[k * M + l] =
+            lehmann_element(es, delta_overlaps, k, l, E0, ws[iw]);
+      }
+    require_resolvents_close(plain.resolvent[iw], ref);
+    require_resolvents_close(delta.resolvent[iw], delta_ref);
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - charge matrix diagonal block vs "
+    "RunResolventWeighted") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // N_{mu mu} = n_mu, so the diagonal block equals the Charge-channel weighted
+  // resolvent with factor 1 (not the 4 of the spin channel):
+  //   R_{mu mu; mu mu}                      = R_w[e_mu]
+  //   R_{00;00} + R_{11;11} +/- 2 R_{00;11} = R_w[(1, +/-1)]
+  // (1, -1) is the orbital T^3 of GF.TZ_RESOLVENT.
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const size_t M = n_imp * n_imp;
+  std::vector<double> T, V;
+  orbital_matrix_integrals(T, V);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), n_active, n_active),
+      macis::rank4_span<double>(V.data(), n_active, n_active, n_active,
+                                n_active));
+  auto dets = half_filled_fci_dets();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+
+  for(bool subtract_mean : {false, true}) {
+    const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        psi0, ham_gen, dets, n_imp, macis::DiagChannel::Charge, E0, ws,
+        settings, subtract_mean);
+    auto weighted = [&](const std::vector<double>& w) {
+      return macis::RunResolventWeighted<N, int32_t>(
+          psi0, ham_gen, dets, w, macis::DiagChannel::Charge, n_imp, n_active,
+          E0, ws, settings, subtract_mean);
+    };
+    const auto R0 = weighted({1.0, 0.0});
+    const auto R1 = weighted({0.0, 1.0});
+    const auto Rp = weighted({1.0, 1.0});
+    const auto Rm = weighted({1.0, -1.0});
+
+    const size_t p00 = 0 * n_imp + 0;
+    const size_t p11 = 1 * n_imp + 1;
+    for(size_t iw = 0; iw < ws.size(); ++iw) {
+      const auto& R = result.resolvent[iw];
+      const auto cross = R[p00 * M + p11];
+      require_resolvents_close(
+          {R[p00 * M + p00], R[p11 * M + p11],
+           R[p00 * M + p00] + R[p11 * M + p11] + 2.0 * cross,
+           R[p00 * M + p00] + R[p11 * M + p11] - 2.0 * cross},
+          {R0[iw], R1[iw], Rp[iw], Rm[iw]});
+    }
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - charge matrix resolvent elastic pole and sum "
+    "rule") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // <N_{mu mu}> is an orbital occupation (order 1), so unlike the spin
+  // singlet the plain charge resolvent always carries the elastic term
+  // m_k m_l / z. Check it is removed exactly by subtract_mean, that both
+  // Gram matrices are the zeroth moment Re[z R(z)] at large |z|, and that the
+  // plain result matches the dense Lehmann sum.
+  const size_t n_imp = 2;
+  const size_t n_active = 4;
+  const size_t M = n_imp * n_imp;
+  const auto charge = macis::DiagChannel::Charge;
+  std::vector<double> T, V;
+  orbital_matrix_integrals(T, V);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), n_active, n_active),
+      macis::rank4_span<double>(V.data(), n_active, n_active, n_active,
+                                n_active));
+  auto dets = half_filled_fci_dets();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+
+  const Eigen::MatrixXd seeds = bilinear_seeds(psi0, dets, n_imp, charge);
+  const Eigen::VectorXd m = seeds.transpose() * psi0;
+  REQUIRE(m(0) > 0.5);  // <n_0>
+  REQUIRE(m(3) > 0.5);  // <n_1>
+  const Eigen::MatrixXd gram = seeds.transpose() * seeds;
+  const Eigen::MatrixXd gram_delta = gram - m * m.transpose();
+
+  const std::complex<double> z_large(0.0, 1.0e6);
+  const std::vector<std::complex<double>> ws = {
+      {0.5, 0.2}, {2.0, 0.2}, z_large};
+  const auto plain = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, charge, E0, ws, settings);
+  const auto delta = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, charge, E0, ws, settings,
+      /*subtract_mean=*/true);
+  REQUIRE((plain.gram - gram).cwiseAbs().maxCoeff() ==
+          Approx(0.0).margin(1e-12));
+  REQUIRE((delta.gram - gram_delta).cwiseAbs().maxCoeff() ==
+          Approx(0.0).margin(1e-12));
+  for(Eigen::Index pair = 0; pair < plain.capture.size(); ++pair)
+    REQUIRE(plain.capture(pair) == Approx(1.0).margin(1e-12));
+
+  const Eigen::MatrixXd overlaps = es.eigenvectors().transpose() * seeds;
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    std::vector<std::complex<double>> ref(M * M), diff(M * M), elastic(M * M);
+    for(size_t k = 0; k < M; ++k)
+      for(size_t l = 0; l < M; ++l) {
+        ref[k * M + l] = lehmann_element(es, overlaps, k, l, E0, ws[iw]);
+        diff[k * M + l] =
+            plain.resolvent[iw][k * M + l] - delta.resolvent[iw][k * M + l];
+        elastic[k * M + l] = m(k) * m(l) / ws[iw];
+      }
+    require_resolvents_close(plain.resolvent[iw], ref);
+    require_resolvents_close(diff, elastic);
+  }
+
+  const size_t iz = ws.size() - 1;
+  for(size_t k = 0; k < M; ++k)
+    for(size_t l = 0; l < M; ++l) {
+      REQUIRE(std::real(z_large * plain.resolvent[iz][k * M + l]) ==
+              Approx(gram(k, l)).epsilon(1e-6).margin(1e-8));
+      REQUIRE(std::real(z_large * delta.resolvent[iz][k * M + l]) ==
+              Approx(gram_delta(k, l)).epsilon(1e-6).margin(1e-8));
+    }
+}
+
+TEST_CASE(
+    "Dynamical properties - spin and charge matrix resolvents agree at the "
+    "SU(4) point") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Two degenerate impurity orbitals (0, 1), each hybridised with its own
+  // bath orbital (2, 3), with density-density interaction U' = U, J = 0 on the
+  // impurity: H_int = U/2 N_imp (N_imp - 1) is SU(4) invariant. For an SU(4)
+  // singlet ground state every traceless one-body bilinear shares one
+  // resolvent function, normalised by tr(T^dagger T). S_{01} and N_{01} both
+  // have norm 2, so
+  //   R^S_{01;01} = R^N_{01;01},
+  // and S_00 - S_11, N_00 - N_11, S_00 + S_11 (norm 4) each give 2 R_{01;01}.
+  // This ties the spin-channel and charge-channel signs and normalizations
+  // together, which no single-channel test can do.
+  const size_t n_imp = 2;
+  const size_t n = 4;
+  const size_t M = n_imp * n_imp;
+  const double U = 1.0, eps_imp = -0.5, eps_bath = 0.3, hyb = 0.4;
+  std::vector<double> T(n * n, 0.0), V(n * n * n * n, 0.0);
+  for(size_t mu = 0; mu < n_imp; ++mu) {
+    const size_t b = mu + n_imp;
+    T[mu * n + mu] = eps_imp;
+    T[b * n + b] = eps_bath;
+    T[mu * n + b] = T[b * n + mu] = hyb;
+  }
+  // Chemist's notation (pq|rs): (pp|pp) = U, (pp|qq) = U' = U, no exchange.
+  for(size_t p = 0; p < n_imp; ++p)
+    for(size_t q = 0; q < n_imp; ++q) V[((p * n + p) * n + q) * n + q] = U;
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(T.data(), n, n),
+                         macis::rank4_span<double>(V.data(), n, n, n, n));
+  auto dets = half_filled_fci_dets();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  // The identity needs a single (non-degenerate) SU(4) singlet ground state.
+  REQUIRE(es.eigenvalues()(1) - es.eigenvalues()(0) > 1e-3);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+  const auto spin = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, settings);
+  const auto charge = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, dets, n_imp, macis::DiagChannel::Charge, E0, ws, settings);
+
+  const size_t p00 = 0, p01 = 1, p10 = 2, p11 = 3;
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    const auto& S = spin.resolvent[iw];
+    const auto& Nr = charge.resolvent[iw];
+    const auto f = S[p01 * M + p01];
+    REQUIRE(std::abs(f) > 1e-3);  // the check must not be 0 == 0
+    auto diag = [&](const std::vector<std::complex<double>>& R, double sign) {
+      return R[p00 * M + p00] + R[p11 * M + p11] +
+             2.0 * sign * R[p00 * M + p11];
+    };
+    require_resolvents_close(
+        {Nr[p01 * M + p01], S[p10 * M + p10], Nr[p10 * M + p10], diag(S, -1.0),
+         diag(Nr, -1.0), diag(S, +1.0)},
+        {f, f, f, 2.0 * f, 2.0 * f, 2.0 * f});
+  }
 }

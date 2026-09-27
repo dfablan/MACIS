@@ -299,7 +299,7 @@ inline void write_resolvent_singlef(
 }
 
 inline void write_orbital_resolvent_matrix(
-    const std::string &label, size_t n_imp,
+    const std::string &label, size_t n_imp, macis::DiagChannel channel,
     const std::vector<std::complex<double>> &ws,
     const macis::OrbitalResolventResult &result) {
   bool write_file = true;
@@ -310,9 +310,15 @@ inline void write_orbital_resolvent_matrix(
   const size_t npairs = n_imp * n_imp;
   std::ofstream resolvent_file(label + "_orbital_resolvent.dat");
   resolvent_file.precision(dbl::max_digits10);
-  resolvent_file << "# S_munu = c^dagger_(mu,up)c_(nu,up) - "
-                    "c^dagger_(mu,dn)c_(nu,dn); diagonal trace response is "
-                    "4 times the Sz convention\n";
+  if(channel == macis::DiagChannel::Spin)
+    resolvent_file << "# S_munu = c^dagger_(mu,up)c_(nu,up) - "
+                      "c^dagger_(mu,dn)c_(nu,dn); diagonal trace response is "
+                      "4 times the Sz convention\n";
+  else
+    resolvent_file << "# N_munu = c^dagger_(mu,up)c_(nu,up) + "
+                      "c^dagger_(mu,dn)c_(nu,dn); N_mumu = n_mu, same "
+                      "normalization as the Charge channel of "
+                      "evaluate_resolvent_diagonal\n";
   resolvent_file << "# Re(w) Im(w) mu nu gamma delta Re(R) Im(R)\n";
   for(size_t iw = 0; iw < ws.size(); ++iw)
     for(size_t k = 0; k < npairs; ++k)
@@ -508,12 +514,32 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
   return R;
 }
 
+/**
+ * @brief Computes the full orbital-bilinear matrix resolvent
+ *        R_{mu nu; gamma delta}(w) over the impurity orbitals (see
+ *        macis::RunResolventOrbitalMatrix) on the bosonic grid of
+ *        build_bosonic_resolvent_grid, and writes
+ *        "<label>_orbital_resolvent.dat" and "<label>_gram.dat" when
+ *        gf_settings.writeGF_singlef is set.
+ *
+ *        Like evaluate_resolvent_diagonal, requires the impurity block of
+ *        orb_rot to be the identity: the bilinears are defined on the
+ *        original impurity orbitals.
+ *
+ * @param[in] macis::DiagChannel channel: Spin (S_{mu nu}) or Charge
+ *            (N_{mu nu}).
+ * @param[in] const std::string &label: Output file prefix. Use a distinct
+ *            label per channel so the two do not overwrite each other.
+ * @param[in] bool subtract_mean: If true, use the fluctuation seeds. In the
+ *            Charge channel this removes the large elastic pole carried by
+ *            the orbital occupations.
+ */
 template <size_t N>
 auto evaluate_resolvent_orbital_matrix(
     double EASCI, macis::impurity_params<N> &p,
     macis::SDBuildHamiltonianGenerator<N> &ham_gen,
-    macis::GFSettings &gf_settings, const std::string &label,
-    bool subtract_mean = false) {
+    macis::GFSettings &gf_settings, macis::DiagChannel channel,
+    const std::string &label, bool subtract_mean = false) {
   if(p.n_imp > 0) {
     Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Zero(p.n_imp, p.n_imp);
     for(int j = 0; j < p.n_imp; ++j)
@@ -531,16 +557,20 @@ auto evaluate_resolvent_orbital_matrix(
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
   const auto ws = detail::build_bosonic_resolvent_grid(gf_settings);
   const double E0 = EASCI - (p.E_core + p.E_inactive);
-  auto result = macis::RunResolventOrbitalMatrix<N>(
-      psi0, ham_gen, p.dets, p.n_imp, E0, ws, gf_settings, subtract_mean);
+  auto result = macis::RunResolventOrbitalMatrix<N>(psi0, ham_gen, p.dets,
+                                                    p.n_imp, channel, E0, ws,
+                                                    gf_settings, subtract_mean);
+  const char *seed_kind =
+      channel == macis::DiagChannel::Spin ? "spin" : "charge";
   for(Eigen::Index pair = 0; pair < result.capture.size(); ++pair)
     if(result.capture(pair) < gf_settings.orb_min_capture)
-      std::cerr << "WARNING: orbital spin seed (" << pair / p.n_imp << ", "
-                << pair % p.n_imp << ") capture fraction "
-                << result.capture(pair) << " is below GF.ORB_MIN_CAPTURE = "
+      std::cerr << "WARNING: orbital " << seed_kind << " seed ("
+                << pair / p.n_imp << ", " << pair % p.n_imp
+                << ") capture fraction " << result.capture(pair)
+                << " is below GF.ORB_MIN_CAPTURE = "
                 << gf_settings.orb_min_capture << std::endl;
   if(gf_settings.writeGF_singlef)
-    detail::write_orbital_resolvent_matrix(label, p.n_imp, ws, result);
+    detail::write_orbital_resolvent_matrix(label, p.n_imp, channel, ws, result);
   return result;
 }
 

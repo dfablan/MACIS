@@ -99,31 +99,50 @@ std::vector<std::complex<double>> RunResolventGS(
 }
 
 /**
- * @brief Applies a diagonal (in the determinant basis) operator O to a wave
- *        function by rescaling each determinant coefficient. The result is a
- *        new coefficient vector v with v[k] = wfn0[k] * scalar_fn(dets[k]),
- *        i.e. v = O |wfn0> when O |D_k> = scalar_fn(D_k) |D_k>.
+ * @brief Which combination of spin-up / spin-down occupations an impurity
+ *        operator accumulates on each orbital.
+ *
+ *        For the diagonal operators of weighted_imp_value:
+ *
+ *          Charge : O = sum_i w_i ( n_{i,up} + n_{i,dn} )
+ *          Spin   : O = sum_i w_i ( n_{i,up} - n_{i,dn} ) / 2
+ *
+ *        For the orbital bilinears of apply_orbital_bilinear (no factor 1/2):
+ *
+ *          Charge : N_{mu nu} = c^+_{mu,up} c_{nu,up} + c^+_{mu,dn} c_{nu,dn}
+ *          Spin   : S_{mu nu} = c^+_{mu,up} c_{nu,up} - c^+_{mu,dn} c_{nu,dn}
+ *
+ * @date 18/09/2026
+ */
+enum class DiagChannel { Charge, Spin };
+
+/**
+ * @brief Applies the orbital bilinear O_{mu nu} = sum_sigma s_sigma
+ *        c^+_{mu,sigma} c_{nu,sigma} to a wave function, with s_up = +1 and
+ *        s_dn = -1 in the Spin channel (S_{mu nu}) or s_dn = +1 in the Charge
+ *        channel (N_{mu nu}). Images that fall outside `dets` are dropped, so
+ *        the result is the projection of O_{mu nu}|wfn0> onto the basis. For
+ *        mu = nu, S_{mu mu} = 2 S_z^mu and N_{mu mu} = n_mu.
  *
  * @tparam nbits: Number of bits in the Slater determinant bitset type.
- * @tparam ScalarFn: Callable (const std::bitset<nbits>&) -> double returning
- *         the diagonal eigenvalue of O on a given determinant.
  *
  * @param[in] const Eigen::VectorXd &wfn0: Input coefficient vector.
  * @param[in] const std::vector<std::bitset<nbits>> &dets: Determinant basis,
  *            with dets[k] the determinant of coefficient wfn0[k].
- * @param[in] ScalarFn scalar_fn: Per-determinant diagonal eigenvalue of O.
+ * @param[in] det_index: Lookup from determinant to its position in dets.
+ * @param[in] size_t mu, nu: Impurity orbitals of the creator / annihilator.
+ * @param[in] DiagChannel ch: Spin (S_{mu nu}) or Charge (N_{mu nu}).
  *
- * @returns Eigen::VectorXd: The rescaled coefficient vector O |wfn0>.
- *
- * @date 29/06/2026
+ * @returns Eigen::VectorXd: The projected coefficient vector O_{mu nu}|wfn0>.
  */
 template <size_t nbits>
-Eigen::VectorXd apply_spin_bilinear(
+Eigen::VectorXd apply_orbital_bilinear(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
     const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
         &det_index,
-    size_t mu, size_t nu) {
+    size_t mu, size_t nu, DiagChannel ch) {
   assert(wfn0.size() == Eigen::Index(dets.size()));
+  const double dn_sign = (ch == DiagChannel::Spin) ? -1.0 : 1.0;
   Eigen::VectorXd out = Eigen::VectorXd::Zero(wfn0.size());
   for(Eigen::Index k = 0; k < wfn0.size(); ++k) {
     for(size_t spin = 0; spin < 2; ++spin) {
@@ -141,24 +160,28 @@ Eigen::VectorXd apply_spin_bilinear(
       }
       const auto it = det_index.find(image);
       if(it != det_index.end())
-        out[it->second] += (spin ? -1.0 : 1.0) * sign * wfn0[k];
+        out[it->second] += (spin ? dn_sign : 1.0) * sign * wfn0[k];
     }
   }
   return out;
 }
 
-// Estimate the ratio between the norm of the in-basis component of S_{mu
-// nu}|wfn0> and the norm of the full S_{mu nu}|wfn0> vector. Some determinants
-// can be lost if the determinant basis is not complete, so this is a measure of
-// how much of S_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means
-// all determinants are captured, while a value of 0.0 means none are captured.
+// Estimate the ratio between the norm of the in-basis component of
+// O_{mu nu}|wfn0> and the norm of the full O_{mu nu}|wfn0> vector, with
+// O_{mu nu} the bilinear of apply_orbital_bilinear. Some determinants can be
+// lost if the determinant basis is not complete, so this is a measure of how
+// much of O_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means all
+// determinants are captured, while a value of 0.0 means none are captured.
+// The channel matters: spin-up and spin-down hops can reach the same image,
+// and their relative sign decides whether they interfere constructively.
 template <size_t nbits>
-double spin_bilinear_captured_fraction(
+double orbital_bilinear_captured_fraction(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
     const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
         &det_index,
-    size_t mu, size_t nu) {
+    size_t mu, size_t nu, DiagChannel ch) {
   assert(wfn0.size() == Eigen::Index(dets.size()));
+  const double dn_sign = (ch == DiagChannel::Spin) ? -1.0 : 1.0;
   std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> images;
   for(Eigen::Index k = 0; k < wfn0.size(); ++k) {
     for(size_t spin = 0; spin < 2; ++spin) {
@@ -174,7 +197,7 @@ double spin_bilinear_captured_fraction(
         image.flip(p);
         sign = single_excitation_sign(det, p, q);
       }
-      images[image] += (spin ? -1.0 : 1.0) * sign * wfn0[k];
+      images[image] += (spin ? dn_sign : 1.0) * sign * wfn0[k];
     }
   }
   double captured_norm = 0.0;
@@ -195,12 +218,32 @@ struct OrbitalResolventResult {
   std::vector<std::vector<std::complex<double>>> resolvent;
 };
 
+/**
+ * @brief Full n_imp^2 x n_imp^2 matrix resolvent of the orbital bilinears,
+ *
+ *          R_{mu nu; gamma delta}(w) =
+ *              <phi_{mu nu}| 1 / (w - (H - E0)) |phi_{gamma delta}>,
+ *          |phi_{mu nu}> = O_{mu nu}|wfn0>,
+ *
+ *        with O_{mu nu} = S_{mu nu} (Spin) or N_{mu nu} (Charge), see
+ *        apply_orbital_bilinear. The seeds are Gram-deflated, passed to one
+ *        band-Lanczos run and back-transformed. Pairs are indexed
+ *        mu * n_imp + nu.
+ *
+ *        In the Charge channel <N_{mu mu}> is an orbital occupation, so the
+ *        elastic pole m_k m_l / w dominates the diagonal block unless
+ *        subtract_mean is set.
+ *
+ * @param[in] DiagChannel channel: Spin (S_{mu nu}) or Charge (N_{mu nu}).
+ * @param[in] bool subtract_mean: If true, use the fluctuation seeds
+ *            (O_{mu nu} - <O_{mu nu}>)|wfn0>.
+ */
 template <size_t nbits, typename index_t = int32_t>
 OrbitalResolventResult RunResolventOrbitalMatrix(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
-    const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp, double E0,
-    const std::vector<std::complex<double>> &ws, const GFSettings &settings,
-    bool subtract_mean = false) {
+    const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
+    DiagChannel channel, double E0, const std::vector<std::complex<double>> &ws,
+    const GFSettings &settings, bool subtract_mean = false) {
   if(n_imp > nbits / 2)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
@@ -219,15 +262,16 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   for(size_t mu = 0; mu < n_imp; ++mu)
     for(size_t nu = 0; nu < n_imp; ++nu) {
       const size_t pair = mu * n_imp + nu;
-      seeds.col(pair) = apply_spin_bilinear(wfn0, base_dets, det_index, mu, nu);
-      capture(pair) =
-          spin_bilinear_captured_fraction(wfn0, base_dets, det_index, mu, nu);
+      seeds.col(pair) =
+          apply_orbital_bilinear(wfn0, base_dets, det_index, mu, nu, channel);
+      capture(pair) = orbital_bilinear_captured_fraction(
+          wfn0, base_dets, det_index, mu, nu, channel);
     }
 
-  // Optionally replace each seed S_{mu nu}|wfn0> by the fluctuation
-  // (S_{mu nu} - <S_{mu nu}>)|wfn0>, cancelling the elastic pole exactly as in
+  // Optionally replace each seed O_{mu nu}|wfn0> by the fluctuation
+  // (O_{mu nu} - <O_{mu nu}>)|wfn0>, cancelling the elastic pole exactly as in
   // RunResolventDiagonal. wfn0 lies in base_dets, so the projected seed still
-  // gives the exact <S_{mu nu}>. The Gram matrix then becomes the fluctuation
+  // gives the exact <O_{mu nu}>. The Gram matrix then becomes the fluctuation
   // covariance and remains the zeroth moment of R. The capture fractions
   // above describe the bare operator: the subtracted component is in-basis.
   if(subtract_mean)
@@ -290,6 +334,25 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   return result;
 }
 
+/**
+ * @brief Applies a diagonal (in the determinant basis) operator O to a wave
+ *        function by rescaling each determinant coefficient. The result is a
+ *        new coefficient vector v with v[k] = wfn0[k] * scalar_fn(dets[k]),
+ *        i.e. v = O |wfn0> when O |D_k> = scalar_fn(D_k) |D_k>.
+ *
+ * @tparam nbits: Number of bits in the Slater determinant bitset type.
+ * @tparam ScalarFn: Callable (const std::bitset<nbits>&) -> double returning
+ *         the diagonal eigenvalue of O on a given determinant.
+ *
+ * @param[in] const Eigen::VectorXd &wfn0: Input coefficient vector.
+ * @param[in] const std::vector<std::bitset<nbits>> &dets: Determinant basis,
+ *            with dets[k] the determinant of coefficient wfn0[k].
+ * @param[in] ScalarFn scalar_fn: Per-determinant diagonal eigenvalue of O.
+ *
+ * @returns Eigen::VectorXd: The rescaled coefficient vector O |wfn0>.
+ *
+ * @date 29/06/2026
+ */
 template <size_t nbits, class ScalarFn>
 Eigen::VectorXd apply_diagonal_operator(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
@@ -300,18 +363,6 @@ Eigen::VectorXd apply_diagonal_operator(
     out[k] = wfn0[k] * scalar_fn(dets[k]);
   return out;
 }
-
-/**
- * @brief Which combination of spin-up / spin-down occupations a diagonal
- *        impurity operator accumulates on each orbital (see
- *        weighted_imp_value):
- *
- *          Charge : O = sum_i w_i ( n_{i,up} + n_{i,dn} )
- *          Spin   : O = sum_i w_i ( n_{i,up} - n_{i,dn} ) / 2
- *
- * @date 18/09/2026
- */
-enum class DiagChannel { Charge, Spin };
 
 /**
  * @brief Diagonal eigenvalue of a per-orbital-weighted impurity operator on a
