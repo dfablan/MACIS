@@ -68,9 +68,9 @@ enum class FCIDumpLayout {
 // Parse `tokens` under one layout. Returns nullopt (and sets `why`) when the
 // layout is inconsistent with the line -- a non-integer or negative token where
 // an orbital index belongs, or an unparseable integral. Never throws.
-std::optional<fcidump_entry_t> try_layout(const std::vector<std::string>& tokens,
-                                          FCIDumpLayout layout,
-                                          std::string& why) {
+std::optional<fcidump_entry_t> try_layout(
+    const std::vector<std::string>& tokens, FCIDumpLayout layout,
+    std::string& why) {
   const bool idx_first = layout == FCIDumpLayout::IndexFirst;
   const size_t i0 = idx_first ? 0 : 1;  // first index token
   const size_t ii = idx_first ? 4 : 0;  // integral token

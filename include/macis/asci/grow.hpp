@@ -44,8 +44,8 @@ auto asci_grow(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
   logger->info(fmt_string, 0, E0, 0.0, wfn.size());
   // Grow wfn until max size, or until we get stuck
-  size_t best_size = wfn.size();   // largest size reached so far
-  size_t stall_iters = 0;          // consecutive iters that failed to beat best_size
+  size_t best_size = wfn.size();  // largest size reached so far
+  size_t stall_iters = 0;  // consecutive iters that failed to beat best_size
   constexpr size_t stall_iters_max = 5;
   size_t iter = 1;
   auto grow_st = hrt_t::now();
