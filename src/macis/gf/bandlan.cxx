@@ -184,8 +184,10 @@ double LowestRitzValue(const std::vector<double> &bandH, int nLanIts) {
   if(m == 0) return std::numeric_limits<double>::quiet_NaN();
   std::vector<double> A(size_t(m) * m), W(m);
   for(int j = 0; j < m; j++)
-    for(int i = 0; i < m; i++) A[i + j * m] = bandH[keep[i] * nLanIts + keep[j]];
-  lapack::syev(lapack::Job::NoVec, lapack::Uplo::Upper, m, A.data(), m, W.data());
+    for(int i = 0; i < m; i++)
+      A[i + j * m] = bandH[keep[i] * nLanIts + keep[j]];
+  lapack::syev(lapack::Job::NoVec, lapack::Uplo::Upper, m, A.data(), m,
+               W.data());
   return W[0];
 }
 
@@ -194,8 +196,8 @@ void BandResolvent(
         &H,
     std::vector<double> &vecs, const std::vector<std::complex<double> > &ws,
     std::vector<std::vector<std::complex<double> > > &res, int nLanIts,
-    double E0, bool ispart, int nvecs, int len_vec, bool print,
-    bool saveGFmats, double *E_lowest) {
+    double E0, bool ispart, int nvecs, int len_vec, bool print, bool saveGFmats,
+    double *E_lowest) {
   // COMPUTES THE RESOLVENT (ws - H)^-1 IN MATRIX FORM FOR THE "BASIS" GIVEN BY
   // THE vecs VECTORS AND THE FREQUENCY GRID IN ws. USES THE BAND LANCZOS
   // ALGORITHM. IT GETS STORED IN res.

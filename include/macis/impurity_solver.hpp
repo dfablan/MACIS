@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <macis/asci/grow.hpp>
 #include <macis/asci/refine.hpp>
 #include <macis/gf/dynamical_properties.hpp>
@@ -19,7 +20,6 @@
 #include <macis/util/mpi.hpp>
 #include <macis/util/transform.hpp>
 #include <macis/wavefunction_io.hpp>
-#include <limits>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 #include <stdexcept>
@@ -111,7 +111,8 @@ void report_sector_check(double dE_add, double dE_rem,
   std::cout << std::scientific << std::setprecision(6) << std::showpos;
   std::cout << "GF SECTOR CHECK for (NALPHA, NBETA) = (" << std::noshowpos
             << p.nalpha << ", " << p.nbeta << std::showpos
-            << "), upper bounds from the band-Lanczos Ritz values:" << std::endl;
+            << "), upper bounds from the band-Lanczos Ritz values:"
+            << std::endl;
   std::cout << "  E(N+1) - E(N) <= " << dE_add << "   (particle)" << std::endl;
   std::cout << "  E(N-1) - E(N) <= " << dE_rem << "   (hole)" << std::endl;
   std::cout << "SECTOR_CHECK dE_add = " << dE_add << " dE_rem = " << dE_rem
@@ -124,9 +125,10 @@ void report_sector_check(double dE_add, double dE_rem,
                  "sectors with explore_charge_sectors.py."
               << std::endl;
   if(std::isnan(dE_add) or std::isnan(dE_rem))
-    std::cout << "  (NaN: no electron could be added/removed, or GF.USE_BANDLAN "
-                 "is off -- the bound comes from the band Lanczos only)"
-              << std::endl;
+    std::cout
+        << "  (NaN: no electron could be added/removed, or GF.USE_BANDLAN "
+           "is off -- the bound comes from the band Lanczos only)"
+        << std::endl;
   std::cout.flags(flags);
   std::cout.precision(prec);
 }
