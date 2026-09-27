@@ -545,7 +545,8 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
  * N+1 (particle) or N-1 (hole) sector reached by the band Lanczos -- a
  * variational upper bound on that sector's lowest energy, on the same scale as
  * energ. NaN when it is not available: no orbital could add/remove an electron
- * (nothing is reachable), or regular Lanczos was used (settings.use_bandLan off).
+ * (nothing is reachable), or regular Lanczos was used (settings.use_bandLan
+ * off).
  *
  * @author Carlos Mejuto Zaera
  * @date 01/02/2022
