@@ -137,3 +137,72 @@ same FCIDUMP at fixed µ (no µ search), so their energies compare directly.
    reconfigure and poison the tree. The real build is `sbatch send_compile.job`, submitted by the
    user.
 5. No jobs are submitted and no calculation folders are written; all tests run on scratch copies.
+
+## Implementation status (done)
+
+### What was implemented
+- **New** `main/explore_charge_sectors.cxx`, plus the `explore_charge_sectors` target in
+  `main/CMakeLists.txt` (same pattern as `charge_sector_estimate`). No library files changed.
+- Everything in the design above is in place: the four input forms (`.tar.gz`, `It_N/`, `ASCI/`,
+  `input.in`), the locFCIDUMP µ overlay, `wfn.out` reuse (warm mode only, with the stated checks and
+  a message saying which case applied), cold and warm solves, `walk`/`window` search, `--check-spin`,
+  `--scale`, `--seed-parents`, `--seed-size`, `--etol`, the table on stdout and in
+  `<workdir>/sector_scan.dat`, the verdict lines and the `GROUND_SECTOR` line.
+- Choices the plan did not cover:
+  - The program `chdir`s into `--workdir` before solving, because `SolveImpurityASCI_rot` writes
+    `active_ordm.dat` and `rot_matrix*.dat` into the current directory. Archive folders stay untouched.
+  - With `spin_dep`, the µ overlay changes only the impurity **diagonal** of `Td`, as the µ search
+    does (`set_impurity_diagonal` in `fix_mu.cpp`). `T`'s whole impurity block is overwritten.
+    The overlay is refused when `NINACTIVE != 0`, like the µ search.
+  - In warm mode, a seeded solve that fails for any reason other than refinement not converging is
+    retried cold. The table shows it as `cold(seed failed)`. A refinement that does not converge is
+    recorded as `UNCONVERGED`, as planned.
+  - When a sector's parent failed, the sector is solved cold (`cold(parent failed)`).
+  - To save memory, the program keeps wavefunctions only for the two ends of the solved range and
+    the current minimum.
+
+### How it was verified
+Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives were not available.
+- **Build:** scratch CMake build outside the repo (MPI on, Release), no warnings from the new file.
+  The real build is still `sbatch send_compile.job`.
+- **Exact test (substitute for verification step 1):** a synthetic 6-orbital, 2-band Kanamori model
+  (U = 6, J = 0.8, 4 bath sites with inter-band hybridization). Reference energies came from
+  `charge_sector_estimate --exact`.
+  - µ = 2, reference (3,3), true minimum N = 5. Cold, warm, and warm with 20-determinant seeds all
+    give `GROUND_SECTOR ... N = 5`. The energy of every sector matches ED to 1e-10.
+  - µ = 6, NROTS = 2, Hund's triplet ground state at N = 6. Cold and warm both match ED, and
+    `--check-spin` flags (4,2) as degenerate with (3,3) ("high-spin").
+- **Input paths:** `.tar.gz` (including a stale absolute `CI.FCIDUMP` path), `It_N/` (default workdir
+  `sector_scan_It<N>`), `ASCI/`, and `input.in`. The µ overlay (FCIDUMP at µ = 4 + locFCIDUMP at
+  µ = 2) reproduces the µ = 2 run exactly. `wfn.out` written by `run_asci_impsolv_dop` is reused for
+  NROTS = 0 and skipped with the correct message for NROTS > 0 and for a mismatched sector.
+- **Not verified:** multi-rank MPI (see problem 4); steps 1 and 2 of the plan on the real data.
+
+### Problems found (existing code, not fixed here)
+1. **`read_fcidump_1body(fname, T, LDT)` ignores LDT** (`src/macis/fcidump.cxx:224`). It builds a
+   strided `submdspan` and passes it as a `layout_left` span, so the leading dimension is lost when
+   LDT differs from the file's norb, and the values land in the wrong elements. Reading the
+   n_imp-orbital locFCIDUMP into the norb×norb `T` filled bath hoppings with garbage and made Davidson
+   break down. The new main works around it by reading into an n_imp×n_imp buffer. Production calls
+   it with LDT == norb and is not affected, but the overload should be fixed.
+2. **A conserved parity traps Davidson in the wrong block.** With a band-diagonal bath and pair
+   hopping, each band's electron-number parity is conserved. `selected_ci_diag` starts from the
+   lowest diagonal element (`p_diagonal_guess`) and never leaves that parity block, so ASCI (and even
+   a full-space diagonalization) can return an excited state. In the first test, N = 3, 4, 7 were off by
+   0.3–0.5 Ha until an inter-band hybridization was added. Production 3-band Kanamori runs with
+   band-diagonal baths have the same structure. This should be checked there.
+3. **`asci_refine` requires a fixed size** ("Wavefunction size can't change in refinement",
+   `include/macis/asci/refine.hpp`). A guess that already holds `NTDETS_MAX` determinants skips
+   `asci_grow`. If the ASCI search then cannot return that many determinants, refinement throws.
+   Seen with `--scale 0.3` on the small test, where the search could return fewer than 300 determinants. A
+   production `ASCI.WFN_FILE` restart can hit the same check. Covered here by the cold retry.
+4. **Multi-rank runs hang in this container.** With `mpirun -np 2`, the first Davidson stalls, and it
+   does so for the unmodified `run_asci_impsolv_dop` too. The problem is either the environment or
+   the library, not the new main. The multi-rank code in the new main (eigenvector gather copied
+   from `asci_iter`, rank-0 file writes followed by a barrier) is untested. Do one short multi-rank
+   run on the cluster.
+
+### Still to do (on the cluster)
+- `sbatch send_compile.job`.
+- Verification step 1 on the real 6-orbital `Ulysses_move/.../2bands/Doping/Nb4/J_0.1/U_10.00`
+  case, and step 2 (warm vs cold, 3-band `It_7`, `--scale 0.01`), including a multi-rank run.
