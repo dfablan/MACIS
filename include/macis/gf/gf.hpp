@@ -541,6 +541,11 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
  * rows/cols (a dropped orbital contributes nothing from this sector), so
  * callers can add the particle and hole sectors elementwise and index rows by
  * GF_orbs_comp position directly. todelete is still reported for diagnostics.
+ * @param [out] double *E_lowest: If not null, set to the lowest energy of the
+ * N+1 (particle) or N-1 (hole) sector reached by the band Lanczos -- a
+ * variational upper bound on that sector's lowest energy, on the same scale as
+ * energ. NaN when it is not available: no orbital could add/remove an electron
+ * (nothing is reachable), or regular Lanczos was used (settings.use_bandLan off).
  *
  * @author Carlos Mejuto Zaera
  * @date 01/02/2022
@@ -552,7 +557,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                const double energ, const bool is_part,
                const std::vector<std::complex<double>> &ws,
                const std::vector<double> &occs, const GFSettings &settings,
-               std::vector<int> &todelete) {
+               std::vector<int> &todelete, double *E_lowest = nullptr) {
   using Clock = std::chrono::high_resolution_clock;
   // READ INPUT
   const size_t trunc_size = settings.trunc_size;
@@ -641,6 +646,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   // contributes exactly zero: return an all-zero GF padded to the full
   // GF_orbs_comp index space so the caller can still sum it with the other
   // sector elementwise.
+  if(E_lowest) *E_lowest = std::numeric_limits<double>::quiet_NaN();
   if(nvecs == 0) {
     const int norbs = (int)GF_orbs_comp.size();
     GF.assign(ws.size(), std::vector<std::complex<double>>(
@@ -656,7 +662,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 
   if(use_bandLan) {
     BandResolvent(hamil, wfns, ws, GF, nLanIts, energ, is_part, nvecs, nterms,
-                  print, saveGFmats);
+                  print, saveGFmats, E_lowest);
   } else {
     // DO SIMPLE LANCZOS FOR ALL GF ELEMENTS
     SparsexDistSpMatOp hamil_wrap(hamil);

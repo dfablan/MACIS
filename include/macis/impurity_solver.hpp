@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <macis/asci/grow.hpp>
@@ -18,6 +19,7 @@
 #include <macis/util/mpi.hpp>
 #include <macis/util/transform.hpp>
 #include <macis/wavefunction_io.hpp>
+#include <limits>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
 #include <stdexcept>
@@ -87,6 +89,48 @@ struct impurity_params {
   bool just_singles;
 };
 
+/**
+ * @brief Prints the charge-sector check that falls out of the GF calculation.
+ *
+ * The FCIDUMP carries -mu, so the solved Hamiltonian is H - mu*N and a GF pole
+ * sits at E(N+1) - E(N) (particle) or E(N-1) - E(N) (hole). If (NALPHA, NBETA)
+ * is the ground-state sector both are >= 0. The band Lanczos yields upper
+ * bounds on them, so a NEGATIVE value proves an N+-1 state lies below the
+ * ASCI state -- either the sector is wrong, or E(N) is off by more than |dE|
+ * (ASCI truncation). A positive value proves nothing: the bound comes from a
+ * truncated GF space and only reaches states connected to psi0 by one c/c+.
+ *
+ * Greppable line: "SECTOR_CHECK dE_add = <x> dE_rem = <y> [OK|FAIL]".
+ */
+template <size_t N>
+void report_sector_check(double dE_add, double dE_rem,
+                         const macis::impurity_params<N> &p) {
+  const bool fail = dE_add < 0. or dE_rem < 0.;
+  const auto flags = std::cout.flags();
+  const auto prec = std::cout.precision();
+  std::cout << std::scientific << std::setprecision(6) << std::showpos;
+  std::cout << "GF SECTOR CHECK for (NALPHA, NBETA) = (" << std::noshowpos
+            << p.nalpha << ", " << p.nbeta << std::showpos
+            << "), upper bounds from the band-Lanczos Ritz values:" << std::endl;
+  std::cout << "  E(N+1) - E(N) <= " << dE_add << "   (particle)" << std::endl;
+  std::cout << "  E(N-1) - E(N) <= " << dE_rem << "   (hole)" << std::endl;
+  std::cout << "SECTOR_CHECK dE_add = " << dE_add << " dE_rem = " << dE_rem
+            << (fail ? " FAIL" : " OK") << std::noshowpos << std::endl;
+  if(fail)
+    std::cout << "WARNING: an N" << (dE_add < 0. ? "+1" : "-1")
+              << " state lies below the ASCI ground state. Either (NALPHA, "
+                 "NBETA) is not the ground-state sector of this FCIDUMP, or "
+                 "E(N) is off by more than |dE| (ASCI truncation). Compare "
+                 "sectors with explore_charge_sectors.py."
+              << std::endl;
+  if(std::isnan(dE_add) or std::isnan(dE_rem))
+    std::cout << "  (NaN: no electron could be added/removed, or GF.USE_BANDLAN "
+                 "is off -- the bound comes from the band Lanczos only)"
+              << std::endl;
+  std::cout.flags(flags);
+  std::cout.precision(prec);
+}
+
 template <size_t N>
 auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
                  macis::SDBuildHamiltonianGenerator<N> &ham_gen,
@@ -144,9 +188,12 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   std::vector<int> todelete_h;
 
   EASCI -= (p.E_core + p.E_inactive);
+  // Lowest N+1 / N-1 energies the band Lanczos reaches (upper bounds)
+  double E_add = std::numeric_limits<double>::quiet_NaN();
+  double E_rem = std::numeric_limits<double>::quiet_NaN();
   // Evaluate particle GF
   macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws, occs,
-                      gf_settings, todelete_p);
+                      gf_settings, todelete_p, &E_add);
 
   // std::cout << "GF Particle part calculated." << std::endl;
   // for(int i = 0; i < p.n_imp; i++) {
@@ -156,7 +203,9 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
 
   // Evaluate hole GF
   macis::RunGFCalc<N>(GF, psi0, ham_gen, p.dets, EASCI, false, ws, occs,
-                      gf_settings, todelete_h);
+                      gf_settings, todelete_h, &E_rem);
+
+  report_sector_check(E_add - EASCI, E_rem - EASCI, p);
 
   EASCI += p.E_core + p.E_inactive;
 
