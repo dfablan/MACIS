@@ -10,7 +10,8 @@
 // solves a fixed window around the reference (--search window).
 //
 // Usage: explore_charge_sectors {It_N/ASCI.tar.gz | It_N/ | ASCI/ | input.in}
-//            [--workdir DIR] [--warm-start] [--search walk|window] [--margin M]
+//            [--workdir DIR] [--warm-start [--warm-nrots0]]
+//            [--search walk|window] [--margin M]
 //            [--window W]
 //            [--nalpha A --nbeta B | --half] [--scale x] [--seed-parents P]
 //            [--seed-size S]
@@ -22,11 +23,16 @@
 // search ENDED on) replaces the one in CI.FCIDUMP (the mu it started from).
 // DOPING and GF are ignored: the scan is at fixed mu.
 //
-// --warm-start: NROTS is forced to 0 and every new sector is seeded from its
-// solved neighbour by one c^dagger / c on the neighbour's leading determinants,
-// diagonalized in that seed space and handed to the production ASCI path as a
-// guess wavefunction. Without it every sector is solved cold with the input's
-// NROTS.
+// --warm-start: every new sector is seeded from its solved neighbour by one
+// c^dagger / c on the neighbour's leading determinants, diagonalized in that
+// seed space and handed to the production ASCI path as a guess wavefunction.
+// The seeded sector is solved in the neighbour's orbital basis: its integrals
+// are rotated by the neighbour's cumulative orbital rotation, and it runs with
+// NROTS = 0 in that basis. A sector started cold (the reference, or a fallback)
+// uses the input's NROTS, so with NROTS > 0 every sector ends up in the
+// natural-orbital basis of the cold sector it descends from. --warm-nrots0
+// instead forces NROTS = 0 everywhere (all sectors in the original basis).
+// Without --warm-start every sector is solved cold with the input's NROTS.
 //
 // Only the minimal-|S_z| sector ((N+1)/2, N/2) is solved per N: with SU(2) it
 // contains every multiplet. --check-spin also solves (a+1, b-1) at the final N
@@ -83,7 +89,7 @@ struct Options {
   std::string source, workdir;
   std::string search = "walk";
   long margin = 2, window = 2;
-  bool warm = false, check_spin = false, half = false;
+  bool warm = false, warm_nrots0 = false, check_spin = false, half = false;
   long nalpha = -1, nbeta = -1;
   double scale = 1.0, etol = 1e-4;
   long seed_parents = -1, seed_size = -1;
@@ -92,7 +98,8 @@ struct Options {
 const char* usage =
     "usage: explore_charge_sectors {It_N/ASCI.tar.gz | It_N/ | ASCI/ | "
     "input.in} "
-    "[--workdir DIR] [--warm-start] [--search walk|window] [--margin M] "
+    "[--workdir DIR] [--warm-start [--warm-nrots0]] [--search walk|window] "
+    "[--margin M] "
     "[--window W] "
     "[--nalpha A --nbeta B | --half] [--scale x] [--seed-parents P] "
     "[--seed-size S] "
@@ -111,6 +118,8 @@ Options parse_args(int argc, char** argv) {
       o.workdir = need(i);
     else if(a == "--warm-start")
       o.warm = true;
+    else if(a == "--warm-nrots0")
+      o.warm = o.warm_nrots0 = true;
     else if(a == "--search")
       o.search = need(i);
     else if(a == "--margin")
@@ -420,7 +429,13 @@ std::vector<wfn_type> truncate_seed(const weight_map_t& w, size_t nkeep,
 struct Pristine {
   std::vector<double> T_active, V_active, Td_active;
   macis::ASCISettings asci_settings;
+  bool just_singles;
 };
+
+// An orbital basis, as the cumulative rotation from the original active
+// orbitals (n_active x n_active, column-major, the convention of
+// impurity_params::orb_rot). Empty means the original orbitals.
+using basis_t = std::vector<double>;
 
 // Where a sector's starting wavefunction comes from.
 struct SeedSource {
@@ -431,6 +446,8 @@ struct SeedSource {
   const std::vector<double>* C = nullptr;
   size_t pa = 0, pb = 0;
   std::string fname;  // File
+  // Orbital basis the seed determinants are written in (Parent, File)
+  const basis_t* U = nullptr;
 };
 
 struct SectorResult {
@@ -442,6 +459,7 @@ struct SectorResult {
   std::vector<wfn_type>
       dets;  // kept while the sector may still seed a neighbour
   std::vector<double> C;
+  basis_t U;  // orbital basis dets/C are written in
 };
 
 struct Context {
@@ -449,6 +467,7 @@ struct Context {
   Pristine pristine;
   Options opt;
   size_t seed_parents, seed_size;
+  size_t nrots_cold;  // NROTS of a solve that starts cold
   std::ostream* out;
 };
 
@@ -458,9 +477,75 @@ void restore(Context& ctx) {
   p.V_active = ctx.pristine.V_active;
   p.Td_active = ctx.pristine.Td_active;
   p.asci_settings = ctx.pristine.asci_settings;
+  p.just_singles = ctx.pristine.just_singles;
   p.asci_wfn_fname.clear();
   p.compute_asci_E0 = true;
   p.asci_E0 = 0.0;
+}
+
+// Rotate the active integrals in place into the basis @p U, the way the
+// solver's macro iterations and the GF path do (T <- U^T T U, same for Td and
+// all four indices of V). The rotation mixes impurity orbitals among
+// themselves, so the interaction is no longer density-density: singles-only
+// must be turned off, and it must be turned off in p, because
+// SolveImpurityASCI_rot re-applies p.just_singles to its own generator.
+void rotate_active(params_t& p, const basis_t& U) {
+  macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
+      macis::matrix_span<double>(p.T_active.data(), p.n_active, p.n_active),
+      macis::rank4_span<double>(p.V_active.data(), p.n_active, p.n_active,
+                                p.n_active, p.n_active));
+  if(p.spin_dep)
+    ham_gen.ReadTdo(
+        macis::matrix_span<double>(p.Td_active.data(), p.n_active, p.n_active));
+  basis_t Ucopy = U;
+  ham_gen.rotate_hamiltonian_rotmat_imp_bath(Ucopy.data(), p.spin_dep);
+  p.just_singles = false;
+}
+
+// Read a rot_matrix.dat written by SolveImpurityASCI_rot (row i holds
+// orb_rot(i, 0..n-1)) and check it is a rotation that keeps impurity and bath
+// apart. Returns an empty basis and sets @p why if it is not usable.
+basis_t read_rot_matrix(const std::string& fname, size_t n, size_t n_imp,
+                        std::string& why) {
+  std::ifstream f(fname);
+  if(!f) {
+    why = "cannot open " + fname;
+    return {};
+  }
+  std::vector<double> v;
+  double x;
+  while(f >> x) v.push_back(x);
+  if(v.size() != n * n) {
+    why = fname + " holds " + std::to_string(v.size()) + " numbers, expected " +
+          std::to_string(n * n);
+    return {};
+  }
+  basis_t U(n * n);
+  for(size_t i = 0; i < n; ++i)
+    for(size_t j = 0; j < n; ++j) U[i + j * n] = v[i * n + j];
+  double orth = 0, mix = 0;
+  for(size_t i = 0; i < n; ++i)
+    for(size_t j = 0; j < n; ++j) {
+      double d = 0;
+      for(size_t k = 0; k < n; ++k) d += U[k + i * n] * U[k + j * n];
+      orth = std::max(orth, std::abs(d - (i == j ? 1.0 : 0.0)));
+      if((i < n_imp) != (j < n_imp))
+        mix = std::max(mix, std::abs(U[i + j * n]));
+    }
+  if(orth > 1e-8) {
+    std::ostringstream o;
+    o << fname << " is not orthogonal (max |U^T U - 1| = " << orth << ")";
+    why = o.str();
+    return {};
+  }
+  if(mix > 1e-10) {
+    std::ostringstream o;
+    o << fname << " mixes impurity and bath orbitals (max |U_ib| = " << mix
+      << ")";
+    why = o.str();
+    return {};
+  }
+  return U;
 }
 
 // Diagonalize in the seed space and hand the result to SolveImpurityASCI_rot as
@@ -524,9 +609,19 @@ SectorResult solve_sector_once(Context& ctx, size_t na, size_t nb,
     restore(ctx);
     p.nalpha = na;
     p.nbeta = nb;
-    if(ctx.opt.warm) p.asci_settings.nrots = 0;
+    // A seeded sector is solved with NROTS = 0 in the basis of its seed (the
+    // guess is only meaningful in that basis, and load_asci_guess refuses
+    // NROTS > 0); a cold one with the NROTS of the mode.
+    const bool seeded = src.kind != SeedSource::Cold;
+    const size_t nrots = seeded ? 0 : ctx.nrots_cold;
+    p.asci_settings.nrots = nrots;
+    if(seeded and src.U and !src.U->empty()) {
+      rotate_active(p, *src.U);
+      out << "basis       : natural orbitals inherited from " << src.label
+          << " (NROTS = 0 in that basis)" << std::endl;
+    }
 
-    if(src.kind != SeedSource::Cold) {
+    if(seeded) {
       std::vector<wfn_type> seed;
       if(src.kind == SeedSource::Parent) {
         auto w = ladder_to(*src.dets, *src.C, src.pa, src.pb, na, nb,
@@ -563,6 +658,15 @@ SectorResult solve_sector_once(Context& ctx, size_t na, size_t nb,
       r.dets = p.dets;
       r.C = p.C;
     }
+    // The basis the solution is written in. A seeded solve runs with NROTS = 0
+    // (the solver's orb_rot stays the identity) in its seed's basis; a cold one
+    // starts from the original orbitals and ends in the solver's orb_rot.
+    // n_band above needs no back-rotation either way: every rotation here is
+    // block-diagonal in (impurity, bath), so the impurity trace is invariant.
+    if(seeded)
+      r.U = src.U ? *src.U : basis_t{};
+    else if(nrots > 0)
+      r.U = p.orb_rot;
   } catch(const std::exception& e) {
     r.converged = false;
     std::string what = e.what();
@@ -618,6 +722,7 @@ class Scan {
       src.C = &par.C;
       src.pa = par.na;
       src.pb = par.nb;
+      src.U = &par.U;
       src.label = sector_str(par.na, par.nb);
     } else if(ctx_.opt.warm and Np) {
       src.label = "cold(parent failed)";
@@ -1026,8 +1131,15 @@ int main(int argc, char** argv) {
                "mirrors are not "
                "equivalent; only the minimal-|S_z| sector ((N+1)/2, N/2) is "
                "scanned\n";
+      const size_t nrots_cold = opt.warm_nrots0 ? 0 : nrots_input;
+      const bool inherit_basis = opt.warm and nrots_cold > 0;
       out << "mode        : "
-          << (opt.warm ? "warm start (NROTS forced to 0)" : "cold")
+          << (!opt.warm         ? "cold"
+              : opt.warm_nrots0 ? "warm start (NROTS forced to 0)"
+              : inherit_basis   ? "warm start (seeded sectors inherit the "
+                                  "parent's natural orbitals, NROTS = 0 "
+                                  "there; cold starts use NROTS(input))"
+                                : "warm start (NROTS = 0 in the input)")
           << ", search = " << opt.search
           << (opt.search == "walk" ? ", margin = " + std::to_string(opt.margin)
                                    : ", window = " + std::to_string(opt.window))
@@ -1035,7 +1147,8 @@ int main(int argc, char** argv) {
 
       Context ctx{
           &p,
-          Pristine{p.T_active, p.V_active, p.Td_active, p.asci_settings},
+          Pristine{p.T_active, p.V_active, p.Td_active, p.asci_settings,
+                   p.just_singles},
           opt,
           size_t(opt.seed_parents > 0 ? opt.seed_parents
                                       : long(p.asci_settings.ncdets_max)),
@@ -1043,25 +1156,48 @@ int main(int argc, char** argv) {
               opt.seed_size > 0
                   ? std::min<size_t>(opt.seed_size, p.asci_settings.ntdets_max)
                   : p.asci_settings.ntdets_max),
+          nrots_cold,
           &out};
       if(opt.warm)
         out << "seeds       : top " << ctx.seed_parents
             << " parent determinants, keep " << ctx.seed_size << "\n";
+      if(inherit_basis)
+        out << "note        : a seeded sector is solved in the natural-orbital "
+               "basis of the cold sector it descends from. That basis is "
+               "optimal for that sector only, which lowers its E slightly "
+               "relative to the others (typically ~1e-5 Ha, the size of the "
+               "NROTS gain). Near-degenerate sectors (--etol warning): confirm "
+               "with a cold run.\n";
 
-      // Reference wavefunction from the archive, warm mode only.
+      // Reference wavefunction from the archive, warm mode only. With NROTS > 0
+      // it is written in the natural-orbital basis stored next to it in
+      // rot_matrix.dat (both come from the solver's last call).
       SeedSource ref_src;
+      basis_t ref_U;
       if(opt.warm) {
         const std::string wfn_name =
             asci_wfn_out_fname.size()
                 ? fs::path(asci_wfn_out_fname).filename().string()
                 : "wfn.out";
         const std::string wfn_file = ini_dir + "/" + wfn_name;
+        const std::string rot_file = ini_dir + "/rot_matrix.dat";
         std::string why;
         if(!file_exists(wfn_file))
           why = "no " + wfn_name + " next to input.in";
-        else if(nrots_input > 0)
+        else if(nrots_input > 0 and opt.warm_nrots0)
           why = "input.in has NROTS = " + std::to_string(nrots_input) +
-                ", so " + wfn_name + " is in a natural-orbital basis";
+                ", so " + wfn_name +
+                " is in a natural-orbital basis, and --warm-nrots0 keeps "
+                "every sector in the original one";
+        else if(nrots_input > 0 and !file_exists(rot_file))
+          why = "input.in has NROTS = " + std::to_string(nrots_input) +
+                ", so " + wfn_name +
+                " is in a natural-orbital basis, and there is no "
+                "rot_matrix.dat next to input.in to say which";
+        else if(nrots_input > 0 and
+                (ref_U = read_rot_matrix(rot_file, p.n_active, p.n_imp, why))
+                    .empty())
+          ;  // why set by read_rot_matrix
         else {
           std::vector<wfn_type> d;
           std::vector<double> c;
@@ -1077,7 +1213,10 @@ int main(int argc, char** argv) {
           ref_src.kind = SeedSource::File;
           ref_src.fname = wfn_file;
           ref_src.label = "wfn.out";
-          out << "reference wfn: reusing " << wfn_file << "\n";
+          ref_src.U = &ref_U;
+          out << "reference wfn: reusing " << wfn_file;
+          if(!ref_U.empty()) out << " in the basis of " << rot_file;
+          out << "\n";
         } else {
           out << "reference wfn: solved from scratch (" << why << ")\n";
         }
@@ -1114,6 +1253,7 @@ int main(int argc, char** argv) {
             src.C = &g.C;
             src.pa = g.na;
             src.pb = g.nb;
+            src.U = &g.U;
             src.label = sector_str(g.na, g.nb);
           }
           spin_res = solve_sector(ctx, g.na + 1, g.nb - 1, src);

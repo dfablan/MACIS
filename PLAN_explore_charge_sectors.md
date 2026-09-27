@@ -213,3 +213,67 @@ Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives wer
 - `sbatch send_compile.job`.
 - Verification step 1 on the real 6-orbital `Ulysses_move/.../2bands/Doping/Nb4/J_0.1/U_10.00`
   case, and step 2 (warm vs cold, 3-band `It_7`, `--scale 0.01`), including a multi-rank run.
+
+## Warm start with NROTS > 0 ("option A", done)
+
+### What changed (`main/explore_charge_sectors.cxx` only; no library changes)
+- `--warm-start` no longer forces NROTS = 0 everywhere. A sector that starts **cold** (the
+  reference, or a fallback) uses the input's NROTS and ends in its own natural-orbital (NO) basis. A
+  **seeded** sector is solved in its parent's basis:
+  - before seeding, its active integrals are rotated in place by the parent's cumulative rotation
+    (`rotate_hamiltonian_rotmat_imp_bath`, T ← UᵀTU for T, Td and all four indices of V);
+  - it then runs with NROTS = 0 in that basis (`load_asci_guess` requires this anyway).
+
+  So every seeded sector ends up in the NO basis of the cold sector it descends from.
+- Each sector records the basis its determinants are in (`SectorResult::U`: the parent's basis for a
+  seeded sector, the solver's `orb_rot` for a cold sector with NROTS > 0, empty for the original
+  orbitals). That basis is passed on to its children and to `--check-spin`.
+- **Singles-only must be turned off after the rotation**, in `p` itself:
+  `SolveImpurityASCI_rot` re-applies `p.just_singles` to its own generator, and a rotated
+  density-density interaction has double excitations. `rotate_active` sets `p.just_singles = false`,
+  and `restore` puts the pristine value back for every sector.
+- n/band needs no back-rotation: all these rotations are block-diagonal in (impurity, bath), so the
+  impurity trace is invariant.
+- **Reference from the archive with NROTS > 0:** `wfn.out` is reused together with the
+  `rot_matrix.dat` next to it (both come from the solver's last call). The rotation matrix is checked
+  to be orthogonal (to 1e-8) and block-diagonal in (impurity, bath) (to 1e-10); if either check fails,
+  or `rot_matrix.dat` is missing, the reference is solved from scratch and the message says why.
+- `--warm-nrots0` (implies `--warm-start`) keeps the previous behaviour: NROTS = 0 for every sector,
+  all in the original orbitals.
+- Known bias, printed as a note at startup: the inherited basis is optimal only for the sector it
+  came from, which lowers that sector's E slightly relative to its descendants. At production size
+  this should be around the NROTS gain (~1e-5 Ha in the U_1.00 log). Confirm near-degenerate sectors
+  (`--etol` warning) with a cold run.
+
+### Verification (cloud container, single rank)
+- **Full space, NROTS = 2** (energy is basis-independent, so this checks the rotation and seeding):
+  matches exact ED to 1e-10 in every sector for (a) the Hund's-coupled model (J = 0.8, µ = 6, plus
+  `--check-spin` on the triplet), (b) a density-density model (J = 0, U' = 4.4 ≠ U, impurity
+  orbitals mixed ~45° by the NO rotation), and (c) a spin-dependent input (`CI.FCIDUMP_DO` with a
+  Zeeman field on the impurity; Td is rotated).
+- **Negative control:** without `p.just_singles = false`, case (b) is off by up to 1.3e-2 Ha in the
+  inherited sectors, so the test catches that mistake.
+- **Truncated space** (10 orbitals, NTDETS_MAX = 800 of up to 63504 determinants, NROTS = 2,
+  window 2 around N = 10; exact ground state N = 9). Errors vs exact ED:
+
+  | N | cold (NROTS = 2) | warm, option A | `--warm-nrots0` |
+  |---|---|---|---|
+  | 8 | UNCONVERGED | 3.1e-3 | UNCONVERGED |
+  | 9 | 2.1e-4 | 6.7e-4 | 4.9e-3 |
+  | 10 (reference) | 3.6e-4 | 3.6e-4 | 8.2e-3 |
+  | 11 | 4.1e-4 | 1.0e-3 | 6.6e-3 |
+  | 12 | 1.0e-1 (stuck from the HF start) | 4.9e-3 | 1.1e-2 |
+
+  All three find N = 9. Option A converges every sector. It is 2–10× more accurate than
+  `--warm-nrots0`, and 2–5× less accurate than each sector's own NO basis: that is the inherited-basis
+  bias, which is large here because the budget is tiny.
+  (With REFINE_ETOL = 1e-8 instead of 1e-6, cold refinement flipped between two determinant sets at
+  dE = ±1.4e-6 and never converged, which also made the cold run report N = 10. This is a tolerance
+  choice, not a code problem; production uses 1e-4.)
+- **Archive reuse:** `run_asci_impsolv_dop` with NROTS = 2 wrote `wfn.out` and `rot_matrix.dat`. The
+  warm scan seeded from them reproduces the production E(CI) exactly (E_seed = E = −12.9801768906),
+  and its neighbours match the cold-reference warm run. A non-orthogonal matrix, an impurity–bath
+  mixing matrix, a missing `rot_matrix.dat`, and `--warm-nrots0` are each rejected with the right
+  message.
+- **Regression:** cold runs (NROTS = 0 and 2) and warm runs with NROTS = 0 in the input give tables
+  identical to before the change.
