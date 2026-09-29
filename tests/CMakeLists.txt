@@ -25,6 +25,7 @@ add_executable( macis_test
   hubbard.cxx
   impurity_rdm.cxx
   dynamical_properties.cxx
+  gf.cxx
 )
 target_link_libraries( macis_test PUBLIC macis Catch2::Catch2 )
 target_include_directories( macis_test PUBLIC ${PROJECT_BINARY_DIR}/tests )

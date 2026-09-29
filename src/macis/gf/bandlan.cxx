@@ -191,8 +191,9 @@ double LowestRitzValue(const std::vector<double> &bandH, int nLanIts) {
   return W[0];
 }
 
+template <typename index_t>
 void BandResolvent(
-    const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, int32_t> >
+    const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, index_t> >
         &H,
     std::vector<double> &vecs, const std::vector<std::complex<double> > &ws,
     std::vector<std::vector<std::complex<double> > > &res, int nLanIts,
@@ -379,5 +380,19 @@ void BandResolvent(
   }
   std::cout << "DONE!" << std::endl;
 }
+
+// Explicit instantiations: 32-bit sparse indices (default) and 64-bit ones,
+// needed once a GF Hamiltonian has more than INT32_MAX nonzeros.
+#define MACIS_BANDRESOLVENT_INST(IDX)                                          \
+  template void BandResolvent<IDX>(                                            \
+      const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, IDX> >   \
+          &H,                                                                  \
+      std::vector<double> &vecs, const std::vector<std::complex<double> > &ws, \
+      std::vector<std::vector<std::complex<double> > > &res, int nLanIts,      \
+      double E0, bool ispart, int nvecs, int len_vec, bool print,              \
+      bool saveGFmats, double *E_lowest);
+MACIS_BANDRESOLVENT_INST(int32_t)
+MACIS_BANDRESOLVENT_INST(int64_t)
+#undef MACIS_BANDRESOLVENT_INST
 
 }  // namespace macis
