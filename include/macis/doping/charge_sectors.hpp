@@ -32,15 +32,20 @@ namespace macis {
 
 /// Settings of the sector search (DOP.SECTOR_* keys of run_asci_impsolv_dop).
 struct ChargeSectorSettings {
-  bool enabled = true;      ///< DOP.SECTOR_SEARCH
-  bool warm = true;         ///< seed neighbours from the solved sector
-  bool warm_nrots0 = false; ///< explore_charge_sectors only: NROTS = 0 everywhere
-  size_t margin = 2;        ///< walk until the minimum has `margin` sectors on each side
-  double etol = 1e-4;       ///< a sector must lie more than this below to replace the current one
-  size_t seed_parents = 0;  ///< parent determinants used for a seed (0: NCDETS_MAX)
-  size_t seed_size = 0;     ///< determinants kept in a seed (0: NTDETS_MAX)
-  size_t max_switch = 4;    ///< cap on sector switches in Fix_Mu_sectors
-  std::string workdir = "charge_sectors";  ///< scratch dir for seed files and solver side files
+  bool enabled = true;  ///< DOP.SECTOR_SEARCH
+  bool warm = true;     ///< seed neighbours from the solved sector
+  bool warm_nrots0 =
+      false;  ///< explore_charge_sectors only: NROTS = 0 everywhere
+  size_t margin =
+      2;  ///< walk until the minimum has `margin` sectors on each side
+  double etol = 1e-4;  ///< a sector must lie more than this below to replace
+                       ///< the current one
+  size_t seed_parents =
+      0;  ///< parent determinants used for a seed (0: NCDETS_MAX)
+  size_t seed_size = 0;   ///< determinants kept in a seed (0: NTDETS_MAX)
+  size_t max_switch = 4;  ///< cap on sector switches in Fix_Mu_sectors
+  std::string workdir =
+      "charge_sectors";  ///< scratch dir for seed files and solver side files
   std::ostream* out = &std::cout;
 };
 
@@ -75,7 +80,8 @@ template <size_t N>
 struct SeedSource {
   enum Kind { Cold, Parent, File } kind = Cold;
   std::string label = "cold";
-  const std::vector<wfn_t<N>>* dets = nullptr;  ///< Parent: the parent's wavefunction
+  const std::vector<wfn_t<N>>* dets =
+      nullptr;  ///< Parent: the parent's wavefunction
   const std::vector<double>* C = nullptr;
   size_t pa = 0, pb = 0;
   std::string fname;  ///< File
@@ -90,7 +96,8 @@ struct SectorResult {
   std::string status, seed;
   double E = NAN, E_seed = NAN, n_band = NAN, time_s = 0;
   size_t ndets = 0;
-  std::vector<wfn_t<N>> dets;  ///< kept while the sector may still seed a neighbour
+  std::vector<wfn_t<N>>
+      dets;  ///< kept while the sector may still seed a neighbour
   std::vector<double> C;
   basis_t U;  ///< orbital basis dets/C are written in
 };
@@ -103,7 +110,7 @@ struct SectorContext {
   size_t seed_parents, seed_size;
   size_t nrots_cold;  ///< NROTS of a solve that starts cold
   std::ostream* out;
-  bool use_ed = false;      ///< solve sectors with CAS instead of ASCI (no seeding)
+  bool use_ed = false;  ///< solve sectors with CAS instead of ASCI (no seeding)
   bool beta_heavy = false;  ///< odd-N sectors are (k, k+1)
 };
 
@@ -159,7 +166,8 @@ class SectorScan {
 
 void write_header(std::ostream& os, const std::string& lead);
 template <size_t N>
-void write_row(std::ostream& os, size_t n, const SectorResult<N>& r, double Emin);
+void write_row(std::ostream& os, size_t n, const SectorResult<N>& r,
+               double Emin);
 
 }  // namespace charge_sectors
 
@@ -169,18 +177,20 @@ void write_row(std::ostream& os, size_t n, const SectorResult<N>& r, double Emin
  * followed by @p extra (comment lines). @p p holds the accepted solution.
  */
 template <size_t N>
-void write_ground_sector_file(const std::string& fname, const impurity_params<N>& p,
-                              double mu, const std::string& extra);
+void write_ground_sector_file(const std::string& fname,
+                              const impurity_params<N>& p, double mu,
+                              const std::string& extra);
 
 /**
- * @brief Fixes mu (Fix_Mu_der / Fix_Mu_noder) AND finds the ground-state sector.
+ * @brief Fixes mu (Fix_Mu_der / Fix_Mu_noder) AND finds the ground-state
+ * sector.
  *
  * Outer loop around the existing mu search, in the sector (NALPHA, NBETA) of
  * @p params:
  *  1. mu search in the current sector N.
  *  2. At the converged mu, scan the neighbouring sectors (SectorScan::walk,
- *     `margin`). Every sector is solved with the same integrals, so the energies
- *     compare directly.
+ *     `margin`). Every sector is solved with the same integrals, so the
+ * energies compare directly.
  *  3. Accept N if no scanned sector lies more than `etol` below it. Otherwise
  *     switch to the lowest sector and go back to 1, starting from the same mu.
  *
@@ -193,7 +203,8 @@ void write_ground_sector_file(const std::string& fname, const impurity_params<N>
  * to the working directory.
  */
 template <size_t N>
-double Fix_Mu_sectors(const std::string& method_name, bool deriv, double& init_mu,
-                      impurity_params<N>* params, const ChargeSectorSettings& settings);
+double Fix_Mu_sectors(const std::string& method_name, bool deriv,
+                      double& init_mu, impurity_params<N>* params,
+                      const ChargeSectorSettings& settings);
 
 }  // namespace macis

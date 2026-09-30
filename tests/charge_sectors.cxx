@@ -114,7 +114,8 @@ struct ScratchDir {
   std::filesystem::path old = std::filesystem::current_path();
   std::filesystem::path dir;
   ScratchDir(const std::string& tag) {
-    dir = std::filesystem::temp_directory_path() / ("macis_charge_sectors_" + tag);
+    dir = std::filesystem::temp_directory_path() /
+          ("macis_charge_sectors_" + tag);
     std::filesystem::create_directories(dir);
     std::filesystem::current_path(dir);
   }
@@ -134,12 +135,14 @@ TEST_CASE("Charge sector search in the doping mu search") {
   macis::ChargeSectorSettings cs;
   cs.workdir = "charge_sectors";
 
-  auto run = [&](CIExpansion ci, size_t na, size_t nb, double target, size_t nrots = 0) {
+  auto run = [&](CIExpansion ci, size_t na, size_t nb, double target,
+                 size_t nrots = 0) {
     params_t p = make_model(ci, na, nb);
     p.asci_settings.nrots = nrots;
     p.nel_target = target;
     double init_mu = -3.0;
-    const double mu = macis::Fix_Mu_sectors<NB>("brent", false, init_mu, &p, cs);
+    const double mu =
+        macis::Fix_Mu_sectors<NB>("brent", false, init_mu, &p, cs);
     return std::make_pair(mu, p);
   };
 
