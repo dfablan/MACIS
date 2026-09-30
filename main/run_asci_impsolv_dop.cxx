@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <macis/comp_observables.hpp>
+#include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
@@ -373,15 +374,41 @@ int main(int argc, char** argv) {
               << " electrons in " << std::setprecision(1) << params.n_imp
               << " orbitals \n";
 
+    // Charge-sector search: after the mu search, the neighbouring sectors are
+    // solved at the same mu and the run moves to the lowest one if it lies more
+    // than SECTOR_ETOL below. Writes GS_charge_sector.dat.
+    macis::ChargeSectorSettings sector_settings;
+    OPT_KEYWORD("DOP.SECTOR_SEARCH", sector_settings.enabled, bool);
+    OPT_KEYWORD("DOP.SECTOR_MARGIN", sector_settings.margin, size_t);
+    OPT_KEYWORD("DOP.SECTOR_ETOL", sector_settings.etol, double);
+    OPT_KEYWORD("DOP.SECTOR_WARM", sector_settings.warm, bool);
+    OPT_KEYWORD("DOP.SECTOR_MAX_SWITCH", sector_settings.max_switch, size_t);
+    OPT_KEYWORD("DOP.SECTOR_DIR", sector_settings.workdir, std::string);
+    if(sector_settings.margin < 1)
+      throw std::runtime_error("DOP.SECTOR_MARGIN must be >= 1");
+
     double mu_fixed;
 
-    if(deriv){
-      std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
-      mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
+    if(sector_settings.enabled) {
+      std::cout << "Find mu and the ground-state charge sector. Method: "
+                << (deriv ? "WITH" : "WITHOUT") << " derivatives, " << method_name
+                << std::endl;
+      mu_fixed = macis::Fix_Mu_sectors<nwfn_bits>(method_name, deriv, init_mu,
+                                                  &params, sector_settings);
     }
-    else{
-      std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
-      mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+    else {
+      if(deriv){
+        std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
+        mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
+      }
+      else{
+        std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
+        mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+      }
+      macis::write_ground_sector_file<nwfn_bits>(
+          "GS_charge_sector.dat", params, mu_fixed,
+          "# sector search: off (DOP.SECTOR_SEARCH = false); the sector is the "
+          "one of input.in, not verified\n");
     }
 
     std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed

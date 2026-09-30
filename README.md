@@ -225,6 +225,30 @@ ABS_TOL     = 1e-6
 MAXITER     = 100
 ```
 
+With `DOPING = true` the driver also looks for the ground-state **charge
+sector**. After the `mu` search in `(NALPHA, NBETA)` it solves the neighbouring
+sectors at the same `mu` (they share the integrals, so `E(CI)` compares
+directly), and if one lies more than `SECTOR_ETOL` below it, moves there and
+searches `mu` again. The sector that is finally accepted is written, with `mu`
+and the scan, to `GS_charge_sector.dat` (and printed as a `GROUND_SECTOR ...`
+line). The sector is accepted when no sector among `N-SECTOR_MARGIN ..
+N+SECTOR_MARGIN` (more if the minimum moves) is lower by more than
+`SECTOR_ETOL`. If the target filling lies in a jump of the ground-state filling
+(two sectors cross there) no ground state has it and the run stops with an
+error.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `DOP.SECTOR_SEARCH`     | `TRUE`            | `FALSE`: fix `mu` in the input sector only, as before |
+| `DOP.SECTOR_MARGIN`     | `2`               | sectors that must be solved above and below the minimum |
+| `DOP.SECTOR_ETOL`       | `1e-4`            | a sector must be lower by more than this (Eh) to replace the current one |
+| `DOP.SECTOR_WARM`       | `TRUE`            | seed the neighbours from the solved sector (otherwise cold) |
+| `DOP.SECTOR_MAX_SWITCH` | `4`               | maximum number of sector changes |
+| `DOP.SECTOR_DIR`        | `charge_sectors`  | scratch directory of the neighbour solves |
+
+`explore_charge_sectors` runs the same scan at a fixed `mu`, starting from an
+archived iteration (see `main/explore_charge_sectors.cxx`).
+
 This is a minimal illustration rather than a complete reference. The
 authoritative list of recognised keys is the set of `input.get<...>("SECTION.KEY")`
 calls in the corresponding driver source under `main/`; the parser itself lives

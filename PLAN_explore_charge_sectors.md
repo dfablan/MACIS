@@ -277,3 +277,50 @@ Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives wer
   message.
 - **Regression:** cold runs (NROTS = 0 and 2) and warm runs with NROTS = 0 in the input give tables
   identical to before the change.
+
+## Charge-sector search inside the doping mu search (done)
+
+### What it does
+With `CI.DOPING = true`, `run_asci_impsolv_dop` now calls `macis::Fix_Mu_sectors`
+(`src/macis/doping/charge_sectors.cpp`) instead of `Fix_Mu_der/noder` directly.
+It is an outer loop around the existing mu search:
+1. mu search in the current sector N (unchanged code).
+2. At the converged mu, scan the neighbours (`SectorScan::walk`, margin `DOP.SECTOR_MARGIN`,
+   default 2), seeded from the solved sector with the same ladder seeds as `--warm-start`.
+3. **Accept N** if no scanned converged sector lies more than `DOP.SECTOR_ETOL` (1e-4) below it.
+   Sectors within etol give a warning. Unconverged neighbours are warned about and left out.
+4. Otherwise **switch** to the lowest sector and go to 1, starting from the same mu. The new search
+   starts from the scan's wavefunction when NROTS = 0 (original basis), otherwise cold; if it fails it is redone cold.
+5. **Error** (the run stops) if a sector would be searched twice (the target filling lies in a jump of
+   the ground-state filling: no ground state has it) or after `DOP.SECTOR_MAX_SWITCH` (4) switches.
+The target is the filling of the lowest E_N(mu) over N. Only minimal-|S_z| sectors are scanned; an
+input sector with |NALPHA - NBETA| > 1 skips the search with a warning.
+The accepted sector, mu and the final scan go to `GS_charge_sector.dat` (also written, with a note, when
+`DOP.SECTOR_SEARCH = FALSE`), and to stdout as `GROUND_SECTOR NALPHA = a NBETA = b N = n E = e MU = x`.
+The DMFT script reads that file to update NALPHA/NBETA of the next iteration's input.in; the solver does not.
+Keys: `DOP.SECTOR_SEARCH, _MARGIN, _ETOL, _WARM, _MAX_SWITCH, _DIR` (see README).
+
+### Code
+- New `include/macis/doping/charge_sectors.hpp`, `src/macis/doping/charge_sectors.cpp`: the seeding,
+  solving and scan code moved out of `main/explore_charge_sectors.cxx` (unchanged behaviour), plus
+  `Fix_Mu_sectors` and `write_ground_sector_file`. Neighbours are solved with ED when `CI.EXPANSION = CAS`.
+  In cheap mode the current sector is re-solved with full ASCI for the comparison.
+- `main/run_asci_impsolv_dop.cxx`: reads the keys and calls `Fix_Mu_sectors`.
+- `main/explore_charge_sectors.cxx`: uses the library.
+- New unit test `tests/charge_sectors.cxx`.
+
+### Verification (cloud container, single rank)
+- `explore_charge_sectors` output (tables, verdicts, GROUND_SECTOR) is identical before and after the
+  refactor for cold, warm, `--warm-nrots0` and `--check-spin` runs on the synthetic models.
+- Synthetic 6-orbital, 2-band Kanamori model with an independent Python ED reference. Target 0.6
+  electrons/orbital (exact: N = 5 at x = -3.157801413, E = -8.8789574814): starting from the wrong sector
+  (3,3) the run switches to (3,2) and ends at x = -3.15780143, E = -8.87895750, for ASCI with NROTS = 0 and 2,
+  warm and cold neighbours, CAS, cheap mode, margin 1, and the secant solver (derivative method).
+  Target 0.9 (exact N = 6, x = -4.04132321): stays in or switches to (3,3) from either side.
+  Target 0.75 (a jump: N = 5 at x = -4.117, N = 6 at x = -3.030, each lower at the other's mu): error.
+- With `DOP.SECTOR_SEARCH = FALSE` the driver output equals the unmodified driver's (timing digits aside).
+- `macis_test`: 30 of 31 cases pass; the failing one is the known `ASCI Symmetric Search`.
+- Observed, not new: with NROTS = 2 the bracketing mu search in a sector can stop on a discontinuity of
+  n(mu) (two states of different character at the same mu, e.g. inside the S_z = 0 sector). The sector
+  search now warns when the final filling misses the target by more than 1e-3.
+- Not verified: multi-rank MPI (same container problem as above). Run one short multi-rank job on the cluster.

@@ -57,6 +57,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <macis/doping/charge_sectors.hpp>
 #include <macis/impurity_solver.hpp>
 #include <map>
 #include <numeric>
@@ -284,222 +285,24 @@ std::string resolve_source(Options& o, std::ostream& out) {
   return ini.string();
 }
 
-// ---- small utilities
-// --------------------------------------------------------------------
+// ---- helpers that stay here (the seeding / solving / scan code is in
+// macis/doping/charge_sectors.hpp)
+// ---------------------------------------------------------------------
 
-size_t split_alpha(size_t N) { return (N + 1) / 2; }
-size_t split_beta(size_t N) { return N / 2; }
+using macis::charge_sectors::basis_t;
+using macis::charge_sectors::sector_str;
+using macis::charge_sectors::split_alpha;
+using macis::charge_sectors::split_beta;
+using macis::charge_sectors::write_header;
+using SectorResult = macis::charge_sectors::SectorResult<nwfn_bits>;
+using SeedSource = macis::charge_sectors::SeedSource<nwfn_bits>;
+using Context = macis::charge_sectors::SectorContext<nwfn_bits>;
+using Pristine = macis::charge_sectors::Pristine<nwfn_bits>;
+using Scan = macis::charge_sectors::SectorScan<nwfn_bits>;
 
-std::string sector_str(size_t a, size_t b) {
-  return "(" + std::to_string(a) + "," + std::to_string(b) + ")";
-}
-
-// Gather a Davidson eigenvector distributed as in selected_ci_diag (block rows,
-// remainder on the last rank) into a full, replicated vector. Same scheme as
-// asci_iter.
-std::vector<double> gather_C(std::vector<double> C_local, size_t ndets) {
-#ifdef MACIS_ENABLE_MPI
-  auto world_size = macis::comm_size(MPI_COMM_WORLD);
-  if(world_size > 1) {
-    std::vector<double> C(ndets);
-    const size_t local_count = ndets / world_size;
-    MPI_Allgather(C_local.data(), local_count, MPI_DOUBLE, C.data(),
-                  local_count, MPI_DOUBLE, MPI_COMM_WORLD);
-    if(ndets % world_size) {
-      const size_t nrem = ndets % world_size;
-      auto* C_rem = C.data() + world_size * local_count;
-      if(world_rank == world_size - 1)
-        std::copy_n(C_local.data() + local_count, nrem, C_rem);
-      MPI_Bcast(C_rem, nrem, MPI_DOUBLE, world_size - 1, MPI_COMM_WORLD);
-    }
-    return C;
-  }
-#endif
-  (void)ndets;
-  return C_local;
-}
-
-// ---- seeds
-// ------------------------------------------------------------------------------
-
-using weight_map_t =
-    std::map<wfn_type, double, macis::bitset_less_comparator<nwfn_bits>>;
-
-// Apply c^dagger_{i,spin} (create) or c_{i,spin} to the top @p nparents
-// determinants of (dets, C) (ranked by |C|) for every active orbital i that
-// allows it. Each image collects sqrt(sum C_parent^2) over the parents that
-// reach it. Only the ranking is used afterwards (Davidson recomputes C), so
-// fermionic signs are dropped: summing signed amplitudes could cancel an image
-// that two different i reach.
-weight_map_t apply_ladder(const std::vector<wfn_type>& dets,
-                          const std::vector<double>& C, int spin, bool create,
-                          size_t nparents, size_t n_active) {
-  std::vector<size_t> order(dets.size());
-  std::iota(order.begin(), order.end(), 0);
-  nparents = std::min(nparents, dets.size());
-  std::partial_sort(
-      order.begin(), order.begin() + nparents, order.end(),
-      [&](size_t x, size_t y) { return std::abs(C[x]) > std::abs(C[y]); });
-
-  const size_t off = spin ? nwfn_bits / 2 : 0;
-  weight_map_t w;
-  for(size_t k = 0; k < nparents; ++k) {
-    const auto& d = dets[order[k]];
-    const double c2 = C[order[k]] * C[order[k]];
-    for(size_t i = 0; i < n_active; ++i) {
-      const bool occ = d[i + off];
-      if(occ == create) continue;
-      auto e = d;
-      e.flip(i + off);
-      w[e] += c2;
-    }
-  }
-  for(auto& [d, x] : w) x = std::sqrt(x);
-  return w;
-}
-
-std::pair<std::vector<wfn_type>, std::vector<double>> unzip(
-    const weight_map_t& w) {
-  std::vector<wfn_type> d;
-  std::vector<double> c;
-  d.reserve(w.size());
-  c.reserve(w.size());
-  for(auto& [k, v] : w) {
-    d.push_back(k);
-    c.push_back(v);
-  }
-  return {d, c};
-}
-
-// One ladder step from (pa, pb) to (ta, tb), or two for a move in both spins.
-weight_map_t ladder_to(const std::vector<wfn_type>& dets,
-                       const std::vector<double>& C, size_t pa, size_t pb,
-                       size_t ta, size_t tb, size_t nparents, size_t n_active) {
-  if(pa == ta and pb == tb) {
-    weight_map_t w;
-    for(size_t i = 0; i < dets.size(); ++i) w[dets[i]] += C[i] * C[i];
-    for(auto& [d, x] : w) x = std::sqrt(x);
-    return w;
-  }
-  // Beta first, so an S_z flip (a+1, b-1) removes a down electron before adding
-  // an up one.
-  if(pb != tb) {
-    const bool create = tb > pb;
-    if((create ? tb - pb : pb - tb) != 1)
-      throw std::logic_error("ladder_to: beta count changes by more than one");
-    auto w = apply_ladder(dets, C, 1, create, nparents, n_active);
-    auto [d, c] = unzip(w);
-    return ladder_to(d, c, pa, tb, ta, tb, pa == ta ? nparents : d.size(),
-                     n_active);
-  }
-  const bool create = ta > pa;
-  if((create ? ta - pa : pa - ta) != 1)
-    throw std::logic_error("ladder_to: alpha count changes by more than one");
-  return apply_ladder(dets, C, 0, create, nparents, n_active);
-}
-
-// Keep the @p nkeep heaviest determinants, and check they all sit in (na, nb).
-std::vector<wfn_type> truncate_seed(const weight_map_t& w, size_t nkeep,
-                                    size_t na, size_t nb) {
-  std::vector<std::pair<double, wfn_type>> v;
-  v.reserve(w.size());
-  for(auto& [d, x] : w) v.push_back({x, d});
-  nkeep = std::min(nkeep, v.size());
-  // Ties broken on the bitset so every rank keeps the same determinants.
-  std::partial_sort(v.begin(), v.begin() + nkeep, v.end(),
-                    [](const auto& x, const auto& y) {
-                      if(x.first != y.first) return x.first > y.first;
-                      return macis::bitset_less(x.second, y.second);
-                    });
-  std::vector<wfn_type> dets(nkeep);
-  for(size_t i = 0; i < nkeep; ++i) {
-    dets[i] = v[i].second;
-    const size_t a = macis::bitset_lo_word(dets[i]).count();
-    const size_t b = macis::bitset_hi_word(dets[i]).count();
-    if(a != na or b != nb)
-      throw std::logic_error("seed determinant in " + sector_str(a, b) +
-                             ", expected " + sector_str(na, nb));
-  }
-  return dets;
-}
-
-// ---- solving one sector
-// -----------------------------------------------------------------
-
-struct Pristine {
-  std::vector<double> T_active, V_active, Td_active;
-  macis::ASCISettings asci_settings;
-  bool just_singles;
-};
-
-// An orbital basis, as the cumulative rotation from the original active
-// orbitals (n_active x n_active, column-major, the convention of
-// impurity_params::orb_rot). Empty means the original orbitals.
-using basis_t = std::vector<double>;
-
-// Where a sector's starting wavefunction comes from.
-struct SeedSource {
-  enum Kind { Cold, Parent, File } kind = Cold;
-  std::string label = "cold";
-  const std::vector<wfn_type>* dets =
-      nullptr;  // Parent: the parent's wavefunction
-  const std::vector<double>* C = nullptr;
-  size_t pa = 0, pb = 0;
-  std::string fname;  // File
-  // Orbital basis the seed determinants are written in (Parent, File)
-  const basis_t* U = nullptr;
-};
-
-struct SectorResult {
-  size_t na = 0, nb = 0;
-  bool converged = false;
-  std::string status, seed;
-  double E = NAN, E_seed = NAN, n_band = NAN, time_s = 0;
-  size_t ndets = 0;
-  std::vector<wfn_type>
-      dets;  // kept while the sector may still seed a neighbour
-  std::vector<double> C;
-  basis_t U;  // orbital basis dets/C are written in
-};
-
-struct Context {
-  params_t* p;
-  Pristine pristine;
-  Options opt;
-  size_t seed_parents, seed_size;
-  size_t nrots_cold;  // NROTS of a solve that starts cold
-  std::ostream* out;
-};
-
-void restore(Context& ctx) {
-  auto& p = *ctx.p;
-  p.T_active = ctx.pristine.T_active;
-  p.V_active = ctx.pristine.V_active;
-  p.Td_active = ctx.pristine.Td_active;
-  p.asci_settings = ctx.pristine.asci_settings;
-  p.just_singles = ctx.pristine.just_singles;
-  p.asci_wfn_fname.clear();
-  p.compute_asci_E0 = true;
-  p.asci_E0 = 0.0;
-}
-
-// Rotate the active integrals in place into the basis @p U, the way the
-// solver's macro iterations and the GF path do (T <- U^T T U, same for Td and
-// all four indices of V). The rotation mixes impurity orbitals among
-// themselves, so the interaction is no longer density-density: singles-only
-// must be turned off, and it must be turned off in p, because
-// SolveImpurityASCI_rot re-applies p.just_singles to its own generator.
-void rotate_active(params_t& p, const basis_t& U) {
-  macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
-      macis::matrix_span<double>(p.T_active.data(), p.n_active, p.n_active),
-      macis::rank4_span<double>(p.V_active.data(), p.n_active, p.n_active,
-                                p.n_active, p.n_active));
-  if(p.spin_dep)
-    ham_gen.ReadTdo(
-        macis::matrix_span<double>(p.Td_active.data(), p.n_active, p.n_active));
-  basis_t Ucopy = U;
-  ham_gen.rotate_hamiltonian_rotmat_imp_bath(Ucopy.data(), p.spin_dep);
-  p.just_singles = false;
+void write_row(std::ostream& os, size_t N, const SectorResult& r,
+               double Emin) {
+  macis::charge_sectors::write_row<nwfn_bits>(os, N, r, Emin);
 }
 
 // Read a rot_matrix.dat written by SolveImpurityASCI_rot (row i holds
@@ -546,276 +349,6 @@ basis_t read_rot_matrix(const std::string& fname, size_t n, size_t n_imp,
     return {};
   }
   return U;
-}
-
-// Diagonalize in the seed space and hand the result to SolveImpurityASCI_rot as
-// a guess. Returns E_seed (total energy).
-double solve_from_seed(Context& ctx, std::vector<wfn_type> dets,
-                       const std::string& fname) {
-  auto& p = *ctx.p;
-  macis::SDBuildHamiltonianGenerator<nwfn_bits> ham_gen(
-      macis::matrix_span<double>(p.T_active.data(), p.n_active, p.n_active),
-      macis::rank4_span<double>(p.V_active.data(), p.n_active, p.n_active,
-                                p.n_active, p.n_active));
-  if(p.spin_dep)
-    ham_gen.ReadTdo(
-        macis::matrix_span<double>(p.Td_active.data(), p.n_active, p.n_active));
-  ham_gen.SetJustSingles(p.just_singles);
-  ham_gen.SetNimp(p.n_imp);
-
-  double E_act;
-  std::vector<double> C;
-  if(dets.size() == 1) {
-    E_act = ham_gen.matrix_element(dets[0], dets[0]);
-    C = {1.0};
-  } else {
-    std::vector<double> C_local;
-    E_act = macis::selected_ci_diag(
-        dets.begin(), dets.end(), ham_gen, p.mcscf_settings.ci_matel_tol,
-        p.mcscf_settings.ci_max_subspace, p.mcscf_settings.ci_res_tol,
-        C_local MACIS_MPI_CODE(, MPI_COMM_WORLD), true);
-    C = gather_C(std::move(C_local), dets.size());
-  }
-  const double E_seed = E_act + p.E_core + p.E_inactive;
-
-  if(is_root) macis::write_wavefunction(fname, p.n_active, dets, C);
-  barrier();
-
-  p.asci_wfn_fname = fname;
-  p.compute_asci_E0 = false;
-  p.asci_E0 = E_seed;
-  return E_seed;
-}
-
-SectorResult solve_sector_once(Context& ctx, size_t na, size_t nb,
-                               const SeedSource& src) {
-  auto& p = *ctx.p;
-  auto& out = *ctx.out;
-  using clock = std::chrono::steady_clock;
-  const auto t0 = clock::now();
-
-  SectorResult r;
-  r.na = na;
-  r.nb = nb;
-  r.seed = src.label;
-
-  out << "\n"
-      << std::string(90, '=') << "\n"
-      << "SECTOR " << sector_str(na, nb) << "  N = " << na + nb
-      << "  start: " << src.label << "\n"
-      << std::string(90, '=') << std::endl;
-
-  try {
-    restore(ctx);
-    p.nalpha = na;
-    p.nbeta = nb;
-    // A seeded sector is solved with NROTS = 0 in the basis of its seed (the
-    // guess is only meaningful in that basis, and load_asci_guess refuses
-    // NROTS > 0); a cold one with the NROTS of the mode.
-    const bool seeded = src.kind != SeedSource::Cold;
-    const size_t nrots = seeded ? 0 : ctx.nrots_cold;
-    p.asci_settings.nrots = nrots;
-    if(seeded and src.U and !src.U->empty()) {
-      rotate_active(p, *src.U);
-      out << "basis       : natural orbitals inherited from " << src.label
-          << " (NROTS = 0 in that basis)" << std::endl;
-    }
-
-    if(seeded) {
-      std::vector<wfn_type> seed;
-      if(src.kind == SeedSource::Parent) {
-        auto w = ladder_to(*src.dets, *src.C, src.pa, src.pb, na, nb,
-                           ctx.seed_parents, p.n_active);
-        seed = truncate_seed(w, ctx.seed_size, na, nb);
-      } else {
-        std::vector<wfn_type> d;
-        std::vector<double> c;
-        macis::read_wavefunction(src.fname, d, c, true);
-        weight_map_t w;
-        for(size_t i = 0; i < d.size(); ++i) w[d[i]] += c[i] * c[i];
-        seed = truncate_seed(w, ctx.seed_size, na, nb);
-      }
-      if(seed.empty())
-        throw std::runtime_error(
-            "empty seed: no determinant of the parent maps into " +
-            sector_str(na, nb));
-      const std::string fname = ctx.opt.workdir + "/seed_Na" +
-                                std::to_string(na) + "_Nb" +
-                                std::to_string(nb) + ".wfn";
-      r.E_seed = solve_from_seed(ctx, std::move(seed), fname);
-      out << "seed        : " << p.asci_wfn_fname << "  E_seed = " << std::fixed
-          << std::setprecision(10) << r.E_seed << std::endl;
-    }
-
-    r.E = macis::SolveImpurityASCI_rot<nwfn_bits>(p);
-    r.converged = std::isfinite(r.E);
-    r.status = r.converged ? "OK" : "NONFINITE";
-    r.ndets = p.dets.size();
-    double s = 0;
-    for(size_t i = 0; i < p.n_imp; ++i) s += p.occs[i];
-    r.n_band = 2.0 * s / p.n_imp;
-    if(r.converged) {
-      r.dets = p.dets;
-      r.C = p.C;
-    }
-    // The basis the solution is written in. A seeded solve runs with NROTS = 0
-    // (the solver's orb_rot stays the identity) in its seed's basis; a cold one
-    // starts from the original orbitals and ends in the solver's orb_rot.
-    // n_band above needs no back-rotation either way: every rotation here is
-    // block-diagonal in (impurity, bath), so the impurity trace is invariant.
-    if(seeded)
-      r.U = src.U ? *src.U : basis_t{};
-    else if(nrots > 0)
-      r.U = p.orb_rot;
-  } catch(const std::exception& e) {
-    r.converged = false;
-    std::string what = e.what();
-    r.status = what.find("did not converge") != std::string::npos
-                   ? "UNCONVERGED"
-                   : "FAILED";
-    out << "WARNING: sector " << sector_str(na, nb) << " " << r.status << ": "
-        << what << std::endl;
-  }
-  r.time_s = std::chrono::duration<double>(clock::now() - t0).count();
-  return r;
-}
-
-// A seeded solve that fails for any reason other than refinement not converging
-// (e.g. the seed already holds NTDETS_MAX determinants and the ASCI search
-// cannot reproduce that many, which asci_refine refuses) is retried cold, so
-// the scan does not lose the sector.
-SectorResult solve_sector(Context& ctx, size_t na, size_t nb,
-                          const SeedSource& src) {
-  auto r = solve_sector_once(ctx, na, nb, src);
-  if(src.kind == SeedSource::Cold or r.converged or r.status == "UNCONVERGED")
-    return r;
-  *ctx.out << "retrying " << sector_str(na, nb)
-           << " cold after the seeded solve failed" << std::endl;
-  SeedSource cold;
-  cold.label = "cold(seed failed)";
-  auto rc = solve_sector_once(ctx, na, nb, cold);
-  rc.E_seed = r.E_seed;
-  rc.time_s += r.time_s;
-  return rc;
-}
-
-// ---- search
-// -----------------------------------------------------------------------------
-
-class Scan {
- public:
-  Scan(Context& ctx, size_t N0, size_t Nmax)
-      : ctx_(ctx), N0_(N0), Nmax_(Nmax) {}
-
-  std::map<size_t, SectorResult> res;
-
-  bool in_range(long N) const { return N >= 0 and N <= long(Nmax_); }
-
-  // Solve N from the solved neighbour @p Np (or cold).
-  void solve(size_t N, std::optional<size_t> Np) {
-    const size_t a = split_alpha(N), b = split_beta(N);
-    SeedSource src;
-    if(ctx_.opt.warm and Np and res.count(*Np) and !res.at(*Np).dets.empty()) {
-      const auto& par = res.at(*Np);
-      src.kind = SeedSource::Parent;
-      src.dets = &par.dets;
-      src.C = &par.C;
-      src.pa = par.na;
-      src.pb = par.nb;
-      src.U = &par.U;
-      src.label = sector_str(par.na, par.nb);
-    } else if(ctx_.opt.warm and Np) {
-      src.label = "cold(parent failed)";
-    }
-    res[N] = solve_sector(ctx_, a, b, src);
-    prune();
-  }
-
-  void solve_reference(const SeedSource& src) {
-    res[N0_] = solve_sector(ctx_, split_alpha(N0_), split_beta(N0_), src);
-  }
-
-  // Lowest converged N.
-  std::optional<size_t> argmin() const {
-    std::optional<size_t> m;
-    for(auto& [N, r] : res)
-      if(r.converged and (!m or r.E < res.at(*m).E)) m = N;
-    return m;
-  }
-
-  size_t lo() const { return res.begin()->first; }
-  size_t hi() const { return res.rbegin()->first; }
-
-  void walk(long margin) {
-    if(in_range(long(N0_) - 1)) solve(N0_ - 1, N0_);
-    if(in_range(long(N0_) + 1)) solve(N0_ + 1, N0_);
-    while(true) {
-      auto m = argmin();
-      if(!m)
-        throw std::runtime_error("no sector converged; nothing to walk from");
-      if(long(*m) - long(lo()) < margin and lo() > 0) {
-        solve(lo() - 1, lo());
-        continue;
-      }
-      if(long(hi()) - long(*m) < margin and hi() < Nmax_) {
-        solve(hi() + 1, hi());
-        continue;
-      }
-      break;
-    }
-  }
-
-  void window(long W) {
-    for(long d = 1; d <= W; ++d) {
-      if(in_range(long(N0_) - d)) solve(N0_ - d, N0_ - d + 1);
-      if(in_range(long(N0_) + d)) solve(N0_ + d, N0_ + d - 1);
-    }
-  }
-
- private:
-  // Wavefunctions are needed only by sectors that can still seed a neighbour:
-  // the two ends of the solved range, and the current minimum (for
-  // --check-spin).
-  void prune() {
-    auto m = argmin();
-    for(auto& [N, r] : res)
-      if(N != lo() and N != hi() and (!m or N != *m)) {
-        r.dets = {};
-        r.C = {};
-      }
-  }
-
-  Context& ctx_;
-  size_t N0_, Nmax_;
-};
-
-// ---- reporting
-// --------------------------------------------------------------------------
-
-void write_row(std::ostream& os, size_t N, const SectorResult& r, double Emin) {
-  auto num = [&](double x, int prec) {
-    std::ostringstream s;
-    if(std::isfinite(x))
-      s << std::fixed << std::setprecision(prec) << x;
-    else
-      s << "-";
-    return s.str();
-  };
-  os << std::setw(4) << N << std::setw(8) << r.na << std::setw(7) << r.nb
-     << std::setw(19) << num(r.E, 10) << std::setw(14)
-     << num(r.converged ? r.E - Emin : NAN, 8) << std::setw(10)
-     << num(r.n_band, 5) << std::setw(19) << num(r.E_seed, 10) << std::setw(10)
-     << r.ndets << std::setw(10) << num(r.time_s, 1) << "  " << std::setw(20)
-     << std::left << r.seed << std::right << "  " << r.status << "\n";
-}
-
-void write_header(std::ostream& os, const std::string& lead) {
-  os << lead << std::setw(3 - long(lead.size()) + 1) << "N" << std::setw(8)
-     << "NALPHA" << std::setw(7) << "NBETA" << std::setw(19) << "E(CI)=Omega"
-     << std::setw(14) << "E-E_min" << std::setw(10) << "n/band" << std::setw(19)
-     << "E_seed" << std::setw(10) << "ndets" << std::setw(10) << "time[s]"
-     << "  " << std::setw(20) << std::left << "seed" << std::right
-     << "  status\n";
 }
 
 }  // namespace
@@ -1145,11 +678,18 @@ int main(int argc, char** argv) {
                                    : ", window = " + std::to_string(opt.window))
           << ", NROTS(input) = " << nrots_input << "\n";
 
+      macis::ChargeSectorSettings cs;
+      cs.warm = opt.warm;
+      cs.warm_nrots0 = opt.warm_nrots0;
+      cs.margin = size_t(opt.margin);
+      cs.etol = opt.etol;
+      cs.workdir = opt.workdir;
+      cs.out = &out;
       Context ctx{
           &p,
           Pristine{p.T_active, p.V_active, p.Td_active, p.asci_settings,
                    p.just_singles},
-          opt,
+          cs,
           size_t(opt.seed_parents > 0 ? opt.seed_parents
                                       : long(p.asci_settings.ncdets_max)),
           size_t(
