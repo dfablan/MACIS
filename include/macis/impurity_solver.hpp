@@ -193,9 +193,11 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   // Lowest N+1 / N-1 energies the band Lanczos reaches (upper bounds)
   double E_add = std::numeric_limits<double>::quiet_NaN();
   double E_rem = std::numeric_limits<double>::quiet_NaN();
+  // The N+/-1 GF spaces can exceed INT32_MAX Hamiltonian nonzeros, so the GF
+  // path uses 64-bit CSR indices (the ASCI Hamiltonian stays 32-bit).
   // Evaluate particle GF
-  macis::RunGFCalc<N>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws, occs,
-                      gf_settings, todelete_p, &E_add);
+  macis::RunGFCalc<N, int64_t>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws,
+                               occs, gf_settings, todelete_p, &E_add);
 
   // std::cout << "GF Particle part calculated." << std::endl;
   // for(int i = 0; i < p.n_imp; i++) {
@@ -204,8 +206,8 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   // }
 
   // Evaluate hole GF
-  macis::RunGFCalc<N>(GF, psi0, ham_gen, p.dets, EASCI, false, ws, occs,
-                      gf_settings, todelete_h, &E_rem);
+  macis::RunGFCalc<N, int64_t>(GF, psi0, ham_gen, p.dets, EASCI, false, ws,
+                               occs, gf_settings, todelete_h, &E_rem);
 
   report_sector_check(E_add - EASCI, E_rem - EASCI, p);
 

@@ -10,6 +10,7 @@
 #include <macis/bitset_operations.hpp>
 #include <macis/sd_operations.hpp>
 #include <macis/types.hpp>
+#include <macis/util/csr_index.hpp>
 #include <sparsexx/matrix_types/csr_matrix.hpp>
 
 namespace macis {

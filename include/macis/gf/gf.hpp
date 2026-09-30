@@ -666,7 +666,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                   print, saveGFmats, E_lowest);
   } else {
     // DO SIMPLE LANCZOS FOR ALL GF ELEMENTS
-    SparsexDistSpMatOp hamil_wrap(hamil);
+    SparsexDistSpMatOp<index_t> hamil_wrap(hamil);
     GF.clear();
     GF.resize(ws.size(), std::vector<std::complex<double>>(
                              nvecs * nvecs, std::complex<double>(0., 0.)));
@@ -679,8 +679,8 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
       std::string fpref_basis = is_part ? "particle" : "hole";
       std::string fpref =
           fpref_basis + "_" + std::to_string(i) + "_" + std::to_string(i);
-      GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                  nLanIts, saveGFmats, fpref);
+      GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                           is_part, nLanIts, saveGFmats, fpref);
       for(int iw = 0; iw < ws.size(); iw++) GF[iw][i * nvecs + i] = tGF[iw];
       for(int j = i + 1; j < nvecs; j++) {
         // OFF DIAGONAL ELEMENTS
@@ -690,16 +690,17 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
           twfn(iii) = wfns[i * nterms + iii] + wfns[j * nterms + iii];
         fpref = fpref_basis + "_" + std::to_string(i) + "_" +
                 std::to_string(j) + "_a";
-        GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                    nLanIts, saveGFmats, fpref);
+        GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                             is_part, nLanIts, saveGFmats,
+                                             fpref);
         for(int iw = 0; iw < ws.size(); iw++)
           GF[iw][i * nvecs + j] += 0.25 * tGF[iw];
         for(size_t iii = 0; iii < nterms; iii++)
           twfn(iii) = wfns[i * nterms + iii] - wfns[j * nterms + iii];
         fpref = fpref_basis + "_" + std::to_string(i) + "_" +
                 std::to_string(j) + "_b";
-        GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                    nLanIts);
+        GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                             is_part, nLanIts);
         for(int iw = 0; iw < ws.size(); iw++) {
           GF[iw][i * nvecs + j] -= 0.25 * tGF[iw];
           GF[iw][j * nvecs + i] = GF[iw][i * nvecs + j];

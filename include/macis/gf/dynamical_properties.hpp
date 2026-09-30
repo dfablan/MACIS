@@ -82,13 +82,14 @@ std::vector<std::complex<double>> RunResolventGS(
   std::vector<std::bitset<nbits>> dets(base_dets);
   auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
                                                   dets.end(), Hgen, h_el_tol);
-  SparsexDistSpMatOp hamil_wrap(hamil);
+  SparsexDistSpMatOp<index_t> hamil_wrap(hamil);
 
   // Single-vector continued-fraction resolvent on wfn0 itself.
   // ispart = true -> retarded branch 1/(w - (H - E0)).
   std::vector<std::complex<double>> R;
-  GF_Diag<SparsexDistSpMatOp>(wfn0, hamil_wrap, ws, R, E0, /*ispart=*/true,
-                              nLanIts, settings.saveGFmats, "resolvent_");
+  GF_Diag<SparsexDistSpMatOp<index_t>>(wfn0, hamil_wrap, ws, R, E0,
+                                       /*ispart=*/true, nLanIts,
+                                       settings.saveGFmats, "resolvent_");
   return R;
 }
 
