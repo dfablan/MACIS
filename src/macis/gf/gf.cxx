@@ -170,5 +170,20 @@ template void RunGFCalc<64>(std::vector<std::vector<std::complex<double>>> &GF,
                             const std::vector<std::complex<double>> &ws,
                             const std::vector<double> &occs,
                             const GFSettings &settings);
+// 64-bit sparse indices, used for the GF Hamiltonians (N+/-1 spaces can exceed
+// INT32_MAX nonzeros).
+template void RunGFCalc<64, int64_t>(
+    std::vector<std::vector<std::complex<double>>> &GF,
+    const Eigen::VectorXd &wfn0, HamiltonianGenerator<64> &Hgen,
+    const std::vector<std::bitset<64>> &base_dets, const double energ,
+    const bool is_part, const std::vector<std::complex<double>> &ws,
+    const std::vector<double> &occs, const GFSettings &settings,
+    std::vector<int> &todelete, double *E_lowest);
+template void RunGFCalc<64, int64_t>(
+    std::vector<std::vector<std::complex<double>>> &GF,
+    const Eigen::VectorXd &wfn0, HamiltonianGenerator<64> &Hgen,
+    const std::vector<std::bitset<64>> &base_dets, const double energ,
+    const bool is_part, const std::vector<std::complex<double>> &ws,
+    const std::vector<double> &occs, const GFSettings &settings);
 
 }  // namespace macis

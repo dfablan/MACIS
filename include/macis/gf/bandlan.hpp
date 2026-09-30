@@ -251,7 +251,8 @@ void BandLan(const Functor &H, std::vector<Cont> &qs, std::vector<Cont> &bandH,
  * Lanczos algorithm.
  *
  * @param[in] const sparsex::dist_sparse_matrix<sparsexx::csr_matrix<double,
- * int32_t> > &H: Hamiltonian operator.
+ * index_t> > &H: Hamiltonian operator. Explicitly instantiated for int32_t and
+ * int64_t sparse indices.
  * @param[in] std::vector<double> &vecs: Vectors for which to
  * compute the resolvent matrix elements in format res[freq.][iorb1 * norbs +
  * iorb2].
@@ -272,8 +273,9 @@ void BandLan(const Functor &H, std::vector<Cont> &qs, std::vector<Cont> &bandH,
  * @author Carlos Mejuto Zaera
  * @date 25/04/2022
  */
+template <typename index_t>
 void BandResolvent(
-    const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, int32_t> >
+    const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, index_t> >
         &H,
     std::vector<double> &vecs, const std::vector<std::complex<double> > &ws,
     std::vector<std::vector<std::complex<double> > > &res, int nLanIts,
