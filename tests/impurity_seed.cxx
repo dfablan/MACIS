@@ -82,9 +82,9 @@ params_t make_permuted_model(size_t na, size_t nb) {
   p.V_active.resize(n * n * n * n);
   p.F_inactive.resize(n * n);
   p.Fd_inactive.resize(n * n);
-  macis::active_hamiltonian(
-      NumOrbital(n), NumActive(n), NumInactive(0), p.T.data(), n, p.V.data(),
-      n, p.F_inactive.data(), n, p.T_active.data(), n, p.V_active.data(), n);
+  macis::active_hamiltonian(NumOrbital(n), NumActive(n), NumInactive(0),
+                            p.T.data(), n, p.V.data(), n, p.F_inactive.data(),
+                            n, p.T_active.data(), n, p.V_active.data(), n);
   p.asci_wfn_fname = "";
   p.compute_asci_E0 = true;
   p.asci_E0 = 0.0;
@@ -101,8 +101,8 @@ size_t band0_count(const macis::wfn_t<NB>& d) {
 }  // namespace
 
 TEST_CASE("ASCI impurity seed ordering") {
-  const double E_odd_even = -8.865079189;   // ground state
-  const double E_even_odd = -8.700141181;   // the other parity sector
+  const double E_odd_even = -8.865079189;  // ground state
+  const double E_even_odd = -8.700141181;  // the other parity sector
 
   SECTION("energy-ordered seed (default) reaches the ground state") {
     auto p = make_permuted_model(3, 2);
