@@ -8,6 +8,8 @@
 
 #pragma once
 #include <macis/hamiltonian_generator.hpp>
+#include <map>
+#include <string>
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <blas.hh>
@@ -119,50 +121,63 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm(const double* ordm,
 template <size_t N>
 void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
     const double* ordm, const size_t nimps, double* rot_mat, bool spin_dep,
-    double* occs_out) {
+    double* occs_out, const std::vector<int>* group_of) {
   // assert nimp>0
   if(nimps == 0)
     throw std::runtime_error(
         "Invalid number of impurities for rotate_hamiltonian_ordm_imp_bath");
+  if(group_of != nullptr and group_of->size() != size_t(norb_))
+    throw std::runtime_error(
+        "rotate_hamiltonian_ordm_imp_bath: group_of has " +
+        std::to_string(group_of->size()) + " entries, expected " +
+        std::to_string(norb_));
 
-  const int nbaths = norb_ - nimps;
-  // SVD on ordm to get natural orbitals
-
-  std::vector<double> natural_orbitals(norb2_, 0.);
-
-  std::vector<double> nat_orbs_imp(nimps * nimps, 0.);
-  std::vector<double> S_imp(nimps);
-  for(auto i = 0; i < nimps; ++i)
-    for(auto j = 0; j < nimps; ++j)
-      nat_orbs_imp[i + j * nimps] = ordm[i + j * norb_];
-  lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nimps, nimps,
-                nat_orbs_imp.data(), nimps, S_imp.data(), NULL, 1, NULL, 1);
-
-  std::vector<double> nat_orbs_bath(nbaths * nbaths, 0.);
-  std::vector<double> S_bath(nbaths);
-  for(auto i = 0; i < nbaths; ++i)
-    for(auto j = 0; j < nbaths; ++j)
-      nat_orbs_bath[i + j * nbaths] = ordm[(i + nimps) + (j + nimps) * norb_];
-  lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nbaths, nbaths,
-                nat_orbs_bath.data(), nbaths, S_bath.data(), NULL, 1, NULL, 1);
-
-  // gesvd returns singular values in descending order within each block;
-  // since ordm's imp/bath blocks are PSD, these singular values are exactly
-  // the natural-orbital occupations of the basis natural_orbitals above.
-  // Hand them back so callers don't have to (and risk disagreeing with)
-  // re-diagonalize the same blocks themselves.
-  if(occs_out != nullptr) {
-    std::copy(S_imp.begin(), S_imp.end(), occs_out);
-    std::copy(S_bath.begin(), S_bath.end(), occs_out + nimps);
+  // Blocks of orbitals diagonalized separately: the impurity and the bath,
+  // and with group_of also split by group (a group of -1 -- an orbital in no
+  // group -- is a block of its own). Each block's natural orbitals are
+  // written back into the block's own index set, so with group_of the group
+  // of every index is the same before and after the rotation.
+  std::vector<std::vector<size_t>> blocks;
+  for(int side = 0; side < 2; ++side) {
+    const size_t lo = side ? nimps : 0, hi = side ? norb_ : nimps;
+    if(group_of == nullptr) {
+      blocks.emplace_back();
+      for(size_t i = lo; i < hi; ++i) blocks.back().push_back(i);
+      continue;
+    }
+    std::map<int, std::vector<size_t>> by_group;
+    for(size_t i = lo; i < hi; ++i) {
+      const int g = (*group_of)[i];
+      if(g < 0)
+        blocks.push_back({i});
+      else
+        by_group[g].push_back(i);
+    }
+    for(auto& [g, idx] : by_group) blocks.push_back(std::move(idx));
   }
 
-  for(auto i = 0; i < nimps; ++i)
-    for(auto j = 0; j < nimps; ++j)
-      natural_orbitals[i + j * norb_] = nat_orbs_imp[i + j * nimps];
-  for(auto i = 0; i < nbaths; ++i)
-    for(auto j = 0; j < nbaths; ++j)
-      natural_orbitals[(i + nimps) + (j + nimps) * norb_] =
-          nat_orbs_bath[i + j * nbaths];
+  // SVD on each ordm block to get natural orbitals. gesvd returns singular
+  // values in descending order within each block; since ordm's diagonal
+  // blocks are PSD, these singular values are exactly the natural-orbital
+  // occupations of the basis natural_orbitals below. Hand them back so
+  // callers don't have to (and risk disagreeing with) re-diagonalize the
+  // same blocks themselves.
+  std::vector<double> natural_orbitals(norb2_, 0.);
+  for(const auto& idx : blocks) {
+    const size_t nb = idx.size();
+    if(nb == 0) continue;
+    std::vector<double> nat(nb * nb, 0.), S(nb);
+    for(size_t j = 0; j < nb; ++j)
+      for(size_t i = 0; i < nb; ++i)
+        nat[i + j * nb] = ordm[idx[i] + idx[j] * norb_];
+    lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, nb, nb,
+                  nat.data(), nb, S.data(), NULL, 1, NULL, 1);
+    for(size_t j = 0; j < nb; ++j) {
+      if(occs_out != nullptr) occs_out[idx[j]] = S[j];
+      for(size_t i = 0; i < nb; ++i)
+        natural_orbitals[idx[i] + idx[j] * norb_] = nat[i + j * nb];
+    }
+  }
 
   std::vector<double> tmp(norb_ * norb_, 0.0), tmp1(norb3_ * norb_, 0.0),
       tmp2(norb3_ * norb_, 0.0);

@@ -239,11 +239,14 @@ TEST_CASE("Parity labels") {
     CHECK(p.parity_labels->counts_conserved);
   }
 
-  SECTION("NROTS > 0 is refused") {
+  SECTION("GROW_WITH_ROT is refused, NROTS > 0 is not") {
     auto p = make_model({});
-    p.asci_settings.nrots = 2;
+    p.asci_settings.grow_with_rot = true;
     CHECK_THROWS_WITH(macis::setup_parity_sectors<NB>(p, 1e-10),
-                      Catch::Contains("NROTS = 0"));
+                      Catch::Contains("GROW_WITH_ROT = FALSE"));
+    auto q = make_model({});
+    q.asci_settings.nrots = 2;
+    CHECK_NOTHROW(macis::setup_parity_sectors<NB>(q, 1e-10));
   }
 
   SECTION("sector enumeration") {
@@ -522,4 +525,246 @@ TEST_CASE("Parity sectors inside the charge-sector search") {
     CHECK(p.nalpha + p.nbeta == N_true);
     CHECK(mu == Approx(x_true).margin(1e-4));
   }
+}
+
+// ---- Phase 2: NROTS > 0 (parity-sector-solve-simple.md, §9) ----------------
+
+namespace {
+
+// Does (pq|rs) put an odd number of indices into some group?
+bool breaks_parity(const macis::ParityLabels& L, size_t p, size_t q, size_t r,
+                   size_t s) {
+  for(size_t g = 0; g < L.ngroups; ++g) {
+    const int c = (L.group_of[p] == int(g)) + (L.group_of[q] == int(g)) +
+                  (L.group_of[r] == int(g)) + (L.group_of[s] == int(g));
+    if(c % 2) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST_CASE("Per-band natural orbitals (rotate_hamiltonian_ordm_imp_bath)") {
+  ScratchDir scratch("rot");
+  // Degenerate bands: a band-symmetric state has every occupation twice,
+  // once per band, which is where the plain imp/bath diagonalization may mix
+  ModelOpts o;
+  o.degenerate = GENERATE(true, false);
+  auto p = make_parity_model(o);
+  p.parity_only = {1, 1};
+  macis::SolveImpurityASCI_rot<NB>(p);
+  const size_t n = p.n_active;
+  const auto& L = *p.parity_labels;
+
+  macis::SDBuildHamiltonianGenerator<NB> H0(
+      macis::matrix_span<double>(p.T_active.data(), n, n),
+      macis::rank4_span<double>(p.V_active.data(), n, n, n, n));
+  std::vector<double> ordm(n * n), trdm(n * n * n * n);
+  H0.form_rdms(p.dets.begin(), p.dets.end(), p.dets.begin(), p.dets.end(),
+               p.C.data(), macis::matrix_span<double>(ordm.data(), n, n),
+               macis::rank4_span<double>(trdm.data(), n, n, n, n));
+  // A parity-pure state has no cross-band 1-RDM element at all
+  CHECK(macis::max_off_group(ordm.data(), L) == 0.0);
+
+  auto T = p.T_active, V = p.V_active;
+  macis::SDBuildHamiltonianGenerator<NB> H(
+      macis::matrix_span<double>(T.data(), n, n),
+      macis::rank4_span<double>(V.data(), n, n, n, n));
+  std::vector<double> U(n * n), occ(n);
+  H.rotate_hamiltonian_ordm_imp_bath(ordm.data(), p.n_imp, U.data(), false,
+                                     occ.data(), &L.group_of);
+
+  // Every orbital keeps its group, exactly
+  CHECK(macis::max_off_group(U.data(), L) == 0.0);
+  // U is orthogonal and diagonalizes each (impurity|bath) x group block of
+  // the 1-RDM, with occ on the diagonal (impurity-bath elements remain, as
+  // in the legacy imp/bath rotation), occupations descending in each block
+  auto same_block = [&](size_t a, size_t b) {
+    return L.group_of[a] == L.group_of[b] and (a < p.n_imp) == (b < p.n_imp);
+  };
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b) {
+      double uu = 0., unu = 0.;
+      for(size_t i = 0; i < n; ++i) {
+        uu += U[i + a * n] * U[i + b * n];
+        for(size_t j = 0; j < n; ++j)
+          unu += U[i + a * n] * ordm[i + j * n] * U[j + b * n];
+      }
+      CHECK(uu == Approx(a == b ? 1.0 : 0.0).margin(1e-12));
+      if(same_block(a, b))
+        CHECK(unu == Approx(a == b ? occ[a] : 0.0).margin(1e-10));
+      if(same_block(a, b) and a < b) CHECK(occ[a] >= occ[b]);
+    }
+  // The rotated integrals still conserve every band parity, exactly
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b)
+      if(L.group_of[a] != L.group_of[b]) CHECK(T[a + b * n] == 0.0);
+  size_t nbroken = 0;
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b)
+      for(size_t c = 0; c < n; ++c)
+        for(size_t d = 0; d < n; ++d)
+          if(breaks_parity(L, a, b, c, d) and
+             V[a + b * n + c * n * n + d * n * n * n] != 0.0)
+            ++nbroken;
+  CHECK(nbroken == 0);
+
+  // Without group_of: the legacy imp/bath blocks. They sort the natural
+  // orbitals by occupation across bands, so an orbital index changes band
+  // whenever the bands' occupations are not in band order (here, impurity
+  // band 1 is fuller than band 0): the labels break even without degeneracy.
+  // With degenerate bands gesvd may in addition mix the pairs (LAPACK-
+  // dependent, so only recorded).
+  auto T2 = p.T_active, V2 = p.V_active;
+  macis::SDBuildHamiltonianGenerator<NB> H2(
+      macis::matrix_span<double>(T2.data(), n, n),
+      macis::rank4_span<double>(V2.data(), n, n, n, n));
+  std::vector<double> U2(n * n), occ2(n);
+  H2.rotate_hamiltonian_ordm_imp_bath(ordm.data(), p.n_imp, U2.data(), false,
+                                      occ2.data());
+  INFO("legacy imp/bath rotation, largest cross-band element = "
+       << macis::max_off_group(U2.data(), L));
+  if(!o.degenerate) CHECK(macis::max_off_group(U2.data(), L) > 0.5);
+  // Same spectrum, only arranged differently
+  auto s1 = occ, s2 = occ2;
+  std::sort(s1.begin(), s1.end());
+  std::sort(s2.begin(), s2.end());
+  for(size_t a = 0; a < n; ++a) CHECK(s1[a] == Approx(s2[a]).margin(1e-12));
+}
+
+TEST_CASE("Parity sectors with NROTS > 0") {
+  ScratchDir scratch("nrots");
+  struct Case {
+    size_t na, nb;
+    std::vector<int> only;
+    double E;
+  };
+  const std::vector<Case> cases = {{3, 3, {0, 0}, E33_ee},
+                                   {3, 3, {1, 1}, E33_oo},
+                                   {3, 2, {0, 1}, E32_eo},
+                                   {3, 2, {1, 0}, E32_oe}};
+
+  SECTION("each sector against exact diagonalization, NROTS = 2") {
+    for(bool degenerate : {false, true}) {
+      for(const auto& c : cases) {
+        ModelOpts o;
+        o.na = c.na;
+        o.nb = c.nb;
+        o.degenerate = degenerate;
+        auto p = make_parity_model(o);
+        p.asci_settings.nrots = 2;
+        p.parity_only = c.only;
+        SearchLogCapture search_log;
+        CoutCapture cap;
+        const double E = macis::SolveImpurityASCI_rot<NB>(p);
+        const auto out = cap.str();
+        const auto slog = search_log.str();
+        if(!degenerate) CHECK(E == Approx(c.E).margin(1e-8));
+        // Same energy as NROTS = 0 in the same sector
+        auto q = make_parity_model(o);
+        q.parity_only = c.only;
+        CHECK(E == Approx(macis::SolveImpurityASCI_rot<NB>(q)).margin(1e-8));
+        CHECK(out.find("PARITY_COVERAGE COMPLETE") != std::string::npos);
+        // Two rotations, a restart in the sector after each
+        size_t nrestart = 0;
+        for(auto pos = out.find("PARITY_SOLVE: restart for sector");
+            pos != std::string::npos;
+            pos = out.find("PARITY_SOLVE: restart for sector", pos + 1))
+          ++nrestart;
+        CHECK(nrestart == 2);
+        CHECK(slog.find("dropped 0 candidates") != std::string::npos);
+        CHECK(slog.find("dropped 1") == std::string::npos);
+        // The accumulated rotation keeps every orbital in its band
+        CHECK(macis::max_off_group(p.orb_rot.data(), *p.parity_labels) ==
+              0.0);
+        const uint32_t want = uint32_t(c.only[0]) | uint32_t(c.only[1]) << 1;
+        for(const auto& d : p.dets) CHECK(key_of(p, d) == want);
+      }
+    }
+  }
+
+  SECTION("full solve: the wrapper returns the ground sector") {
+    for(size_t nb : {size_t(3), size_t(2)}) {
+      ModelOpts o;
+      o.nb = nb;
+      auto p = make_parity_model(o);
+      p.asci_settings.nrots = 2;
+      CoutCapture cap;
+      const double E = macis::SolveImpurityASCI_rot<NB>(p);
+      CHECK(E == Approx(nb == 3 ? E33_oo : E32_oe).margin(1e-8));
+      CHECK(cap.str().find("PARITY_COVERAGE COMPLETE") != std::string::npos);
+      // occs are in the original orbital basis: the band counts add up
+      double nel = 0.;
+      for(auto x : p.occs) nel += 2 * x;
+      CHECK(nel == Approx(3.0 + nb).margin(1e-8));
+    }
+  }
+
+  SECTION("a guess file is still refused with NROTS > 0") {
+    auto ref = make_parity_model({});
+    ref.parity_only = {1, 1};
+    const double E_ref = macis::SolveImpurityASCI_rot<NB>(ref);
+    write_wfn_root("oo.wfn", ref.n_active, ref.dets, ref.C);
+    auto p = make_parity_model({});
+    p.asci_settings.nrots = 2;
+    p.asci_wfn_fname = "oo.wfn";
+    p.compute_asci_E0 = false;
+    p.asci_E0 = E_ref;
+    p.parity_only = {1, 1};
+    CHECK_THROWS_WITH(macis::SolveImpurityASCI_rot<NB>(p),
+                      Catch::Contains("NROTS > 0 is not supported"));
+  }
+}
+
+TEST_CASE("Inherited basis under PARITY_SOLVE") {
+  auto p = make_parity_model({});
+  const size_t n = p.n_active;
+  macis::charge_sectors::basis_t U(n * n, 0.0);
+  for(size_t i = 0; i < n; ++i) U[i + i * n] = 1.0;
+  // Per-band: a rotation between bath orbitals 2 and 4 (both band 0)
+  const double c = std::cos(0.3), s = std::sin(0.3);
+  U[2 + 2 * n] = c, U[4 + 2 * n] = s, U[2 + 4 * n] = -s, U[4 + 4 * n] = c;
+  CHECK_NOTHROW(macis::charge_sectors::rotate_active<NB>(p, U));
+
+  // Across bands: bath orbitals 2 (band 0) and 3 (band 1)
+  auto q = make_parity_model({});
+  macis::charge_sectors::basis_t W(n * n, 0.0);
+  for(size_t i = 0; i < n; ++i) W[i + i * n] = 1.0;
+  W[2 + 2 * n] = c, W[3 + 2 * n] = s, W[2 + 3 * n] = -s, W[3 + 3 * n] = c;
+  CHECK_THROWS_WITH(macis::charge_sectors::rotate_active<NB>(q, W),
+                    Catch::Contains("mixes band groups"));
+}
+
+TEST_CASE("Parity sectors inside the charge-sector search at NROTS = 2") {
+  // Same target as the NROTS = 0 test above: the exact ground sector at
+  // eps_d = -3 over N, from the parity wrapper around ED
+  auto exact = [](size_t N) {
+    ModelOpts o;
+    o.na = (N + 1) / 2;
+    o.nb = N / 2;
+    o.ci = CIExpansion::CAS;
+    auto p = make_parity_model(o);
+    const double E = macis::SolveImpurityED<NB>(p);
+    double s = 0;
+    for(size_t i = 0; i < p.n_imp; ++i) s += p.occs[i];
+    return std::make_pair(2.0 * s / p.n_imp, E);
+  };
+  size_t N_true = 0;
+  double Emin = 1e300;
+  for(size_t N = 1; N <= 11; ++N) {
+    const double E = exact(N).second;
+    if(E < Emin) Emin = E, N_true = N;
+  }
+
+  ScratchDir scratch("cs_nrots");
+  macis::ChargeSectorSettings cs;
+  cs.workdir = "charge_sectors";
+  auto p = make_parity_model({});
+  p.asci_settings.nrots = 2;
+  p.nel_target = exact(N_true).first;
+  double init_mu = -3.0;
+  const double mu = macis::Fix_Mu_sectors<NB>("brent", false, init_mu, &p, cs);
+  CHECK(p.nalpha + p.nbeta == N_true);
+  CHECK(mu == Approx(-3.0).margin(1e-4));
+  CHECK(p.E == Approx(Emin).margin(1e-6));
 }

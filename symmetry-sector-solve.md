@@ -32,8 +32,8 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.2 bath modes A/B (SDP projection) | open | a bath that is not band-diagonal is refused, with the offending coupling named |
 | §3.3 labels: band parity | **done** (band-diagonal bath, band-major layout) | detected from T, verified and cleaned against every integral, `ASCI.PARITY_TOL` |
 | §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope |
-| §3.4 per-band natural orbitals, sector-preserving restarts | open | `PARITY_SOLVE` refuses NROTS > 0; designed in `parity-sector-solve-simple.md` §9 |
-| §3.4 covariant natural orbitals, `LABEL_LEAK` | open | |
+| §3.4 per-band natural orbitals, sector-preserving restarts | **done** | `PARITY_SOLVE` now runs with NROTS > 0: natural orbitals per (impurity\|bath) × band block, restarts moved into the sector, inherited charge-sector bases checked; `parity-sector-solve-simple.md` §12 |
+| §3.4 covariant natural orbitals, `LABEL_LEAK` | **partly done** | `LABEL_LEAK` is printed before every rotation; the covariant choice (and with it `SYMMETRIZE_DETS` with NROTS > 0) is open |
 | §3.5 seeds | **partly done** | one seed per sector: the energy-ordered reference if it lies in the sector, otherwise repaired and descended on ⟨D\|H\|D⟩. The energy-ordered seed is now the default for every run (`ASCI.HF_BY_ENERGY`, F3's "energy-sorted only with `SYMMETRIZE_DETS`" no longer holds) |
 | §3.5 several starts per sector, level-allocation candidates | open | |
 | §3.6 ⟨S²⟩, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` | open | |

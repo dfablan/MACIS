@@ -458,8 +458,9 @@ double SolveImpurityCheapASCI(impurity_params<N> &params);
  * parity, and zeroes parity-breaking integrals up to `tol` in p.T, p.Td and
  * p.V (larger ones throw); see build_parity_labels. Call it before the active
  * integrals (T_active, V_active, ...) are built from p.T / p.V, so that they
- * see the cleaned integrals. Requires NROTS = 0, GROW_WITH_ROT = FALSE,
- * NINACTIVE = 0 and NACTIVE = NORB.
+ * see the cleaned integrals. Requires GROW_WITH_ROT = FALSE, NINACTIVE = 0
+ * and NACTIVE = NORB. NROTS > 0 is allowed: inside a sector the natural
+ * orbitals are taken per band group, so the labels survive the rotations.
  */
 template <size_t N>
 void setup_parity_sectors(impurity_params<N> &params, double tol);

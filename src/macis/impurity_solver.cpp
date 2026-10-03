@@ -375,6 +375,44 @@ void require_in_sector(const impurity_params<N>& p,
           macis::parity_key_string(t->key, t->labels->ngroups));
 }
 
+/**
+ *  @brief The restart determinant of a macro iteration after the per-band
+ *  natural-orbital rotation, in the target parity sector.
+ *
+ *  hf_determinant_byocc fills the same orbitals for both spins, so at
+ *  NALPHA = NBETA it is closed-shell and always all-even: in any other
+ *  sector the filtered search would collapse onto it. It is therefore moved
+ *  into the sector by parity_seed, judged by the diagonal of the *rotated*
+ *  Hamiltonian; in its own sector it is returned unchanged. Decoupled
+ *  orbitals never rotate and H conserves their occupations, so they keep
+ *  those of the previous seed `prev`, and only the grouped orbitals are
+ *  filled by occupation (identical to byocc when there are none).
+ */
+template <size_t N>
+macis::wfn_t<N> parity_restart(const impurity_params<N>& p,
+                               const std::vector<double>& orb_occs,
+                               const macis::wfn_t<N>& prev,
+                               macis::HamiltonianGenerator<N>& ham_gen) {
+  const auto& t = *p.asci_settings.parity_target;
+  const auto& L = *t.labels;
+  std::vector<size_t> idx;
+  for(size_t q = 0; q < p.n_active; ++q)
+    if(L.group_of[q] >= 0) idx.push_back(q);
+  std::stable_sort(idx.begin(), idx.end(), [&](size_t a, size_t b) {
+    return orb_occs[a] > orb_occs[b];
+  });
+  macis::wfn_t<N> d(0);
+  size_t na = p.nalpha, nb = p.nbeta;
+  for(size_t q = 0; q < p.n_active; ++q)
+    if(L.group_of[q] < 0) {
+      if(prev[q]) d.set(q), --na;
+      if(prev[q + N / 2]) d.set(q + N / 2), --nb;
+    }
+  for(size_t i = 0; i < na; ++i) d.set(idx[i]);
+  for(size_t i = 0; i < nb; ++i) d.set(idx[i] + N / 2);
+  return macis::parity_seed(d, t.key, L, ham_gen, p.n_imp);
+}
+
 #ifdef MACIS_ENABLE_MPI
 std::vector<double> gather_ci_vector(std::vector<double> C_local,
                                      size_t ndets) {
@@ -831,7 +869,20 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
             //could pick a different (but equally valid) basis within any
             //degenerate/near-degenerate occupation subspace, silently
             //decoupling the HF guess from the rotated Hamiltonian.
-            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data() );
+            //In a parity sector the natural orbitals are taken per band group
+            //as well (rdms.hpp), so every orbital index keeps its band: the
+            //labels, masks and search filter stay valid in the rotated basis.
+            //Without that, gesvd may mix degenerate occupations of different
+            //bands -- the normal case with degenerate bands.
+            const auto& parity_target = asci_settings.parity_target;
+            if(parity_target)
+              std::cout << "* PARITY_SOLVE: per-band natural orbitals; largest "
+                           "cross-band 1-RDM element (LABEL_LEAK) = "
+                        << macis::max_off_group(active_ordm.data(),
+                                                *parity_target->labels)
+                        << std::endl;
+            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data(),
+                parity_target ? &parity_target->labels->group_of : nullptr );
             asci_settings.just_singles = ham_gen.just_singles;
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
@@ -846,7 +897,15 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                 std::cout << " " << orb_occs[ii];
             }
             std::cout << std::endl;
-            hf_det = macis::hf_determinant_byocc<N>(nalpha, nbeta, orb_occs);
+            if(parity_target) {
+              hf_det = parity_restart<N>(p, orb_occs, hf_det, ham_gen);
+              std::cout << "* PARITY_SOLVE: restart for sector "
+                        << macis::parity_key_string(parity_target->key,
+                                                    parity_target->labels->ngroups)
+                        << " = " << macis::to_canonical_string(hf_det) << std::endl;
+              require_in_sector(p, {hf_det}, "restart");
+            } else
+              hf_det = macis::hf_determinant_byocc<N>(nalpha, nbeta, orb_occs);
             }
           
             macis::util::write_matrix(orb_rot.data(), n_active, n_active,
@@ -1094,11 +1153,13 @@ template <size_t N>
 double solve_parity_sectors(impurity_params<N>& p, one_solver_t<N> solve,
                             SolveExtras<N>& x_out, const char* solver_name) {
   auto& stg = p.asci_settings;
-  if(stg.nrots > 0 or stg.grow_with_rot)
+  // NROTS > 0 is fine: solve_asci_rot_one rotates per band group in a sector.
+  // The full-space rotation of GROW_WITH_ROT is not blocked by group.
+  if(stg.grow_with_rot)
     throw std::runtime_error(
-        "ASCI.PARITY_SOLVE requires ASCI.NROTS = 0 and ASCI.GROW_WITH_ROT = "
-        "FALSE: natural-orbital rotations can mix the bands and destroy the "
-        "parity labels.");
+        "ASCI.PARITY_SOLVE requires ASCI.GROW_WITH_ROT = FALSE: that rotation "
+        "is taken over the whole active space, mixes the bands and destroys "
+        "the parity labels.");
   if(p.n_inactive != 0 or p.n_active != p.norb)
     throw std::runtime_error(
         "ASCI.PARITY_SOLVE requires NINACTIVE = 0 and NACTIVE = NORB");
@@ -1280,10 +1341,10 @@ double SolveImpurityASCI_rot(impurity_params<N>& p) {
 template <size_t N>
 void setup_parity_sectors(impurity_params<N>& p, double tol) {
   const auto& stg = p.asci_settings;
-  if(stg.nrots > 0 or stg.grow_with_rot)
+  if(stg.grow_with_rot)
     throw std::runtime_error(
-        "ASCI.PARITY_SOLVE requires ASCI.NROTS = 0 and ASCI.GROW_WITH_ROT = "
-        "FALSE (natural-orbital rotations can mix the bands)");
+        "ASCI.PARITY_SOLVE requires ASCI.GROW_WITH_ROT = FALSE (that rotation "
+        "is taken over the whole active space and mixes the bands)");
   if(p.n_inactive != 0 or p.n_active != p.norb)
     throw std::runtime_error(
         "ASCI.PARITY_SOLVE requires NINACTIVE = 0 and NACTIVE = NORB");

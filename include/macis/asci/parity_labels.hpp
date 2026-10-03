@@ -7,6 +7,8 @@
  */
 
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <macis/types.hpp>
 #include <memory>
@@ -35,7 +37,28 @@ struct ParityLabels {
   // no interaction term moves electrons between groups: the counts N_g are
   // conserved, which is finer than parity and not handled here
   bool counts_conserved = false;
+  // PARITY_TOL the labels were verified with
+  double tol = 0.;
 };
+
+/**
+ *  @brief Largest |A_pq| of an n x n column-major matrix between orbitals in
+ *  different groups, n = group_of.size(). An orbital in no group (-1) counts
+ *  as a group of its own. For a 1-RDM this is the cross-band leak of the state;
+ *  for an orbital rotation, how far it is from keeping every orbital in its
+ *  group.
+ */
+inline double max_off_group(const double* A, const ParityLabels& L) {
+  const size_t n = L.group_of.size();
+  double m = 0.;
+  for(size_t q = 0; q < n; ++q)
+    for(size_t p = 0; p < n; ++p) {
+      const int gp = L.group_of[p], gq = L.group_of[q];
+      if(p == q or (gp == gq and gp >= 0)) continue;
+      m = std::max(m, std::abs(A[p + q * n]));
+    }
+  return m;
+}
 
 /**
  *  @brief Determinant -> parity key: bit g is N_g mod 2, alpha and beta summed.

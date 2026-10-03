@@ -68,6 +68,7 @@ ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
   for(size_t i = 0; i < n_imp; ++i) uf.unite(i, (i / nsites) * nsites);
 
   ParityLabels L;
+  L.tol = tol;
   L.ngroups = nbands;
   L.group_orbs.resize(nbands);
   L.group_of.assign(n, -1);
