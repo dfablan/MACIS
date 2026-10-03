@@ -675,8 +675,7 @@ TEST_CASE("Parity sectors with NROTS > 0") {
         CHECK(slog.find("dropped 0 candidates") != std::string::npos);
         CHECK(slog.find("dropped 1") == std::string::npos);
         // The accumulated rotation keeps every orbital in its band
-        CHECK(macis::max_off_group(p.orb_rot.data(), *p.parity_labels) ==
-              0.0);
+        CHECK(macis::max_off_group(p.orb_rot.data(), *p.parity_labels) == 0.0);
         const uint32_t want = uint32_t(c.only[0]) | uint32_t(c.only[1]) << 1;
         for(const auto& d : p.dets) CHECK(key_of(p, d) == want);
       }

@@ -127,10 +127,9 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
     throw std::runtime_error(
         "Invalid number of impurities for rotate_hamiltonian_ordm_imp_bath");
   if(group_of != nullptr and group_of->size() != size_t(norb_))
-    throw std::runtime_error(
-        "rotate_hamiltonian_ordm_imp_bath: group_of has " +
-        std::to_string(group_of->size()) + " entries, expected " +
-        std::to_string(norb_));
+    throw std::runtime_error("rotate_hamiltonian_ordm_imp_bath: group_of has " +
+                             std::to_string(group_of->size()) +
+                             " entries, expected " + std::to_string(norb_));
 
   // Blocks of orbitals diagonalized separately: the impurity and the bath,
   // and with group_of also split by group (a group of -1 -- an orbital in no
