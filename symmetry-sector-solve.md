@@ -18,8 +18,10 @@
 >
 > **Revised 2026-10-03 (Irrep bath structure).** Reading `Fits.py` showed that the Irrep bath is
 > momentum-pure by construction (F12). §1.4, §3.2, §3.3, §3.4 and D2 are updated: the "split E by
-> diagonalizing T_x" step is dropped, and the remaining NROTS ≥ 1 work is block-wise natural
-> orbitals, gated on a check of the archived rotation matrices (§3.4).
+> diagonalizing T_x" step is dropped. What remains for K at NROTS ≥ 1 is the `fullM` impurity
+> rotation and a finer `group_of` (one group per (band, K) channel) in the per-band natural
+> orbitals that already exist. A read-only check of archived rotation matrices decides how urgent
+> that is (§3.4).
 
 ---
 
@@ -36,7 +38,7 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.1 cold-seed closure bug (F3) | open | |
 | §3.2 bath modes A/B (SDP projection) | open | a bath that is not band-diagonal is refused, with the offending coupling named |
 | §3.3 labels: band parity | **done** (band-diagonal bath, band-major layout) | detected from T, verified and cleaned against every integral, `ASCI.PARITY_TOL` |
-| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope |
+| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope. On the Irrep bath, the bath orbitals already carry K (F12); what is missing is the `fullM` impurity rotation, (band, K) groups in `group_of`, and the sector table |
 | §3.4 per-band natural orbitals, sector-preserving restarts | **done** | `PARITY_SOLVE` now runs with NROTS > 0: natural orbitals per (impurity\|bath) × band block, restarts moved into the sector, inherited charge-sector bases checked; `parity-sector-solve-simple.md` §12 |
 | §3.4 covariant natural orbitals, `LABEL_LEAK` | **partly done** | `LABEL_LEAK` is printed before every rotation; the covariant choice (and with it `SYMMETRIZE_DETS` with NROTS > 0) is open |
 | §3.5 seeds | **partly done** | one seed per sector: the energy-ordered reference if it lies in the sector, otherwise repaired and descended on ⟨D\|H\|D⟩. The energy-ordered seed is now the default for every run (`ASCI.HF_BY_ENERGY`, F3's "energy-sorted only with `SYMMETRIZE_DETS`" no longer holds) |
@@ -298,18 +300,26 @@ There are two modes, and they must be kept distinct:
     tolerance, uneven truncation), with a mixing angle θ ~ ε/δn. That is of order one when
     δn ≲ ε. The impurity block behaves the same way. After macro iteration 1, the orbitals can mix
     bands and K, and the result depends on round-off.
-  - **Irrep block sizes:** 1×1 on the impurity (so the impurity doesn't rotate) and 2×2 on the bath.
-  - **Check before implementing** (read-only, archived NROTS ≥ 1 runs such as
-    `RUN_U4_Irrep_N18/It_2`):
-    - the weight of `rot_matrix.dat`'s bath block outside the eight 2×2 channel blocks (the bath is
-      already in channel order, so no transform is needed);
-    - the weight of `fullMᵀ R_imp` outside the diagonal;
-    - in `active_ordm.dat`, the cross-channel elements of the impurity block after `fullM`, and
-      near-degenerate occupations.
+  - **Status:** the per-band part is done under `PARITY_SOLVE` (the `group_of` argument of
+    `rotate_hamiltonian_ordm_imp_bath`; `parity-sector-solve-simple.md` §12). On the Irrep bath,
+    K needs only a finer `group_of`, one group per (band, K) channel. The bath orbitals can be
+    grouped directly (F12). The impurity orbitals can be grouped after the `fullM` rotation of §3.3,
+    which makes every impurity block 1×1, so the impurity no longer rotates. The bath blocks are 2×2.
+  - **Check on archived runs** (read-only, NROTS ≥ 1, e.g. `RUN_U4_Irrep_N18/It_2`). Off-block
+    weight alone doesn't decide it: `gesvd` sorts by occupation, so the legacy rotation reorders
+    orbitals across groups even without degeneracy (`parity-sector-solve-simple.md` §12.3). That
+    makes the off-block weight O(1) by reordering alone. Test each column instead: is it supported
+    on a single channel (a signed permutation of channel-pure vectors, harmless) or spread over
+    several (real mixing)?
+    - bath block of `rot_matrix.dat`: the largest single-channel fraction of each column's weight
+      (the bath is already in channel order);
+    - impurity block: the same for the columns of `fullMᵀ R_imp`;
+    - `active_ordm.dat`: cross-channel elements of the impurity block after `fullM`, and the
+      splittings between occupations.
 
-    If the weights are about 0, the mixing doesn't happen in practice, and block-wise natural
-    orbitals can wait until the sector loop needs labels. If they are of order 1, they are needed
-    now.
+    If every column is single-channel to round-off, the degenerate mixing doesn't occur in
+    practice, and (band, K) blocks can wait until K becomes a label. Columns split over channels
+    are direct evidence that today's NROTS ≥ 1 runs mix labels.
 - **Covariant choice.** Take the band-B natural orbitals as the band-swap images of the band-A ones,
   and the (0,π) natural orbitals as the σ_d images of the (π,0) ones. Then band swap and σ_d stay
   signed permutations, so ⟨σ_d⟩ can be measured, and `SYMMETRIZE_DETS` can later be re-enabled with
