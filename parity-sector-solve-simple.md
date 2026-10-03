@@ -1,0 +1,372 @@
+# Band-parity sector solve: minimal implementation proposal
+
+> **STATUS: PROPOSAL, NOT IMPLEMENTED.** Written 2026-10-03. Line numbers refer to `4bb55e2`.
+>
+> This is a reduced first step of `symmetry-sector-solve.md`. It implements only the band-parity
+> part of §3.3 and §3.5–3.7 of that plan, under the restrictions of §0 below. Everything else in
+> that plan is deferred (§9 here).
+
+---
+
+## 0. Scope and assumptions
+
+| Assumption | Consequence |
+|---|---|
+| **Band-diagonal bath:** each bath orbital couples to one band only. | Each band (its impurity orbitals plus its bath) is a separate orbital group. The band parity (−1)^{N_g} is an exact label of every determinant. |
+| **Single site, or 1×2.** | No K labels. On the 1×2, the site swap is a permutation symmetry *inside* each band group, so it never changes a parity label. |
+| **Kanamori with pair hopping.** | Pair hopping moves two electrons between bands, so the label is the parity, not the count. With J_P = 0 the counts are conserved too. That case is detected and warned about, not solved (§2.3). |
+| **`ASCI.NROTS = 0`, `GROW_WITH_ROT = FALSE`.** | The orbital basis is the FCIDUMP basis for the whole solve, so the labels are fixed once. There are no natural-orbital rotations to mix bands (plan F4) and no macro-iteration restarts (plan F2). Other settings are refused. |
+| **`n_inactive = 0`, `n_active = norb`.** | The doping path already requires `n_inactive = 0`, so this adds nothing new. |
+| **Bands stored band-major:** impurity orbital *i* belongs to band `i / (n_imp / nbands)`. | This is the convention of `set_impurity_diagonal` (`fix_mu.cpp:24`) and `CompObservables`. `ASCI.PARITY_GROUPS` overrides it. |
+
+**The problem being solved.** H conserves every band parity. ASCI starts from one determinant,
+and Davidson starts from the lowest diagonal element of the space (plan F1). So the solve can never
+leave the parity sector of its seed. The legacy seed is closed-shell at Nα = Nβ, which puts it in
+the all-even sector. **The fix: solve every parity sector separately, and keep the lowest.**
+
+**Toy check** (`parity-sector-toy-ed.py`): the model of `tests/charge_sectors.cxx` with the
+cross-band coupling set to 0, U = 6, J = 0.8, ε_d = −3. H between different sectors is exactly 0.
+
+| (Nα, Nβ) | Sector | dim | E_min | Legacy seed |
+|---|---|---|---|---|
+| (3,3) | (e,e) | 200 | −8.512442 | ← lands here |
+| (3,3) | (o,o) | 200 | **−8.551448** (GS) | |
+| (3,2) | (e,o) | 150 | −8.700141 | |
+| (3,2) | (o,e) | 150 | **−8.865079** (GS) | ← lands here |
+
+So at (3,3) today's solver returns a state 0.039 Ha too high, at any determinant budget. At (3,2) it
+happens to be right. This model becomes the unit test (§7).
+
+**Number of sectors.** With B bands and N fixed, only the parity vectors whose sum matches N mod 2
+can occur, so there are 2^(B−1) sectors: 2 for two bands and 4 for three. Cost in this version: one
+full ASCI solve per sector, run serially.
+
+---
+
+## 1. Overview of the changes
+
+| # | Piece | Where | Size (est.) |
+|---|---|---|---|
+| 1 | `ParityLabels`: detect, verify and clean the labels once at setup | new `include/macis/parity_sectors.hpp` + `src/macis/parity_sectors.cpp` | ~200 lines |
+| 2 | Sector filter in the ASCI search (a hard guarantee) | `asci/determinant_search.hpp` (`ASCISettings`, around :574) | ~30 lines |
+| 3 | Seed for each sector | `parity_sectors.hpp` | ~80 lines |
+| 4 | Sector wrapper, dispatched inside `SolveImpurityASCI_rot`, `SolveImpurityASCI` and `SolveImpurityED` | `impurity_solver.cpp` | ~200 lines |
+| 5 | Input keys, refusals and output | `run_asci_impsolv_dop.cxx`, `impurity_params` | ~40 lines |
+| 6 | Tests | new `tests/parity_sectors.cxx` | ~200 lines |
+
+The wrapper is entered from **inside** the solver functions, so no caller changes:
+
+- the driver (`run_asci_impsolv_dop.cxx:472`);
+- the µ search (`fix_mu.cpp:155, 257, 261`);
+- the charge-sector search (`charge_sectors.cpp:284-285`).
+
+Each of them gets the parity loop automatically.
+
+---
+
+## 2. Labels: `ParityLabels` (piece 1)
+
+### 2.1 Data
+
+```cpp
+// include/macis/parity_sectors.hpp
+namespace macis {
+
+/// Band-parity labels of the active orbitals. Built once per FCIDUMP and shared.
+struct ParityLabels {
+  size_t ngroups = 0;
+  std::vector<int> group_of;                     // active orbital -> group, -1 = decoupled
+  std::vector<std::vector<uint32_t>> group_orbs; // group -> its active orbitals
+  double max_discarded = 0.;                     // largest integral zeroed by the cleaning
+  bool counts_conserved = false;                 // no term moves electrons between groups
+};
+
+/// Determinant -> parity key, bit g = (N_g mod 2), alpha and beta summed.
+template <size_t N>
+struct ParityMasks {
+  std::vector<wfn_t<N>> mask;  // per group: alpha bits | beta bits << N/2
+  explicit ParityMasks(const ParityLabels&);
+  uint32_t key(const wfn_t<N>& d) const {
+    uint32_t k = 0;
+    for(size_t g = 0; g < mask.size(); ++g)
+      k |= uint32_t((d & mask[g]).count() & 1u) << g;
+    return k;
+  }
+};
+
+/// What the ASCI search needs. ASCISettings is not templated on N, so it stores
+/// orbital lists, and the search builds ParityMasks<N> from them on entry.
+struct ParityTarget {
+  std::shared_ptr<const ParityLabels> labels;
+  uint32_t key;
+};
+}
+```
+
+### 2.2 Detection (`build_parity_labels(p, tol)`, called once in the driver)
+
+1. **Seed the bands.** Impurity orbital `i < n_imp` gets band `i / (n_imp / nbands)`, or the band
+   given by `ASCI.PARITY_GROUPS` (a list of length `n_active`; bath entries may be `-1` = infer).
+2. **Join orbitals by one-body coupling.** Run a union-find over the pairs with `|T_pq| > tol` (and
+   `|Td_pq| > tol` if spin-dependent), plus the impurity orbitals of each band.
+3. **Classify each connected component:**
+   - exactly one band → that band's group;
+   - two or more bands → **throw**. The message names the orbitals and the largest `|T_pq|` that
+     joins the bands ("the bath is not band-diagonal");
+   - no band at all (a "dark" bath orbital with zero hybridization) → `group_of = -1`, with a
+     warning. Its occupation is conserved on its own and is fixed by the seed (§4). It is
+     excluded from the sector enumeration.
+
+### 2.3 Verification and cleaning (same function, on `p.T`, `p.Td`, `p.V`)
+
+- **One-body.** Every `|T_pq|` with `group_of[p] != group_of[q]` must be ≤ `tol`.
+- **Two-body.** For every `(pq|rs)`, sum the group memberships of all four indices; for each group
+  g the sum `[p∈g] + [q∈g] + [r∈g] + [s∈g]` must be even. **This parity test does not depend on the
+  index convention.** A term that breaks it must have `|V| ≤ tol`.
+- **Cleaning.** Every violating element ≤ `tol` is set to exactly 0, and the largest one is kept as
+  `max_discarded`. Anything above `tol` throws, quoting the element. Cleaning `p.T`, `p.Td` and `p.V`
+  (not the `_active` copies) keeps everything downstream consistent: µ updates rebuild `T_active`
+  from `p.T` (`fix_mu.cpp:127, 228`), and the GF path rebuilds the Hamiltonian from `p.T`/`p.V`
+  (`run_asci_impsolv_dop.cxx:586`).
+- **Count check.** If no term with `|V| > tol` moves electrons between groups (chemist convention
+  `a†p a†r a_s a_q`), set `counts_conserved = true` and warn: *"no pair hopping, so the band counts are
+  conserved, which is finer than parity. A count-sector trap is still possible, and this version
+  does not handle it."*
+- **Cost.** One O(norb⁴) sweep at setup, the same as `prepare_det_symmetry`'s check.
+
+Greppable output: `PARITY_LABELS groups = [[0,2,4,..],[1,3,5,..]] decoupled = [] max_discarded = 0.0e+00 counts_conserved = F`
+
+---
+
+## 3. Sector filter in the ASCI search (piece 2)
+
+`ASCISettings` gets one more member, passed by value like `sym_group`:
+
+```cpp
+// Parity-sector constraint (set only by the parity wrapper): asci_search drops
+// every candidate whose band-parity key differs from target.
+std::shared_ptr<const ParityTarget> parity_target;
+```
+
+In `asci_search`, right after `// Finalize scores` (`determinant_search.hpp:574`) and before the
+seed determinants are re-inserted:
+
+```cpp
+if(asci_settings.parity_target) {
+  const ParityMasks<N> pm(*asci_settings.parity_target->labels);
+  const auto target = asci_settings.parity_target->key;
+  const auto n0 = asci_pairs.size();
+  asci_pairs.erase(std::remove_if(asci_pairs.begin(), asci_pairs.end(),
+                     [&](const auto& x) { return pm.key(x.state) != target; }),
+                   asci_pairs.end());
+  logger->info("  * PARITY FILTER: dropped {} candidates", n0 - asci_pairs.size());
+}
+```
+
+- **With cleaned integrals this drops nothing.** An out-of-sector determinant has zero coupling, so
+  it is never generated. The filter is a cheap hard guarantee, and a nonzero count in the log
+  points to a bug.
+- **It covers grow and refine,** because both go through `asci_search`.
+- **It is rank-local and runs before the top-k,** so under MPI it needs no communication.
+
+---
+
+## 4. Seed for each sector (piece 3)
+
+```cpp
+template <size_t N>
+wfn_t<N> parity_seed(const wfn_t<N>& base, uint32_t target, const ParityMasks<N>& pm,
+                     const ParityLabels& L, HamiltonianGenerator<N>& H, size_t norb);
+```
+
+- **Base.** `base = asci_reference_determinant(p)`, the legacy seed (`impurity_solver.cpp:577`).
+- **Home sector** (`key(base) == target`): return `base` unchanged. The sector that today's solver
+  reaches therefore runs **bit-for-bit as today**. This is the regression anchor (test T2).
+- **Any other sector:**
+  1. **Repair.** While `key(D) != target`: among the single moves (one spin, occupied i → empty a)
+     whose groups g(i) ≠ g(a) are both in `key(D) ^ target`, apply the one with the lowest diagonal
+     energy `H.matrix_element(D', D')`. For two bands this is a single move. For three bands it is
+     also one move, since the two flipped groups are fixed. For four bands and more it can take two.
+  2. **Descend.** Repeatedly apply the sector-preserving single or double move that lowers
+     `⟨D|H|D⟩` the most, until none does (capped at, say, 50 steps). Moves are excluded on decoupled
+     orbitals.
+     - This matters at large U: one-body order is a poor guide there. The 1×2 U = 70 odd-sector
+       seed `u00d2222` is a one-electron-per-band impurity, and the diagonal energy (which includes
+       U, U′ and J) prefers it.
+     - Cost: (n_occ·n_vir)² diagonal evaluations of O(n²) per step, well under a second at
+       n_active ≈ 24–32.
+- **Dark orbitals** keep their `base` occupation (no move touches them).
+
+**Why the lowest diagonal energy:** Davidson starts from the lowest-diagonal determinant of the
+space anyway (F1), so this is the start the solver would choose itself if it could see the sector.
+
+**Multiple starts per sector** (plan §3.5) are left out. Its natural extension is
+`ASCI.PARITY_STARTS = k`: keep the k best distinct descent minima, and add the descended base as a
+second start in the home sector. They are worth adding only if T4/T5 (§7) show traps inside a
+sector.
+
+---
+
+## 5. Sector wrapper (piece 4)
+
+### 5.1 Dispatch
+
+```cpp
+template <size_t N>
+double SolveImpurityASCI_rot(impurity_params<N>& p) {
+  if(!p.parity_labels or p.asci_settings.parity_target)  // off, or already inside a sector
+    return solve_asci_rot_one(p);                        // today's body, renamed
+  return solve_parity_sectors(p, &solve_asci_rot_one<N>);
+}
+```
+
+`SolveImpurityASCI` (used by `Mu_vs_n`) and `SolveImpurityED` (used by the CAS paths) get the same
+three-line dispatch. `SolveImpurityCheapASCI` re-diagonalizes the previous call's determinant space,
+which is already parity-pure, so in cheap mode the µ search stays in the winner's sector. This is
+documented, not changed.
+
+### 5.2 Changes inside `solve_asci_rot_one` (today's body)
+
+- **Seed.** When `parity_target` is set, `hf_det = parity_seed(asci_reference_determinant(p), ...)`
+  instead of the plain reference (`:577`).
+- **Output files.** `active_ordm.dat` and `rot_matrix.dat` (`:736-755`) are written by the caller
+  (the wrapper or the dispatch), not inside each sector solve. Otherwise every sector overwrites
+  them and the last sector wins (plan F5). The solve returns its `active_ordm` alongside E.
+- Nothing else changes: with `NROTS = 0` the macro loop runs once.
+
+### 5.3 `solve_parity_sectors`
+
+```text
+keys    = all parity keys consistent with N (minus the dark-orbital electrons of base),
+          or just ASCI.PARITY_ONLY if given
+guesses = split_guess_by_key(p)          // §5.4
+for k in keys:
+    ps = p                                // a full copy: isolates T_active, V_active, dets, C, occs
+    ps.asci_settings.parity_target = {labels, k}
+    ps.asci_settings.sym_group     = stabilizer(sym_group, k)   // §5.5, if SYMMETRIZE_DETS
+    ps.asci_wfn_fname / asci_E0    = guesses[k] or cold
+    r[k] = {E, ndets, seed det, <seed|H|seed>, band occupations N_g, active_ordm}
+winner  = argmin E
+copy back to p: dets, C, occs, orb_rot, E, T_active, Td_active, V_active, asci_settings.just_singles
+write active_ordm.dat and rot_matrix.dat for the winner; print table; write parity_sectors.dat
+```
+
+- **Copy cost.** Copying `impurity_params` copies `T`, `V` and `V_active`: 2 × norb⁴ × 8 B, about
+  17 MB at norb = 32. That is negligible.
+- **Outputs.**
+  - stdout: one line per sector:
+    `PARITY_SECTOR key=(o,o) E=… dE=… ndets=… seed=<det> E_seed=… N_band=[…] [WINNER]`
+  - `parity_sectors.dat`: the same table. It is overwritten on every call, so after a µ search it
+    holds the final µ.
+- **Near-ties.** If another sector lies within `ASCI.PARITY_ETOL` of the winner, print
+  `PARITY_TIE`. With degenerate bands at odd N, the (o,e) and (e,o) sectors are exact partners
+  under band swap. The winner then breaks band symmetry, so G_AA ≠ G_BB.
+  - Today's solver has the same issue: it lands in one of the two.
+  - The DMFT side should average the bands (the existing symmetrization, plan §3.9).
+  - We solve both partners anyway. This version doesn't exploit band swap to skip one, and
+    agreement within tolerance is a free consistency check.
+
+### 5.4 Guesses (`ASCI.WFN_FILE`, charge-sector warm starts)
+
+These are allowed under `NROTS = 0`. Read the guess once and group its determinants by key:
+
+- **All in one sector** (any guess written by a parity solve): that sector loads the file
+  unchanged, with the supplied `E0_WFN`. The other sectors start cold.
+- **Spread over several sectors:** for each sector, diagonalize its slice, write
+  `<fname>.par<key>`, and pass it on with its own E0, exactly as `solve_from_seed` does
+  (`charge_sectors.cpp:184`).
+  - This is the normal case for the charge-sector N±1 seeds: c†_A ψ and c†_B ψ lie in different
+    parity sectors. Without the split they would mix in one solve and trap (F1).
+
+### 5.5 `SYMMETRIZE_DETS`
+
+At odd N a band-swap permutation maps (o,e) to (e,o). Closing a sector's space under it would put
+both sectors into one solve. Restrict the group to the **stabilizer of the target key**: keep g only
+if it maps every group onto a group with the same target parity bit. These elements of the already
+expanded group form a subgroup, so no re-expansion is needed. Site swaps (1×2) stay inside a band
+and are always kept.
+
+### 5.6 ED path
+
+In parity mode `SolveImpurityED` filters the full Hilbert space by key, then runs
+`selected_ci_diag` and `form_rdms`. This is about 30 lines, and it is what makes the T1 references
+and the CAS µ search parity-correct.
+
+---
+
+## 6. Keys, refusals, setup (piece 5)
+
+| Key (`[ASCI]`) | Default | Meaning |
+|---|---|---|
+| `PARITY_SOLVE` | `FALSE` | enables everything here |
+| `PARITY_GROUPS` | inferred (§2.2) | optional orbital → band list (`-1` = infer from T) |
+| `PARITY_TOL` | `1e-10` | label-verification tolerance; violations at or below it are zeroed and reported |
+| `PARITY_ETOL` | `1e-6` | near-tie report threshold (Ha) |
+| `PARITY_ONLY` | none | solve one sector only, e.g. `[1,1]` (validation, reproducing a single run) |
+
+- **Naming.** The keys use `PARITY_` so they can't be confused with the charge-sector `DOP.SECTOR_*`
+  keys.
+- **Refused with `PARITY_SOLVE`:**
+  - `NROTS > 0`;
+  - `GROW_WITH_ROT`;
+  - `n_inactive > 0` or `n_active < norb`;
+  - `n_imp % nbands != 0`;
+  - more than 32 groups.
+- **Setup.** `impurity_params` gets `std::shared_ptr<const ParityLabels> parity_labels`. The driver
+  builds it after reading the FCIDUMP and before `active_hamiltonian` (`run_asci_impsolv_dop.cxx:308`),
+  because the cleaning acts on `p.T`, `p.Td` and `p.V`.
+- **DMFT side.** The DMFT Python is outside this repo. It only has to pass `PARITY_SOLVE` through to
+  `input.in` (and add the key to `Read_Vars`, plan §3.7).
+
+---
+
+## 7. Tests and validation
+
+**Unit tests** (new file `tests/parity_sectors.cxx`; the model is `make_model` of
+`tests/charge_sectors.cxx` with the cross-band coupling 0.15 → 0, ε_d = −3):
+
+| # | Test | Pass |
+|---|---|---|
+| T0 | Labels | groups {0,2,4}/{1,3,5}. With cross coupling 0.15: throws. With 1e-12: cleaned, `max_discarded` = 1e-12. With J_P zeroed: `counts_conserved`. |
+| T1 | Each sector, ASCI vs exact, NTDETS ≥ 200 | (3,3): (e,e) −8.512442367, (o,o) −8.551448456. (3,2): (e,o) −8.700141181, (o,e) −8.865079189. To 1e-8, cold and with a guess file. |
+| T2 | Regression anchor | `PARITY_SOLVE` off vs on, (3,3): the (e,e) result equals the legacy energy bit for bit. The wrapper returns (o,o), 0.039 Ha lower. |
+| T3 | Truncated budget (NTDETS ≈ 60) | every sector's `PARITY FILTER` count is 0; the winner is expected to stay (o,o) (the gap is 0.039 Ha), to be confirmed |
+| T4 | Seed repair | from the (3,3) legacy seed, `parity_seed` reaches (o,o) in one move, and descent never raises `⟨D\|H\|D⟩` or leaves the sector; the seed is logged (whether it is one electron per impurity band is a check, not an assumption) |
+| T5 | Charge-sector search + parity, warm | the N±1 seeds split into two slices each, and the final sector matches an exact scan |
+| T6 | `SYMMETRIZE_DETS`, degenerate bands, odd N | the band swap is dropped from the stabilizer, both partner sectors agree to `PARITY_ETOL`, and `PARITY_TIE` is printed |
+
+**Frozen production Hamiltonians** (plan V3/V9, NROTS = 0):
+
+- **1×2 U = 70, `It_10`:** a cold `PARITY_SOLVE` returns −95.427914 in odd parity. The even sector
+  returns −95.279685, the production value.
+  - Those references come from `Parity_Test/`. If those runs used NROTS > 0, first recompute both
+    references at NROTS = 0, with `PARITY_ONLY` and hand-built seeds.
+- **Single-site two-band case** (plan V9c): both sectors are solved and the winner is the Hund
+  triplet.
+- **Overhead:** about 2× the wall time for two bands.
+
+---
+
+## 8. Implementation order
+
+1. Pieces 1 and 2, with T0 and T3. Nothing changes for runs with `PARITY_SOLVE` off.
+2. Piece 3 and the wrapper for `SolveImpurityASCI_rot` without guesses, with T1, T2 and T4.
+3. Guess splitting (§5.4), the ED path (§5.6), `SolveImpurityASCI`, and the stabilizer (§5.5), with
+   T5 and T6.
+4. The frozen 1×2 U = 70 check, then a DMFT restart.
+
+---
+
+## 9. Deliberately left out (pointers into `symmetry-sector-solve.md`)
+
+| Left out | Plan section |
+|---|---|
+| K / momentum labels, C4/σ_d, 2×2 | §3.3, §3.10.4 |
+| `NROTS > 0`: per-band natural orbitals and sector-preserving restarts | §3.4 (needed when NROTS returns: per-band blocks in `rotate_hamiltonian_ordm_imp_bath`, `parity_seed` replacing `hf_determinant_byocc`) |
+| Bath projection for non-band-diagonal fits (SDP) | §3.2 (here a non-band-diagonal bath is refused) |
+| Count labels (J_P = 0) and spin-resolved counts | §3.10.1 (here detected and warned only) |
+| Multiple starts per sector | §3.5 (`PARITY_STARTS`, §4 here) |
+| ⟨S²⟩, `SPIN_CHECK`, odd-N G↑/G↓ | §3.6, §3.9 |
+| Refine-cycle status, coverage status | §3.1 |
+| Parallel sector loop (communicator split) | §3.7 |
+| Screening and a branch-consistent µ search | §3.8 |
