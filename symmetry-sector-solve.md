@@ -15,6 +15,13 @@
 > The last three now live in `symmetry_sector_files/`. Those files stay as the record. Where they disagree with this one, this one applies; §7 lists the
 > superseded claims. Solver tree: `MACIS_fork/MACIS_claude` at `aa26eaf`. Line numbers refer to
 > that commit.
+>
+> **Revised 2026-10-03 (Irrep bath structure).** Reading `Fits.py` showed that the Irrep bath is
+> momentum-pure by construction (F12). §1.4, §3.2, §3.3, §3.4 and D2 are updated: the "split E by
+> diagonalizing T_x" step is dropped. What remains for K at NROTS ≥ 1 is the `fullM` impurity
+> rotation and a finer `group_of` (one group per (band, K) channel) in the per-band natural
+> orbitals that already exist. A read-only check of archived rotation matrices decides how urgent
+> that is (§3.4).
 
 ---
 
@@ -31,7 +38,7 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.1 cold-seed closure bug (F3) | open | |
 | §3.2 bath modes A/B (SDP projection) | open | a bath that is not band-diagonal is refused, with the offending coupling named |
 | §3.3 labels: band parity | **done** (band-diagonal bath, band-major layout) | detected from T, verified and cleaned against every integral, `ASCI.PARITY_TOL` |
-| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope |
+| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope. On the Irrep bath, the bath orbitals already carry K (F12); what is missing is the `fullM` impurity rotation, (band, K) groups in `group_of`, and the sector table |
 | §3.4 per-band natural orbitals, sector-preserving restarts | **done** | `PARITY_SOLVE` now runs with NROTS > 0: natural orbitals per (impurity\|bath) × band block, restarts moved into the sector, inherited charge-sector bases checked; `parity-sector-solve-simple.md` §12 |
 | §3.4 covariant natural orbitals, `LABEL_LEAK` | **partly done** | `LABEL_LEAK` is printed before every rotation; the covariant choice (and with it `SYMMETRIZE_DETS` with NROTS > 0) is open |
 | §3.5 seeds | **partly done** | one seed per sector: the energy-ordered reference if it lies in the sector, otherwise repaired and descended on ⟨D\|H\|D⟩. The energy-ordered seed is now the default for every run (`ASCI.HF_BY_ENERGY`, F3's "energy-sorted only with `SYMMETRIZE_DETS`" no longer holds) |
@@ -145,6 +152,12 @@ Both reviews measured this, by different metrics, and they agree.
 Rotations inside a degenerate pole leave Γ = VᵀV unchanged. The SDP cross-band residues are
 therefore a real defect of the Hamiltonian, not a choice of basis.
 
+**Why the Irrep row looks the way it does** (F12): every Irrep bath orbital couples to exactly one
+(band, irrep) channel, and the four c4v irrep vectors are the four cluster momenta. The cross-K
+residue is therefore zero by construction (3e-17 is round-off). The C4/σ_d defect has a single
+source: E_1 and E_2 share ε exactly (`degens`), but each bath orbital has its own V, so
+V_{E_1} − V_{E_2} is a free fit residual of about 2e-7. It breaks C4 but not translations.
+
 ---
 
 ## 2. Solver facts that shape the design (verified in source)
@@ -162,6 +175,16 @@ therefore a real defect of the Hamiltonian, not a choice of basis.
 | F9 | `MCSCF.CI_NSTATES > 1` switches to LOBPCG, but only root 0 goes back to the ASCI search. Searching around several roots would be new code. | `solvers/selected_ci_diag.hpp:65-85` |
 | F10 | The GF spin channel is chosen per orbital by `GF.IS_UP_COMP` (the DMFT key `UPoComp`). `RUN_U2_Irrep` at (10,9) computes **↑ only**. | `run_asci_impsolv_dop.cxx:626`, `Solver.py:1011` |
 | F11 | The DMFT symmetry projection of G is **off** by default (`symmetrize_solver_output = False`). When on, it **raises** above `symmetrize_warn_thresh = 0.5`. | `constANDparams.py:218-219`, `Solver.py:1357-1362` |
+| F12 | **Irrep bath (c4v, 2×2).** Each bath orbital n couples to one band, (n // 4) % nbands, through one vector, `vs_ind[n] * v_dict[irrep]`, so the bath is band-diagonal and single-channel by construction. The vectors are v_A1 = (1,1,1,1)/2, v_B2 = (1,−1,−1,1)/2, v_E_1 = (−1,1,−1,1)/2, v_E_2 = (1,1,−1,−1)/2. With the site order i → (i // nsitesY, i % nsitesY), these are K = (0,0), (π,π), (0,π), (π,0). The table below holds for every one of the 24 site orderings: T_x, T_y and T_xT_y form the Klein group, which acts as XOR on the indices, and the Hadamard rows are its characters. Only which irrep carries which K depends on the ordering. With this ordering B2 is (π,π), so `degens = [1,1,2]` ties ε for the right pair (E_1, E_2). V is not tied: one `vs_ind` per bath orbital. With `band_sym`, the parameters are copied to every band, so the bands are exactly degenerate. The impurity rows of the FCIDUMP are in the site basis; `fullM` = blockdiag(M_to_irrep, …) is the per-band momentum transform. 16 baths = 2 bands × 4 channels × 2 orbitals: each (band, K) channel holds 1 impurity and 2 bath orbitals. | `Fits.py` (PolClassy_DMFT): `IrrepStruct` `:23-91`, `expand_uniq_eps` `:93`, `expand_ind_vs` `:102`, `band_sym` tiling `:481-506`, site order `:931` |
+
+Irrep → K under F12's site order (T_x and T_y eigenvalues):
+
+| Irrep | (T_x, T_y) | K |
+|---|---|---|
+| A1 | (+1, +1) | (0,0) |
+| B2 | (−1, −1) | (π,π) |
+| E_1 | (+1, −1) | (0,π) |
+| E_2 | (−1, +1) | (π,0) |
 
 ### 2.1 Which symmetries trap, and how
 
@@ -197,6 +220,10 @@ There are two modes, and they must be kept distinct:
 - **Mode A, exact adaptation.** Rotate only inside degenerate poles, which leaves Γ and Δ exactly
   unchanged. This produces band-, K- or σ_d-pure orbitals wherever Γ already commutes with the
   group. Check: Δ is unchanged to 1e-12.
+  - **On the Irrep bath, mode A is the identity** (F12): every bath orbital is already band- and
+    K-pure. What's left is a verification: in the `fullM` impurity basis, each bath column of V has
+    exactly one nonzero channel. Mode A is needed only for baths that don't have this structure
+    (SDP, Replica, Unrestricted).
 - **Mode B, symmetry projection.** Project each pole's Γ onto the commutant of the chosen group
   (band-diagonal, translations, band swap, and optionally σ_d). **This changes the Hamiltonian:**
   - record the change (`BATH_SYM_DISCARD`, as a residue metric and as a Δ metric on a frequency
@@ -209,16 +236,36 @@ There are two modes, and they must be kept distinct:
   - Keep zero-coupling ("dark") bath orbitals during validation: they still carry electrons and
     energy.
 - **Longer term:** enforce the symmetry in the fit itself.
-- **Irrep σ_d** (decision D2): either project to exact D4 (a 4e-7 Hamiltonian change), or keep
-  (π,0) and (0,π) as separate sectors.
+- **Irrep σ_d** (decision D2): the only C4 breaking in the Irrep bath is V_{E_1} ≠ V_{E_2} (F12).
+  The cheapest way to make D4 exact is to tie V for E_1 and E_2 in the fit, as `degens` already
+  does for ε: a few lines in `expand_ind_vs` and fold/unfold. The other options are to project the
+  existing bath (a 4e-7 Hamiltonian change), or to keep (π,0) and (0,π) as separate sectors.
 
 ### 3.3 Labels
 
 - **Which labels exist** is detected per Hamiltonian (§3.10.1: count, parity, or none per orbital
   group; K only if translations verify). The bullets below describe the two-band 2×2 case.
 - **`symmetry_labels`** gives each active orbital its (band, K) after §3.2.
-  - **2×2 with NROTS ≥ 1:** use a fixed per-band Fourier basis for the impurity, and split E by
-    diagonalizing T_x restricted to E.
+  - **2×2 Irrep bath:** the bath orbitals already carry (band, K) (F12). No split of E is needed;
+    "split E by diagonalizing T_x restricted to E" from the first version applies only to baths whose
+    E orbitals are not T_x eigenvectors.
+  - **2×2 with NROTS ≥ 1 and K as a label:** rotate the impurity block by the fixed per-band
+    momentum transform `fullM` (F12) inside the solver, after µ is set, and start `orb_rot` from it
+    (`impurity_solver.cpp:536`). Not in the FCIDUMP: the µ search replaces the impurity diagonal
+    in the site basis (`fix_mu.cpp:35-46`), and in a momentum basis that diagonal also holds the
+    hopping eigenvalues. Composed into `orb_rot`, G, the RDMs and the observables still come back
+    in the site basis. For a state with definite K and band parity, these orbitals are exact
+    impurity natural orbitals (ρ_{bk,b'k'} = 0 unless b = b' and k = k'). So relative to the current
+    NROTS ≥ 1 runs this is no new approximation, only a fixed choice inside degenerate blocks (§3.4).
+    Cost: macro iteration 1 leaves the sparse site basis, at about N_sites² = 16× more on-site
+    Kanamori two-body terms. Later macro iterations already pay this in today's natural-orbital
+    basis.
+  - **2×2 at NROTS = 0:** with the Irrep bath, translations are signed orbital permutations in the
+    original basis: they permute the impurity sites (XOR on the site index) and act on bath orbitals
+    by signs. So the determinant space can be closed under translations without changing basis,
+    as `SYMMETRIZE_DETS` does for band permutations. This corrects the "site permutations out of
+    scope" note in `PLAN_symmetric_asci_search.md` §2 for this bath. C4 stays out of the group
+    until D2 makes it exact.
   - **1×2 at NROTS = 0:** stays in the site basis. K and the site swap act there as permutation
     symmetries (§2.1), and on-site Kanamori in momentum orbitals has about N_sites² more two-body
     terms.
@@ -242,6 +289,37 @@ There are two modes, and they must be kept distinct:
 
 - **Block-wise diagonalization.** Diagonalize the 1-RDM per (impurity|bath) × band × K block. Log
   the largest off-block element as `LABEL_LEAK`.
+  - **Why the whole-block `gesvd` isn't enough, even though the Irrep bath starts pure.** For a
+    state with definite labels, ρ_bath = ⊕_{b,k} ρ_{bk}, with each ρ_{bk} a 2×2 block on the Irrep
+    bath. `gesvd` on the full 16×16 block (F4) respects those blocks only when no two blocks share
+    an eigenvalue. On the Irrep bath they do (F12):
+    - `band_sym`: spec ρ_{A,k} = spec ρ_{B,k}, exactly;
+    - E_1/E_2: equal to about 2e-7.
+
+    Inside a degenerate group, the rotation is set by the solver's own asymmetry ε (Davidson
+    tolerance, uneven truncation), with a mixing angle θ ~ ε/δn. That is of order one when
+    δn ≲ ε. The impurity block behaves the same way. After macro iteration 1, the orbitals can mix
+    bands and K, and the result depends on round-off.
+  - **Status:** the per-band part is done under `PARITY_SOLVE` (the `group_of` argument of
+    `rotate_hamiltonian_ordm_imp_bath`; `parity-sector-solve-simple.md` §12). On the Irrep bath,
+    K needs only a finer `group_of`, one group per (band, K) channel. The bath orbitals can be
+    grouped directly (F12). The impurity orbitals can be grouped after the `fullM` rotation of §3.3,
+    which makes every impurity block 1×1, so the impurity no longer rotates. The bath blocks are 2×2.
+  - **Check on archived runs** (read-only, NROTS ≥ 1, e.g. `RUN_U4_Irrep_N18/It_2`). Off-block
+    weight alone doesn't decide it: `gesvd` sorts by occupation, so the legacy rotation reorders
+    orbitals across groups even without degeneracy (`parity-sector-solve-simple.md` §12.3). That
+    makes the off-block weight O(1) by reordering alone. Test each column instead: is it supported
+    on a single channel (a signed permutation of channel-pure vectors, harmless) or spread over
+    several (real mixing)?
+    - bath block of `rot_matrix.dat`: the largest single-channel fraction of each column's weight
+      (the bath is already in channel order);
+    - impurity block: the same for the columns of `fullMᵀ R_imp`;
+    - `active_ordm.dat`: cross-channel elements of the impurity block after `fullM`, and the
+      splittings between occupations.
+
+    If every column is single-channel to round-off, the degenerate mixing doesn't occur in
+    practice, and (band, K) blocks can wait until K becomes a label. Columns split over channels
+    are direct evidence that today's NROTS ≥ 1 runs mix labels.
 - **Covariant choice.** Take the band-B natural orbitals as the band-swap images of the band-A ones,
   and the (0,π) natural orbitals as the σ_d images of the (π,0) ones. Then band swap and σ_d stay
   signed permutations, so ⟨σ_d⟩ can be measured, and `SYMMETRIZE_DETS` can later be re-enabled with
@@ -497,7 +575,9 @@ pattern). First confirm which tree each campaign runs: the 1×2 runs use `MACIS_
 
 - **D1 SDP:** use mode B projection (a recorded Hamiltonian change), or enforce the symmetry in the
   fit?
-- **D2 Irrep σ_d:** project to exact D4 (a 4e-7 change, giving 6 sectors), or keep 8 sectors?
+- **D2 Irrep σ_d:** make D4 exact (6 sectors), or keep 8 sectors? To make it exact, preferably tie
+  V_{E_1} = V_{E_2} in the Irrep fit (F12, §3.2); projecting the existing bath (a 4e-7 change) is
+  the alternative.
 - **D3 Odd-N G:** if V5 shows G↑ ≠ G↓ matters, fix the running U = 2 setup now or after the plan
   lands?
 - **D4 Which N:** re-run the charge-sector scans after V4 (1×2 and 2×2).
@@ -536,6 +616,11 @@ From `parity-sector-solve-2x2-context.md`:
   - the 9.3.2 rule "seed must not be σ_d-invariant" is replaced by multi-start with both kinds of
     candidate (§3.5).
 
+From the first version of this document (2026-10-03):
+- **§3.3 "split E by diagonalizing T_x restricted to E" for the 2×2:** not needed on the Irrep
+  bath, which is momentum-pure by construction (F12).
+- **§1.4 C4/σ_d defect, source unstated:** it is the untied V_{E_1} − V_{E_2} fit residual (F12).
+
 From `parity-sector-solve-independent-assessment.md`:
 - **Nothing superseded.** Its "high-U table not independently reproduced" can now be checked from
   `Parity_Test/` (§1.1).
@@ -550,4 +635,6 @@ From `parity-sector-solve-independent-assessment.md`:
   - `seedtools.py`: determinant energies and seed files.
 - **`docs/plans/parity-sector-assessment-checks.py`:** bath residues, the U = 0 sector reference
   and spin toys. Results in `parity-sector-assessment-results.json`.
+- **`Fits.py` (PolClassy_DMFT):** the Irrep bath parametrization behind F12 (`IrrepStruct`,
+  `expand_ind_vs`, `symmetryze_hyb`).
 - **Diagnosis of the 1×2 case:** `…/J_0.25/high_U_triplet_diagnosis.md`.
