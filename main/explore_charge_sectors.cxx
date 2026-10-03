@@ -491,6 +491,7 @@ int main(int argc, char** argv) {
       OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", p.asci_settings.symmetrize_dets,
                   bool);
       OPT_KEYWORD("ASCI.SYM_TOL", p.asci_settings.sym_tol, double);
+      OPT_KEYWORD("ASCI.HF_BY_ENERGY", p.asci_settings.hf_by_energy, bool);
       if(p.asci_settings.symmetrize_dets) {
         size_t nperm = 0;
         OPT_KEYWORD("ASCI.SYM_NPERM", nperm, size_t);

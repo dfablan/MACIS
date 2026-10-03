@@ -63,6 +63,14 @@ struct ASCISettings {
   // bool dist_triplet_random = false;
   int constraint_level = 2;  // Up To Quints
 
+  // Impurity solvers: seed ASCI from the one-body-energy-ordered reference
+  // determinant (fill by the T_active diagonal) rather than from the first
+  // nalpha/nbeta raw orbital indices. A bath fit does not emit its poles in
+  // energy order, so the raw fill can leave a deep level empty while
+  // occupying a shallow one. false restores the raw-index seed of earlier
+  // builds (ignored under symmetrize_dets, which always orders by energy).
+  bool hf_by_energy = true;
+
   // Orbital-permutation symmetry enforcement (band permutations): close the
   // selected determinant set under sym_group at every ASCI selection step.
   bool symmetrize_dets = false;

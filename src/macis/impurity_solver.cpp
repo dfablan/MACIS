@@ -97,33 +97,44 @@ bool load_asci_guess(impurity_params<N>& p, std::vector<macis::wfn_t<N>>& dets,
  *  which is the Hartree-Fock reference only when the orbitals are already
  *  ordered by energy. A bath fit is under no obligation to emit its poles in
  *  energy order, so that filling can leave a deep bath level empty while
- *  occupying a shallow one. Under SYMMETRIZE_DETS the numbering is known not
- *  to be energy-ordered -- that mismatch is the whole reason the flag exists
- *  -- so fill by the one-body diagonal there instead.
+ *  occupying a shallow one (observed: Irrep/Nb15/J_0.1/U_30, an empty level
+ *  at eps = -5.561 next to an occupied one at +0.003). Fill by the one-body
+ *  diagonal instead, as the legacy ASCI-CI driver did.
  *
- *  This also makes the reference G-closed for free in the usual case: the
- *  generators have just been validated as exact symmetries of T_active, so
- *  its diagonal is constant on each orbit, stable_sort keeps orbit members
- *  contiguous, and the occupied prefix splits an orbit only if the Fermi cut
- *  falls inside a tie group. The seed is closed under the group at the call
- *  sites regardless, so that remaining case is handled rather than refused.
+ *  The seed is not just a starting point: every quantity H conserves on
+ *  determinants (e.g. the per-band parity of a band-diagonal Kanamori bath)
+ *  is inherited by the whole expansion from it. At nalpha != nbeta the raw
+ *  fill puts the unpaired electron in whichever band the file happens to list
+ *  next, which can be the wrong parity sector.
  *
- *  Gated on symmetrize_dets deliberately: every other impurity run keeps the
- *  raw-index reference it has always had, bit for bit.
+ *  stable_sort on an already ascending diagonal is the identity, so runs
+ *  whose orbitals were energy-ordered get the same seed as before, bit for
+ *  bit. ASCI.HF_BY_ENERGY = FALSE restores the raw-index fill.
  *
- *  Spin-dependent runs order both spins by T_active. Td_active is validated
- *  as permutation-invariant too, so closure is unaffected; only the beta
- *  seed's quality is, and it is a seed.
+ *  Under SYMMETRIZE_DETS the energy order is always used: it also makes the
+ *  reference G-closed for free in the usual case. The generators have been
+ *  validated as exact symmetries of T_active (and Td_active), so the diagonals
+ *  are constant on each orbit, stable_sort keeps orbit members contiguous, and
+ *  the occupied prefix splits an orbit only if the Fermi cut falls inside a
+ *  tie group. The seed is closed under the group at the call sites
+ *  regardless, so that remaining case is handled rather than refused.
+ *
+ *  Spin-dependent runs order the beta electrons by the Td_active diagonal.
  */
 template <size_t N>
 macis::wfn_t<N> asci_reference_determinant(const impurity_params<N>& p) {
-  if(!p.asci_settings.symmetrize_dets)
+  if(!p.asci_settings.hf_by_energy and !p.asci_settings.symmetrize_dets)
     return macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta);
 
   const size_t n = p.n_active;
-  std::vector<double> orb_ens(n);
-  for(size_t q = 0; q < n; ++q) orb_ens[q] = p.T_active[q + q * n];
-  return macis::canonical_hf_determinant<N>(p.nalpha, p.nbeta, orb_ens);
+  std::vector<double> ens_alpha(n), ens_beta(n);
+  for(size_t q = 0; q < n; ++q) {
+    ens_alpha[q] = p.T_active[q + q * n];
+    ens_beta[q] = p.spin_dep ? p.Td_active[q + q * n] : ens_alpha[q];
+  }
+  // Each call fills one spin only, so OR-ing them orders the spins separately
+  return macis::canonical_hf_determinant<N>(p.nalpha, 0, ens_alpha) |
+         macis::canonical_hf_determinant<N>(0, p.nbeta, ens_beta);
 }
 
 /**
@@ -444,7 +455,11 @@ double SolveImpurityASCI (impurity_params<N>& p){
     if(!load_asci_guess(p, dets, C_local, E0))
     {
       // HF Guess
-      std::cout<<"Generating HF Guess for ASCI \n";
+      std::cout << "Generating HF Guess for ASCI ("
+                << (asci_settings.hf_by_energy or asci_settings.symmetrize_dets
+                        ? "filled by one-body energy"
+                        : "filled by raw orbital index, ASCI.HF_BY_ENERGY = FALSE")
+                << ")" << std::endl;
       dets = {asci_reference_determinant<N>(p)};
       E0 = ham_gen.matrix_element(dets[0], dets[0]);
       C_local = {1.0};
@@ -583,7 +598,11 @@ double SolveImpurityASCI_rot (impurity_params<N>& p){
       if(!have_guess)
       {
         // HF Guess
-        std::cout<<"Generating HF Guess for ASCI \n";
+        std::cout << "Generating HF Guess for ASCI ("
+                << (asci_settings.hf_by_energy or asci_settings.symmetrize_dets
+                        ? "filled by one-body energy"
+                        : "filled by raw orbital index, ASCI.HF_BY_ENERGY = FALSE")
+                << ")" << std::endl;
         dets = {hf_det};
         E0 = ham_gen.matrix_element(dets[0], dets[0]);
         C_local = {1.0};

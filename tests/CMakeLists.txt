@@ -26,6 +26,7 @@ add_executable( macis_test
   impurity_rdm.cxx
   dynamical_properties.cxx
   charge_sectors.cxx
+  impurity_seed.cxx
   gf.cxx
 )
 target_link_libraries( macis_test PUBLIC macis Catch2::Catch2 )

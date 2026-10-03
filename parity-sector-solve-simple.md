@@ -180,13 +180,10 @@ wfn_t<N> parity_seed(const wfn_t<N>& base, uint32_t target, const ParityMasks<N>
 ```
 
 - **Base.** `base = asci_reference_determinant(p)`, the legacy seed (`impurity_solver.cpp:577`).
-  - **Today that seed is energy-ordered only under `SYMMETRIZE_DETS`.** Every other run fills the
-    first Nα/Nβ *raw* indices (`impurity_solver.cpp:111-127`). `FORK_REVIEW.md` says the gate exists
-    only to avoid perturbing runs in flight, and recommends removing it after an A/B test.
-  - **Recommended: remove the gate first**, as a separate step with its own A/B, before the parity
-    work. Otherwise the "home" sector is set by the order in which the bath fit happened to emit
-    its poles. If a deep bath level of band A is left empty while a shallow level of band B is
-    filled, the raw seed sits in a different parity sector than the energy-ordered one.
+  - **The seed is now energy-ordered for every run.** The `SYMMETRIZE_DETS` gate was removed
+    (`ASCI.HF_BY_ENERGY`, default `TRUE`), so the "home" sector no longer depends on the order in
+    which the bath fit emitted its poles. `tests/impurity_seed.cxx` shows the effect on the parity
+    toy with the bath listed out of energy order.
   - Either way, the base is only a one-body criterion. At large U both orderings put the deepest
     impurity levels first, doubly occupied, at a cost of about U each. That is why the descent
     below uses the full diagonal energy ⟨D|H|D⟩.
