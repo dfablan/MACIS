@@ -726,36 +726,36 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
     // exactly once and the post-rotation reseed path is unreachable.
     prepare_det_symmetry(p);
 
-      // hf_det is needed whether or not a guess is loaded: it is the reference the
-      // macro-iteration loop restarts from in each rotated basis, refreshed via
-      // hf_determinant_byocc after every rotation below.
-      macis::wfn_t<N> hf_det = sector_seed<N>(p, ham_gen, x);
-      std::vector<double> orb_occs(n_active,0.0);
+    // hf_det is needed whether or not a guess is loaded: it is the reference the
+    // macro-iteration loop restarts from in each rotated basis, refreshed via
+    // hf_determinant_byocc after every rotation below.
+    macis::wfn_t<N> hf_det = sector_seed<N>(p, ham_gen, x);
+    std::vector<double> orb_occs(n_active,0.0);
 
-      // A guess only seeds the first macro iteration. load_asci_guess requires
-      // NROTS == 0, so with a guess that first iteration is also the only one.
-      const bool have_guess = load_asci_guess(p, dets, C_local, E0);
-      if(have_guess) x.cold = false;
-      if(!have_guess)
-      {
-        // HF Guess
-        std::cout << "Generating HF Guess for ASCI ("
-                << (asci_settings.hf_by_energy or asci_settings.symmetrize_dets
-                        ? "filled by one-body energy"
-                        : "filled by raw orbital index, ASCI.HF_BY_ENERGY = FALSE")
-                << ")" << std::endl;
-        dets = {hf_det};
-        E0 = ham_gen.matrix_element(dets[0], dets[0]);
-        C_local = {1.0};
-      }
-      // Close whatever seeded the expansion -- HF fallback or guess from file --
-      // under the group. E0 above is taken from the HF determinant before this
-      // call: close_guess_under_group rebuilds dets in bitset order, so dets[0]
-      // afterwards is not necessarily the reference. The added partners carry
-      // C = 0, so they leave that E0 correct.
-      if(asci_settings.symmetrize_dets and asci_settings.sym_group)
-        close_guess_under_group(dets, C_local, *asci_settings.sym_group);
-      require_in_sector(p, dets, "seed");
+    // A guess only seeds the first macro iteration. load_asci_guess requires
+    // NROTS == 0, so with a guess that first iteration is also the only one.
+    const bool have_guess = load_asci_guess(p, dets, C_local, E0);
+    if(have_guess) x.cold = false;
+    if(!have_guess)
+    {
+      // HF Guess
+      std::cout << "Generating HF Guess for ASCI ("
+              << (asci_settings.hf_by_energy or asci_settings.symmetrize_dets
+                      ? "filled by one-body energy"
+                      : "filled by raw orbital index, ASCI.HF_BY_ENERGY = FALSE")
+              << ")" << std::endl;
+      dets = {hf_det};
+      E0 = ham_gen.matrix_element(dets[0], dets[0]);
+      C_local = {1.0};
+    }
+    // Close whatever seeded the expansion -- HF fallback or guess from file --
+    // under the group. E0 above is taken from the HF determinant before this
+    // call: close_guess_under_group rebuilds dets in bitset order, so dets[0]
+    // afterwards is not necessarily the reference. The added partners carry
+    // C = 0, so they leave that E0 correct.
+    if(asci_settings.symmetrize_dets and asci_settings.sym_group)
+      close_guess_under_group(dets, C_local, *asci_settings.sym_group);
+    require_in_sector(p, dets, "seed");
     std::cout<<"ASCI Guess Size = "<< dets.size() << std::endl;
     std::cout<<"ASCI E0 = "<< E0 + E_core + E_inactive << std::endl;
     // console->info("ASCI Guess Size = {}", dets.size());
