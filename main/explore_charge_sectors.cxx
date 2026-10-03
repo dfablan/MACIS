@@ -491,6 +491,7 @@ int main(int argc, char** argv) {
       OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", p.asci_settings.symmetrize_dets,
                   bool);
       OPT_KEYWORD("ASCI.SYM_TOL", p.asci_settings.sym_tol, double);
+      OPT_KEYWORD("ASCI.HF_BY_ENERGY", p.asci_settings.hf_by_energy, bool);
       if(p.asci_settings.symmetrize_dets) {
         size_t nperm = 0;
         OPT_KEYWORD("ASCI.SYM_NPERM", nperm, size_t);
@@ -611,6 +612,19 @@ int main(int argc, char** argv) {
       for(size_t i = 0; i < p.n_active; ++i)
         p.orb_rot[i * p.n_active + i] = 1.0;
       p.E = 0.0;
+
+      // Band-parity sector solve (parity-sector-solve-simple.md). Set up before the
+      // active integrals are built: it zeroes parity-breaking integrals up to
+      // PARITY_TOL in T, Td and V, and the active copies must see that.
+      {
+        bool parity_solve = false;
+        double parity_tol = 1e-10;
+        OPT_KEYWORD("ASCI.PARITY_SOLVE", parity_solve, bool);
+        OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
+        OPT_KEYWORD("ASCI.PARITY_ETOL", p.parity_etol, double);
+        OPT_KEYWORD("ASCI.PARITY_ONLY", p.parity_only, std::vector<int>);
+        if(parity_solve) macis::setup_parity_sectors(p, parity_tol);
+      }
 
       // Copy integrals into active subsets
       p.T_active.resize(p.n_active * p.n_active);

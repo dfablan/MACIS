@@ -202,10 +202,10 @@ class HamiltonianGenerator {
                          matrix_span_t ordm, rank4_span_t trdm) = 0;
 
   void rotate_hamiltonian_ordm(const double* ordm, double* rot_mat = nullptr);
-  void rotate_hamiltonian_ordm_imp_bath(const double* ordm, const size_t nimps,
-                                        double* rot_mat = nullptr,
-                                        bool spin_dep = false,
-                                        double* occs_out = nullptr);
+  void rotate_hamiltonian_ordm_imp_bath(
+      const double* ordm, const size_t nimps, double* rot_mat = nullptr,
+      bool spin_dep = false, double* occs_out = nullptr,
+      const std::vector<int>* group_of = nullptr);
   void rotate_hamiltonian_rotmat_imp_bath(double* rot_mat,
                                           bool spin_dep = false);
 

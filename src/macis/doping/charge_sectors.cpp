@@ -342,6 +342,23 @@ void rebuild_active(impurity_params<N>& p) {
 // its own generator.
 template <size_t N>
 void rotate_active(impurity_params<N>& p, const basis_t& U) {
+  // Under PARITY_SOLVE the seed's determinants carry band-parity labels only
+  // if the basis keeps every orbital in its band group. A parity solve's own
+  // orb_rot does (per-band natural orbitals); one from a run without the
+  // parity solve generally does not.
+  if(p.parity_labels) {
+    const double off = macis::max_off_group(U.data(), *p.parity_labels);
+    if(off > p.parity_labels->tol) {
+      std::ostringstream os;
+      os << std::scientific << std::setprecision(2)
+         << "PARITY_SOLVE: the inherited orbital basis mixes band groups "
+            "(largest cross-band element "
+         << off << " > PARITY_TOL = " << p.parity_labels->tol
+         << "), so its determinants have no band parity. It was not written "
+            "by a parity solve.";
+      throw std::runtime_error(os.str());
+    }
+  }
   macis::SDBuildHamiltonianGenerator<N> ham_gen(
       macis::matrix_span<double>(p.T_active.data(), p.n_active, p.n_active),
       macis::rank4_span<double>(p.V_active.data(), p.n_active, p.n_active,

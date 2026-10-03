@@ -6,6 +6,15 @@
 > anchors verified against the current working trees on 2026-08-26 (MACIS fork branch
 > `feature/spin_dep` HEAD `f07c825`; PolClassy_DMFT branch `extra-local-features`).
 >
+> **2026-10-03:** two later changes touch this plan.
+> - The ASCI seed `asci_reference_determinant` is now filled by one-body energy for **every** run,
+>   not only under `SYMMETRIZE_DETS` (`ASCI.HF_BY_ENERGY`, default `TRUE`; `FORK_REVIEW.md` §2.8).
+>   Spin-dependent runs fill β by `Td_active`.
+> - With `ASCI.PARITY_SOLVE` (`parity-sector-solve-simple.md`), each band-parity sector closes its
+>   space under the **stabilizer** of its parity key. At odd N a band swap maps (o,e) onto (e,o),
+>   so it is dropped from that sector's group; at even N it is kept. Tested in
+>   `tests/parity_sectors.cxx`.
+>
 > **2026-08-28:** the closure landed and works — U_30.00 held exact orbital symmetry for seven DMFT
 > iterations, against polarization from It_1 without it. It then broke anyway, because a *closed
 > space* does not imply a *symmetric CI vector* when the ground state is degenerate. That gap, and

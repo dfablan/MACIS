@@ -29,6 +29,24 @@ T vec_sum(const std::vector<T>& x) {
   return std::accumulate(x.begin(), x.end(), T(0));
 }
 
+// The Green's function of an odd-N state is refused for now
+// (symmetry-sector-solve.md, §3.9). At odd N the ground state is a spin
+// doublet, m = +-1/2, and a single member of it has G_up != G_down, while
+// GF.IS_UP_COMP computes one spin channel per orbital: the result would be
+// spin-biased, not the doublet average DMFT needs. Remove this once both
+// channels are computed and averaged.
+void require_even_N_for_GF(size_t nalpha, size_t nbeta, const char* when) {
+  if((nalpha + nbeta) % 2 == 0) return;
+  throw std::runtime_error(
+      std::string("CI.GF = TRUE with an odd number of electrons (NALPHA = ") +
+      std::to_string(nalpha) + ", NBETA = " + std::to_string(nbeta) + ", " +
+      when +
+      ") is not supported yet: the state is one member of a spin doublet and "
+      "its Green's function differs between spin up and spin down, so a "
+      "single-channel GF would be biased. Use an even N, or set CI.GF = "
+      "FALSE.");
+}
+
 int main(int argc, char** argv) {
   using hrt_t = std::chrono::high_resolution_clock;
   using dur_t = std::chrono::duration<double, std::milli>;
@@ -200,6 +218,7 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", params.asci_settings.symmetrize_dets,
               bool);
   OPT_KEYWORD("ASCI.SYM_TOL", params.asci_settings.sym_tol, double);
+  OPT_KEYWORD("ASCI.HF_BY_ENERGY", params.asci_settings.hf_by_energy, bool);
   if(params.asci_settings.symmetrize_dets) {
     size_t nperm = 0;
     OPT_KEYWORD("ASCI.SYM_NPERM", nperm, size_t);
@@ -295,6 +314,19 @@ int main(int argc, char** argv) {
     params.orb_rot[i * params.n_active + i] = 1.0;
   params.E = 0.0;
 
+  // Band-parity sector solve (parity-sector-solve-simple.md). Set up before the
+  // active integrals are built: it zeroes parity-breaking integrals up to
+  // PARITY_TOL in T, Td and V, and the active copies must see that.
+  {
+    bool parity_solve = false;
+    double parity_tol = 1e-10;
+    OPT_KEYWORD("ASCI.PARITY_SOLVE", parity_solve, bool);
+    OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
+    OPT_KEYWORD("ASCI.PARITY_ETOL", params.parity_etol, double);
+    OPT_KEYWORD("ASCI.PARITY_ONLY", params.parity_only, std::vector<int>);
+    if(parity_solve) macis::setup_parity_sectors(params, parity_tol);
+  }
+
   // Copy integrals into active subsets
   params.T_active.resize(params.n_active * params.n_active);
   params.Td_active.resize(params.n_active * params.n_active);
@@ -334,6 +366,9 @@ int main(int argc, char** argv) {
 
   bool doping = false;
   OPT_KEYWORD("CI.DOPING", doping, bool);
+
+  bool testGF = false;
+  OPT_KEYWORD("CI.GF", testGF, bool);
 
   OPT_KEYWORD("DOP.NELECTRONS", params.nel_target, double);
 
@@ -386,6 +421,12 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("DOP.SECTOR_DIR", sector_settings.workdir, std::string);
     if(sector_settings.margin < 1)
       throw std::runtime_error("DOP.SECTOR_MARGIN must be >= 1");
+
+    // Without the sector search N stays that of the input: refuse an odd-N
+    // GF before the mu search spends anything. With it, N is only known
+    // after the search and is checked there.
+    if(testGF and !sector_settings.enabled)
+      require_even_N_for_GF(params.nalpha, params.nbeta, "from input.in");
 
     double mu_fixed;
 
@@ -451,6 +492,7 @@ int main(int argc, char** argv) {
   }
 
   else {
+    if(testGF) require_even_N_for_GF(params.nalpha, params.nbeta, "from input.in");
     std::cout << "Doping routines have not been called\n";
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
@@ -571,8 +613,10 @@ int main(int argc, char** argv) {
     }
   }
 
-  bool testGF = false;
-  OPT_KEYWORD("CI.GF", testGF, bool);
+  // The charge-sector search may have moved the run to an odd N
+  if(testGF)
+    require_even_N_for_GF(params.nalpha, params.nbeta,
+                          "the ground-state charge sector found by the search");
 
   // Optionally compute the dynamical impurity Sz-Sz response instead in addition to the Green's function.
   bool sz_resolvent = false;

@@ -87,6 +87,15 @@ struct impurity_params {
   std::vector<double> Td_active;
   std::vector<double> V_active;
   bool just_singles;
+
+  // Band-parity sector solve (ASCI.PARITY_SOLVE,
+  // parity-sector-solve-simple.md). Set by setup_parity_sectors; null = off.
+  // When set, SolveImpurityED, SolveImpurityASCI and SolveImpurityASCI_rot
+  // solve every band-parity sector separately and return the lowest.
+  std::shared_ptr<const ParityLabels> parity_labels;
+  double parity_etol = 1e-6;  // ASCI.PARITY_ETOL: near-tie report threshold
+  std::vector<int>
+      parity_only;  // ASCI.PARITY_ONLY: one 0/1 per band; empty = all
 };
 
 /**
@@ -441,5 +450,19 @@ double SolveImpurityASCI_rot(impurity_params<N> &params);
 
 template <size_t N>
 double SolveImpurityCheapASCI(impurity_params<N> &params);
+
+/**
+ * @brief Turn on the band-parity sector solve (ASCI.PARITY_SOLVE).
+ *
+ * Detects the band groups, verifies that the Hamiltonian conserves every band
+ * parity, and zeroes parity-breaking integrals up to `tol` in p.T, p.Td and
+ * p.V (larger ones throw); see build_parity_labels. Call it before the active
+ * integrals (T_active, V_active, ...) are built from p.T / p.V, so that they
+ * see the cleaned integrals. Requires GROW_WITH_ROT = FALSE, NINACTIVE = 0
+ * and NACTIVE = NORB. NROTS > 0 is allowed: inside a sector the natural
+ * orbitals are taken per band group, so the labels survive the rotations.
+ */
+template <size_t N>
+void setup_parity_sectors(impurity_params<N> &params, double tol);
 
 }  // namespace macis
