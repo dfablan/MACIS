@@ -88,13 +88,14 @@ struct impurity_params {
   std::vector<double> V_active;
   bool just_singles;
 
-  // Band-parity sector solve (ASCI.PARITY_SOLVE, parity-sector-solve-simple.md).
-  // Set by setup_parity_sectors; null = off. When set, SolveImpurityED,
-  // SolveImpurityASCI and SolveImpurityASCI_rot solve every band-parity
-  // sector separately and return the lowest.
+  // Band-parity sector solve (ASCI.PARITY_SOLVE,
+  // parity-sector-solve-simple.md). Set by setup_parity_sectors; null = off.
+  // When set, SolveImpurityED, SolveImpurityASCI and SolveImpurityASCI_rot
+  // solve every band-parity sector separately and return the lowest.
   std::shared_ptr<const ParityLabels> parity_labels;
-  double parity_etol = 1e-6;     // ASCI.PARITY_ETOL: near-tie report threshold
-  std::vector<int> parity_only;  // ASCI.PARITY_ONLY: one 0/1 per band; empty = all
+  double parity_etol = 1e-6;  // ASCI.PARITY_ETOL: near-tie report threshold
+  std::vector<int>
+      parity_only;  // ASCI.PARITY_ONLY: one 0/1 per band; empty = all
 };
 
 /**

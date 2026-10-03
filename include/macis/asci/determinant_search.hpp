@@ -595,17 +595,18 @@ std::vector<wfn_t<N>> asci_search(
     const ParityMasks<N> pm(*asci_settings.parity_target->labels);
     const auto target = asci_settings.parity_target->key;
     size_t ndropped = asci_pairs.size();
-    asci_pairs.erase(
-        std::remove_if(asci_pairs.begin(), asci_pairs.end(),
-                       [&](const auto& x) { return pm.key(x.state) != target; }),
-        asci_pairs.end());
+    asci_pairs.erase(std::remove_if(asci_pairs.begin(), asci_pairs.end(),
+                                    [&](const auto& x) {
+                                      return pm.key(x.state) != target;
+                                    }),
+                     asci_pairs.end());
     ndropped -= asci_pairs.size();
     MACIS_MPI_CODE(if(world_size > 1) ndropped =
                        allreduce(ndropped, MPI_SUM, comm);)
-    logger->info("  * PARITY FILTER {}: dropped {} candidates",
-                 parity_key_string(target,
-                                   asci_settings.parity_target->labels->ngroups),
-                 ndropped);
+    logger->info(
+        "  * PARITY FILTER {}: dropped {} candidates",
+        parity_key_string(target, asci_settings.parity_target->labels->ngroups),
+        ndropped);
   }
 
   // Insert all dets with their coefficients as seeds
