@@ -4,7 +4,7 @@
 >
 > This is a reduced first step of `symmetry-sector-solve.md`. It implements only the band-parity
 > part of §3.3 and §3.5–3.7 of that plan, under the restrictions of §0 below. Everything else in
-> that plan is deferred (§9 here).
+> that plan is listed in §10. §9 extends this to NROTS > 0.
 
 ---
 
@@ -15,9 +15,9 @@
 | **Band-diagonal bath:** each bath orbital couples to one band only. | Each band (its impurity orbitals plus its bath) is a separate orbital group. The band parity (−1)^{N_g} is an exact label of every determinant. |
 | **Single site, or 1×2.** | No K labels. On the 1×2, the site swap is a permutation symmetry *inside* each band group, so it never changes a parity label. |
 | **Kanamori with pair hopping.** | Pair hopping moves two electrons between bands, so the label is the parity, not the count. With J_P = 0 the counts are conserved too. That case is detected and warned about, not solved (§2.3). |
-| **`ASCI.NROTS = 0`, `GROW_WITH_ROT = FALSE`.** | The orbital basis is the FCIDUMP basis for the whole solve, so the labels are fixed once. There are no natural-orbital rotations to mix bands (plan F4) and no macro-iteration restarts (plan F2). Other settings are refused. |
+| **`ASCI.NROTS = 0`, `GROW_WITH_ROT = FALSE` (phase 1).** | The orbital basis is the FCIDUMP basis for the whole solve, so the labels are fixed once. There are no natural-orbital rotations to mix bands (plan F4) and no macro-iteration restarts (plan F2). Other settings are refused. §9 describes what NROTS > 0 needs. |
 | **`n_inactive = 0`, `n_active = norb`.** | The doping path already requires `n_inactive = 0`, so this adds nothing new. |
-| **Bands stored band-major:** impurity orbital *i* belongs to band `i / (n_imp / nbands)`. | This is the convention of `set_impurity_diagonal` (`fix_mu.cpp:24`) and `CompObservables`. `ASCI.PARITY_GROUPS` overrides it. |
+| **Bands stored band-major** (confirmed as always the case): impurity orbitals `[b·nsites, (b+1)·nsites)` are band b. | This is the convention of `set_impurity_diagonal` (`fix_mu.cpp:24`) and `CompObservables`. No override key is needed. Bath orbitals get their band from T (§2.2). |
 
 **The problem being solved.** H conserves every band parity. ASCI starts from one determinant,
 and Davidson starts from the lowest diagonal element of the space (plan F1). So the solve can never
@@ -105,8 +105,8 @@ struct ParityTarget {
 
 ### 2.2 Detection (`build_parity_labels(p, tol)`, called once in the driver)
 
-1. **Seed the bands.** Impurity orbital `i < n_imp` gets band `i / (n_imp / nbands)`, or the band
-   given by `ASCI.PARITY_GROUPS` (a list of length `n_active`; bath entries may be `-1` = infer).
+1. **Seed the bands.** Impurity orbital `i < n_imp` gets band `i / (n_imp / nbands)` (band-major,
+   always the layout of these inputs).
 2. **Join orbitals by one-body coupling.** Run a union-find over the pairs with `|T_pq| > tol` (and
    `|Td_pq| > tol` if spin-dependent), plus the impurity orbitals of each band.
 3. **Classify each connected component:**
@@ -299,7 +299,6 @@ and the CAS µ search parity-correct.
 | Key (`[ASCI]`) | Default | Meaning |
 |---|---|---|
 | `PARITY_SOLVE` | `FALSE` | enables everything here |
-| `PARITY_GROUPS` | inferred (§2.2) | optional orbital → band list (`-1` = infer from T) |
 | `PARITY_TOL` | `1e-10` | label-verification tolerance; violations at or below it are zeroed and reported |
 | `PARITY_ETOL` | `1e-6` | near-tie report threshold (Ha) |
 | `PARITY_ONLY` | none | solve one sector only, e.g. `[1,1]` (validation, reproducing a single run) |
@@ -307,7 +306,7 @@ and the CAS µ search parity-correct.
 - **Naming.** The keys use `PARITY_` so they can't be confused with the charge-sector `DOP.SECTOR_*`
   keys.
 - **Refused with `PARITY_SOLVE`:**
-  - `NROTS > 0`;
+  - `NROTS > 0` (until phase 2, §9);
   - `GROW_WITH_ROT`;
   - `n_inactive > 0` or `n_active < norb`;
   - `n_imp % nbands != 0`;
@@ -354,19 +353,140 @@ and the CAS µ search parity-correct.
 3. Guess splitting (§5.4), the ED path (§5.6), `SolveImpurityASCI`, and the stabilizer (§5.5), with
    T5 and T6.
 4. The frozen 1×2 U = 70 check, then a DMFT restart.
+5. Phase 2: NROTS > 0 (§9), with T1/T2 repeated at NROTS = 2 and T7–T8.
 
 ---
 
-## 9. Deliberately left out (pointers into `symmetry-sector-solve.md`)
+## 9. Phase 2: NROTS > 0
 
-| Left out | Plan section |
-|---|---|
-| K / momentum labels, C4/σ_d, 2×2 | §3.3, §3.10.4 |
-| `NROTS > 0`: per-band natural orbitals and sector-preserving restarts | §3.4 (needed when NROTS returns: per-band blocks in `rotate_hamiltonian_ordm_imp_bath`, `parity_seed` replacing `hf_determinant_byocc`) |
-| Bath projection for non-band-diagonal fits (SDP) | §3.2 (here a non-band-diagonal bath is refused) |
-| Count labels (J_P = 0) and spin-resolved counts | §3.10.1 (here detected and warned only) |
-| Multiple starts per sector | §3.5 (`PARITY_STARTS`, §4 here) |
-| ⟨S²⟩, `SPIN_CHECK`, odd-N G↑/G↓ | §3.6, §3.9 |
-| Refine-cycle status, coverage status | §3.1 |
-| Parallel sector loop (communicator split) | §3.7 |
-| Screening and a branch-consistent µ search | §3.8 |
+NROTS > 0 breaks phase 1 in two places and touches two more. All four are local changes; nothing in
+§2–§5 has to be redesigned, because the rotation can be made to **keep every orbital index in its
+band group**, so the labels and masks never change.
+
+### 9.1 Natural orbitals per band (the essential change)
+
+**Problem.** `rotate_hamiltonian_ordm_imp_bath` (`rdms.hpp:120`) diagonalizes the whole impurity
+block and the whole bath block (plan F4). For a parity-pure state the cross-band blocks of the 1-RDM
+are exactly zero (⟨c†_A c_B⟩ flips two parities), so the eigenvectors *could* stay band-pure. But
+when a band-A occupation equals a band-B occupation, `gesvd` may return any mixture of the
+degenerate pair. With **degenerate bands this is the normal case**, not an accident. After a mixed
+rotation, determinants no longer have a band parity, and the labels are gone.
+
+**Fix.** Give the function an optional block map and diagonalize per (impurity|bath) × band block:
+
+```cpp
+void rotate_hamiltonian_ordm_imp_bath(const double* ordm, size_t nimps, double* rot_mat,
+                                      bool spin_dep, double* occs_out,
+                                      const std::vector<int>* group_of = nullptr);
+```
+
+- Blocks are index sets: {i < nimps, group g} and {i ≥ nimps, group g}. Each block's eigenvectors
+  are written back **into the same index set**, with occupations descending inside it. So
+  `group_of` is the same before and after the rotation, and so are the masks, `ParityTarget`, and
+  the filter.
+- With `group_of == nullptr` the blocks are exactly today's two (imp, bath). The legacy path stays
+  bit-for-bit identical.
+- Dark orbitals (`-1`) form their own block. They are 1×1 and never rotate.
+- **Exactness.** With U block-diagonal by group, every element of the rotated T and V that breaks a
+  parity is a sum of products that each contain a cleaned (exactly 0) integral, so it stays exactly
+  0. The filter (§3) would catch any leak, and its drop count is the test.
+- **Consistency with `orb_occs`.** The function already returns the occupations of the exact basis
+  it rotated into (comment at `impurity_solver.cpp:665`). That property is kept per block.
+- **Cost.** Negligible: several small `gesvd` calls instead of two.
+
+**Plan §3.4's "covariant" choice** is not needed for parity (making band-B natural orbitals the
+band-swap images of band-A ones, so band swap stays a signed permutation). It is needed only for
+`SYMMETRIZE_DETS` with NROTS > 0 and for measuring point-group expectation values, so it stays
+deferred (§10).
+
+### 9.2 Sector-preserving restart (the second essential change)
+
+**Problem.** Every macro iteration after the first restarts from
+`hf_det = hf_determinant_byocc(nalpha, nbeta, orb_occs)` (`impurity_solver.cpp:688`). At Nα = Nβ
+that is closed-shell, so it is always all-even (plan F2). In an odd sector the restart would lie
+**outside** the target sector. With the filter on, the search from it would generate only
+out-of-sector candidates, so the space would collapse to the seed alone. That is worse than the
+legacy trap.
+
+**Fix.** Pass the byocc determinant through the phase-1 seed function, using the *rotated*
+generator, whose diagonal is the energy in the new basis:
+
+```cpp
+hf_det = macis::hf_determinant_byocc<N>(nalpha, nbeta, orb_occs);
+if(asci_settings.parity_target)
+  hf_det = parity_seed(hf_det, target, masks, labels, ham_gen, n_active);  // §4
+```
+
+- In the home sector byocc is already in sector and is returned unchanged.
+- Add an assertion that every seed (cold, restart or guess slice) lies in its target sector, so the
+  "collapsed space" failure can never be silent.
+
+### 9.3 Warm starts with an inherited basis (charge-sector search)
+
+Seeded charge sectors are solved at NROTS = 0 in the parent's basis `src.U`
+(`charge_sectors.cpp:244-254`). If the parent ran with per-band rotations, `src.U` is
+block-diagonal by group and the labels hold in that basis.
+
+- Check it: in `rotate_active`, verify that the largest off-group element of U is ≤ `PARITY_TOL`,
+  and throw otherwise. A basis from a legacy (non-parity) run is not block-diagonal.
+- The guess split of §5.4 then applies unchanged.
+- `ASCI.WFN_FILE` with NROTS > 0 stays refused, as today (plan F7).
+
+### 9.4 What stays refused
+
+- **`GROW_WITH_ROT`:** `rotate_hamiltonian_ordm` rotates the full active space. Allowing it would
+  need the same per-group blocking inside `asci_grow`; that's possible but not needed now.
+- **`SYMMETRIZE_DETS` with NROTS > 0:** already refused by `prepare_det_symmetry`. Allowing it is
+  plan §3.4 (covariant natural orbitals).
+
+### 9.5 Regression anchor and tests
+
+- **The home sector is no longer bit-for-bit.** Per-band blocks order the natural orbitals inside
+  each band's index range instead of across the whole impurity or bath range. That is the same
+  space in a different order, so the ASCI determinant order changes. T2 at NROTS = 2 compares to a
+  tolerance (1e-8 at a full budget), not bitwise.
+- **T7:** degenerate bands, NROTS = 2, even N. The legacy `rotate_hamiltonian_ordm_imp_bath` mixes
+  bands (the largest off-band element of `rot_matrix` is O(1)), while the per-band one does not
+  (exactly 0). The filter drops 0 in every macro iteration.
+- **T8:** odd sector, NROTS = 2. Every macro iteration's restart lies in the target sector
+  (assertion), and the energy matches exact diagonalization at a full budget.
+- **Side observation, worth checking on archived runs.** Today's NROTS > 0 runs with degenerate
+  bands may already rotate across bands. The closed-shell restart then lies in a mixed basis, so the
+  run can leave the parity sector by accident. That could explain parity-dependent behaviour that
+  differs between NROTS = 0 and NROTS > 0. It is a hypothesis, cheap to check: the largest off-band
+  element of an archived `rot_matrix.dat`.
+
+**Size:** about 60 lines in `rdms.hpp`, 10 in `impurity_solver.cpp`, 15 in `charge_sectors.cpp`,
+plus the tests.
+
+---
+
+## 10. Still pending from `symmetry-sector-solve.md` after phases 1 and 2
+
+| Plan § | Item | Status here | Needed for |
+|---|---|---|---|
+| 3.1 | **Per-sector failure handling.** Refinement throws on non-convergence (F8). In the wrapper one failing sector would abort the whole call. | missing | **any production use. Recommended to pull into phase 1:** catch per sector, mark it `FAILED`, report `COVERAGE INCOMPLETE`, and never let a failed sector certify the winner (~30 lines). |
+| 3.1 | Refine 2-cycle detection, `NONCONVERGED_CYCLE` status, union-of-spaces recovery | missing | robustness (V0) |
+| 3.1 | Cold-seed closure bug (F3: the `SYMMETRIZE_DETS` closure discarded at `:617`) | missing | `SYMMETRIZE_DETS` runs. A one-line fix that can ride with phase 1. |
+| 3.2 | Bath modes A and B: exact adaptation, and projection of SDP/off-diagonal fits, with discard metrics and guards | missing (non-band-diagonal baths are refused) | SDP baths, `TEST_D` |
+| 3.3 | K labels, impurity momentum basis, 2×2 sector table, reduction to orbit representatives (band swap, C4) | missing | 2×2 (V4, V5, V8) |
+| 3.4 | Covariant natural orbitals (band-B as images of band-A; (0,π) as images of (π,0)), `LABEL_LEAK`, `SYMMETRIZE_DETS` with NROTS > 0 | partly: per-band blocks only (§9.1) | point-group measurement, symmetrization with rotations |
+| 3.5 | Several starts per sector; candidates by dynamic programming over levels (k lowest channel allocations); impurity enumeration at finite U | one seed per sector, by repair and descent (§4) | small-U channel traps (2×2 U = 0, V2) |
+| 3.6 | ⟨S²⟩ of every result, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` (Sz = 1 vs 0 in the same sector) | missing | spin-trap diagnosis, the 1×2 `--check-spin` violations (V6) |
+| 3.7 | Parallel (sector × start) communicator split; per-sector subdirectories; per-sector wavefunctions for later warm starts; wrapping or refusing cheap mode | serial; cheap mode stays in the winner's sector | wall time at 3 bands or many starts |
+| 3.8 | Screening at small budgets; µ search that re-checks sectors at the converged µ and reports a density jump when the winner switches between µ points | partial: sectors are re-solved at every µ evaluation, so each point is on the lowest branch, but a jump in n(µ) is not detected | doping runs near a crossing (V7) |
+| 3.9 | Odd-N Green's function: compute G↑ and G↓ and average (F10). Orbit-aware G projection on the DMFT side (F11) | missing; ties are only reported (`PARITY_TIE`) | odd-N runs (`RUN_U2_Irrep`), degenerate bands at odd N |
+| 3.10.1 | Count labels (J_P = 0, or density-density Hund with per-spin counts); sector windows; detecting the group from verified permutations | detected and warned only | J_P = 0 and density-density runs; the 3-band J = 0 collapse hypothesis |
+| 4, step 7 | DMFT side: keys in `Read_Vars`; health check reads `parity_sectors.dat`; orbit-aware projection threshold | missing (outside this repo) | DMFT integration (V8) |
+| 5 | Validation V0, V1, V2, V4–V8, V9b, V9d | only V3/V9c-type checks and the unit tests here | sign-off of the full plan |
+| 6 | Decisions D1–D7 (SDP mode, Irrep σ_d, odd-N G, which N, queued runs, intentional symmetry breaking, odd-N survey) | open; D3 and D7 also matter for the single-site and 1×2 scope | — |
+
+**Within the current scope** (single site or 1×2, band-diagonal bath), the items most likely to
+matter next are:
+
+1. per-sector failure handling;
+2. odd-N G↑/G↓;
+3. ⟨S²⟩, to confirm the Hund-triplet winners;
+4. several starts per sector, if the U → 0 runs show traps inside a sector.
+
+The rest belongs to the 2×2, SDP baths, or J_P = 0.
