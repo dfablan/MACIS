@@ -200,8 +200,8 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
     E_add = E_rem = std::numeric_limits<double>::quiet_NaN();
     // The N+/-1 GF spaces can exceed INT32_MAX Hamiltonian nonzeros, so the
     // GF path uses 64-bit CSR indices (the ASCI Hamiltonian stays 32-bit).
-    macis::RunGFCalc<N, int64_t>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true,
-                                 ws, occs, s, todelete_p, &E_add);
+    macis::RunGFCalc<N, int64_t>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws,
+                                 occs, s, todelete_p, &E_add);
     macis::RunGFCalc<N, int64_t>(GF, psi0, ham_gen, p.dets, EASCI, false, ws,
                                  occs, s, todelete_h, &E_rem);
     // Both sectors return full GF_orbs_comp^2 matrices: RunGFCalc pads the
@@ -260,8 +260,8 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
       for(size_t a = 0; a < comp.size(); ++a)
         for(size_t b = 0; b < comp.size(); ++b)
           if(comp[b] == comp[a] and up[b] != up[a]) flipped[a] = int(b);
-      const bool closed = std::find(flipped.begin(), flipped.end(), -1) ==
-                          flipped.end();
+      const bool closed =
+          std::find(flipped.begin(), flipped.end(), -1) == flipped.end();
       const size_t n = comp.size();
       gf_t GF_flip;
       if(closed) {
