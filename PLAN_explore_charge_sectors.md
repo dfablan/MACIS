@@ -181,7 +181,7 @@ Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives wer
   Search` (`tests/determinant_symmetry.cxx:318`, |E_sym − E_unsym| = 0.286 > 0.1), fails the same
   way on the base commit and has nothing to do with these changes.
 
-### Problems found in existing code (1 fixed, 2–4 still open)
+### Problems found in existing code (1 fixed, 2 addressed by an opt-in key, 3–4 still open)
 1. **FIXED — `read_fcidump_1body(fname, T, LDT)` ignored LDT** (`src/macis/fcidump.cxx`), and
    `read_fcidump_2body(fname, V, LDV)` had the same bug. Both built a strided `submdspan` and passed
    it as a `layout_left` span, so the leading dimension was lost when it differed from the file's
@@ -198,12 +198,22 @@ Done in a cloud container, not on the cluster: the ULYSSES/LEONARDO archives wer
    a full-space diagonalization) can return an excited state. In the first test, N = 3, 4, 7 were off by
    0.3–0.5 Ha until an inter-band hybridization was added. Production 3-band Kanamori runs with
    band-diagonal baths have the same structure. This should be checked there.
+   **Update 2026-10-03: addressed by `ASCI.PARITY_SOLVE`** (`parity-sector-solve-simple.md`),
+   opt-in and limited to NROTS = 0. With it on, every solve of this search (cold or warm, CAS or
+   ASCI) solves each band-parity sector separately and keeps the lowest. Warm seeds that span
+   several parity sectors (c†_A ψ and c†_B ψ) are split by sector before seeding. Tested on the
+   band-diagonal version of this toy (`tests/parity_sectors.cxx`, "Parity sectors inside the
+   charge-sector search"): the search finds the exact ground sector with CAS and with ASCI.
+   Separately, the ASCI seed is now filled by one-body energy for every run (`ASCI.HF_BY_ENERGY`),
+   which fixes the case where the raw-index seed put an unpaired electron in the wrong band.
 3. **`asci_refine` requires a fixed size** ("Wavefunction size can't change in refinement",
    `include/macis/asci/refine.hpp`). A guess that already holds `NTDETS_MAX` determinants skips
    `asci_grow`. If the ASCI search then cannot return that many determinants, refinement throws.
    Seen with `--scale 0.3` on the small test, where the search could return fewer than 300 determinants. A
    production `ASCI.WFN_FILE` restart can hit the same check. Covered here by the cold retry.
-4. **Multi-rank runs hang in this container.** With `mpirun -np 2`, the first Davidson stalls, and it
+4. **Multi-rank runs hang in this container.** *(Seen again on 2026-10-03: on 2 ranks the upstream
+   `ASCI` unit test fails with "Davidson Did Not Converge!" and the impurity ASCI tests stall. MPI
+   issues are being debugged on a separate branch.)* With `mpirun -np 2`, the first Davidson stalls, and it
    does so for the unmodified `run_asci_impsolv_dop` too. The problem is either the environment or
    the library, not the new main. The multi-rank code in the new main (eigenvector gather copied
    from `asci_iter`, rank-0 file writes followed by a barrier) is untested. Do one short multi-rank

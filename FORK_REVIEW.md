@@ -428,7 +428,7 @@ uses; duplicate CBLAS symbols across gslcblas and MKL/OpenBLAS are a well-known 
 of silent mis-linking. Gate this behind an option (`MACIS_ENABLE_DOPING`) and drop
 `gslcblas` unless a GSL routine actually needs it.
 
-### 2.8 ASCI seed fills by raw orbital index, not by orbital energy — `src/macis/impurity_solver.cpp:448,577` - FIXED (gated)
+### 2.8 ASCI seed fills by raw orbital index, not by orbital energy — `src/macis/impurity_solver.cpp:448,577` - FIXED (ungated 2026-10-03)
 
 The legacy impurity driver seeded ASCI from the **energy-ordered** reference, at every
 site — five in `~/Code/CI_Solver/Legacy/ASCI-CI/inc/dbwy/asci_body.hpp`, three in this
@@ -1121,7 +1121,7 @@ see their entries above for what changed.
 | 3.6 | `impurity_params` members uninitialised; `CompObservables` divides by an unset `nbands`, `evaluate_GF` reads `orb_rot` that only some drivers/solvers populate |
 | 3.5 | No file-open error checking in any new I/O; hard-coded filenames written by every MPI rank concurrently |
 | 2.6 | Hamiltonian rotation silently disables the user's `CI.JUST_SINGLES` setting |
-| 2.8 | ASCI seed fills by raw orbital index rather than orbital energy — fixed only under `SYMMETRIZE_DETS`; every other impurity run still seeds from a non-HF reference (gate removal pending an A/B at fixed `tdets_max`) |
+| 2.8 | ASCI seed fills by raw orbital index rather than orbital energy — **fixed for every run** (2026-10-03, `ASCI.HF_BY_ENERGY`, default `TRUE`); still to do: the production A/B at fixed `tdets_max` |
 | 5.2 | `impurity_rdm.hpp` indexes `rot_mat` row-major where the rest of the codebase is column-major — transposed rotation of the impurity RDM (flagged for double-check; still unverified either way, and §6.1's identity-rotation test cannot catch it) |
 | 5.3 | `compute_fermionic_sign` carries a term that cannot affect the parity — either the coefficient is wrong or the term is dead (flagged for double-check; untested, see §6.1) |
 

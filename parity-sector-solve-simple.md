@@ -357,12 +357,15 @@ and the CAS µ search parity-correct.
 
 ## 8. Implementation order
 
-1. Pieces 1 and 2, with T0 and T3. Nothing changes for runs with `PARITY_SOLVE` off.
-2. Piece 3 and the wrapper for `SolveImpurityASCI_rot` without guesses, with T1, T2 and T4.
-3. Guess splitting (§5.4), the ED path (§5.6), `SolveImpurityASCI`, and the stabilizer (§5.5), with
-   T5 and T6.
-4. The frozen 1×2 U = 70 check, then a DMFT restart.
-5. Phase 2: NROTS > 0 (§9), with T1/T2 repeated at NROTS = 2 and T7–T8.
+1. **Done.** Pieces 1 and 2, with T0 and T3. Nothing changes for runs with `PARITY_SOLVE` off.
+2. **Done.** Piece 3 and the wrapper for `SolveImpurityASCI_rot` without guesses, with T1, T2 and T4.
+3. **Done.** Guess splitting (§5.4), the ED path (§5.6), `SolveImpurityASCI`, and the stabilizer
+   (§5.5), with T5 and T6.
+4. **Open.** The frozen 1×2 U = 70 check, then a DMFT restart. This is the next step, on the
+   cluster.
+5. **Open.** Phase 2: NROTS > 0 (§9), with T1/T2 repeated at NROTS = 2 and T7–T8.
+
+All unit tests run on a single rank; see §11.3 for MPI.
 
 ---
 
@@ -472,14 +475,17 @@ plus the tests.
 
 ## 10. Still pending from `symmetry-sector-solve.md` after phases 1 and 2
 
+Phase 1 is implemented and phase 2 is not, so the §3.4 rows below are fully open for now. The
+consolidated plan carries the same status, item by item, in its "Implementation status" table.
+
 | Plan § | Item | Status here | Needed for |
 |---|---|---|---|
-| 3.1 | **Per-sector failure handling.** Refinement throws on non-convergence (F8). In the wrapper one failing sector would abort the whole call. | missing | **any production use. Recommended to pull into phase 1:** catch per sector, mark it `FAILED`, report `COVERAGE INCOMPLETE`, and never let a failed sector certify the winner (~30 lines). |
+| 3.1 | **Per-sector failure handling.** Refinement throws on non-convergence (F8). | **done** (pulled into phase 1, §11.2) | a failed sector is reported `FAILED`, `PARITY_COVERAGE INCOMPLETE` is printed, and the call throws only if every sector fails |
 | 3.1 | Refine 2-cycle detection, `NONCONVERGED_CYCLE` status, union-of-spaces recovery | missing | robustness (V0) |
 | 3.1 | Cold-seed closure bug (F3: the `SYMMETRIZE_DETS` closure discarded at `:617`) | missing | `SYMMETRIZE_DETS` runs. A one-line fix that can ride with phase 1. |
 | 3.2 | Bath modes A and B: exact adaptation, and projection of SDP/off-diagonal fits, with discard metrics and guards | missing (non-band-diagonal baths are refused) | SDP baths, `TEST_D` |
 | 3.3 | K labels, impurity momentum basis, 2×2 sector table, reduction to orbit representatives (band swap, C4) | missing | 2×2 (V4, V5, V8) |
-| 3.4 | Covariant natural orbitals (band-B as images of band-A; (0,π) as images of (π,0)), `LABEL_LEAK`, `SYMMETRIZE_DETS` with NROTS > 0 | partly: per-band blocks only (§9.1) | point-group measurement, symmetrization with rotations |
+| 3.4 | Covariant natural orbitals (band-B as images of band-A; (0,π) as images of (π,0)), `LABEL_LEAK`, `SYMMETRIZE_DETS` with NROTS > 0 | open: per-band blocks designed in §9.1, not implemented | point-group measurement, symmetrization with rotations |
 | 3.5 | Several starts per sector; candidates by dynamic programming over levels (k lowest channel allocations); impurity enumeration at finite U | one seed per sector, by repair and descent (§4) | small-U channel traps (2×2 U = 0, V2) |
 | 3.6 | ⟨S²⟩ of every result, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` (Sz = 1 vs 0 in the same sector) | missing | spin-trap diagnosis, the 1×2 `--check-spin` violations (V6) |
 | 3.7 | Parallel (sector × start) communicator split; per-sector subdirectories; per-sector wavefunctions for later warm starts; wrapping or refusing cheap mode | serial; cheap mode stays in the winner's sector | wall time at 3 bands or many starts |
@@ -493,7 +499,7 @@ plus the tests.
 **Within the current scope** (single site or 1×2, band-diagonal bath), the items most likely to
 matter next are:
 
-1. per-sector failure handling;
+1. ~~per-sector failure handling~~ (done);
 2. odd-N G↑/G↓;
 3. ⟨S²⟩, to confirm the Hund-triplet winners;
 4. several starts per sector, if the U → 0 runs show traps inside a sector.
@@ -553,7 +559,8 @@ The rest belongs to the 2×2, SDP baths, or J_P = 0.
 - **Not verified:**
   - **MPI.** On 2 ranks, ASCI on these tiny models already fails without the parity code (the
     upstream `ASCI` test: "Davidson Did Not Converge!"), and MPI issues are being debugged on another
-    branch. The MPI-specific code here is untested: the drop-count `allreduce`, `gather_ci_vector`,
+    branch (`PLAN_explore_charge_sectors.md`, open problem 4, saw the same stall). The MPI-specific
+    code here is untested: the drop-count `allreduce`, `gather_ci_vector`,
     and the root-only guess-slice writes followed by a barrier.
   - **Frozen production Hamiltonians** (§7: 1×2 U = 70, the single-site two-band case).
   - **Phase 2** (§9).

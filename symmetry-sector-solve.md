@@ -1,7 +1,10 @@
 # Symmetry-sector ground-state search: consolidated plan
 
-> **STATUS: NOT IMPLEMENTED.** Written 2026-10-03. Nothing has been built or submitted, and no
-> production input has changed.
+> **STATUS (2026-10-03): PARTLY IMPLEMENTED.** A reduced first step has landed: band-parity sectors
+> for a band-diagonal bath at NROTS = 0 (single site or 1×2), described in
+> `parity-sector-solve-simple.md`. Everything else here is still open. The status table after this
+> header says, item by item, what is done. No production input has changed, and nothing has been
+> run on production Hamiltonians yet.
 >
 > **Consolidates and supersedes:**
 > - `parity-sector-solve.md`: the 1×2 band-parity plan, 2026-10-02/03.
@@ -9,11 +12,43 @@
 > - `parity-sector-solve-independent-assessment.md`, with `parity-sector-assessment-checks.py`
 >   and `-results.json`.
 >
-> Those files stay as the record. Where they disagree with this one, this one applies; §7 lists the
+> The last three now live in `symmetry_sector_files/`. Those files stay as the record. Where they disagree with this one, this one applies; §7 lists the
 > superseded claims. Solver tree: `MACIS_fork/MACIS_claude` at `aa26eaf`. Line numbers refer to
 > that commit.
 
 ---
+
+## Implementation status (2026-10-03)
+
+Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
+`parity-sector-solve-simple.md` §11.
+
+| Plan item | Status | Where / what remains |
+|---|---|---|
+| §3.1 refine 2-cycle detection, `NONCONVERGED_CYCLE` | open | refinement still throws on non-convergence (F8) |
+| §3.1 per-call coverage status | **done for parity sectors** | a failed sector is reported `FAILED`, the call prints `PARITY_COVERAGE COMPLETE/INCOMPLETE`, and the winner is the lowest converged sector |
+| §3.1 isolation; winner outputs written once (F4, F5) | **done for parity sectors** | each sector solves an isolated copy of `impurity_params`; `active_ordm.dat` and `rot_matrix.dat` are written once, for the returned state |
+| §3.1 cold-seed closure bug (F3) | open | |
+| §3.2 bath modes A/B (SDP projection) | open | a bath that is not band-diagonal is refused, with the offending coupling named |
+| §3.3 labels: band parity | **done** (band-diagonal bath, band-major layout) | detected from T, verified and cleaned against every integral, `ASCI.PARITY_TOL` |
+| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope |
+| §3.4 per-band natural orbitals, sector-preserving restarts | open | `PARITY_SOLVE` refuses NROTS > 0; designed in `parity-sector-solve-simple.md` §9 |
+| §3.4 covariant natural orbitals, `LABEL_LEAK` | open | |
+| §3.5 seeds | **partly done** | one seed per sector: the energy-ordered reference if it lies in the sector, otherwise repaired and descended on ⟨D\|H\|D⟩. The energy-ordered seed is now the default for every run (`ASCI.HF_BY_ENERGY`, F3's "energy-sorted only with `SYMMETRIZE_DETS`" no longer holds) |
+| §3.5 several starts per sector, level-allocation candidates | open | |
+| §3.6 ⟨S²⟩, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` | open | |
+| §3.7 sector wrapper, all solver paths (F6) | **done for ED, `SolveImpurityASCI`, `SolveImpurityASCI_rot`** | entered inside the solvers, so the driver, the µ search and the charge-sector search use it. Cheap mode is not wrapped: it re-diagonalizes the winner's space and so stays in the winner's sector |
+| §3.7 sector outputs and keys | **done** | `PARITY_SECTOR` lines, `parity_sectors.dat`, `PARITY_TIE`; keys `ASCI.PARITY_SOLVE/TOL/ETOL/ONLY` in all three impurity drivers |
+| §3.7 warm starts split by label | **done** | a guess spanning several sectors is split into `<fname>.par_<key>` slices, each re-diagonalized |
+| §3.7 `SYMMETRIZE_DETS` interplay | **done** | each sector uses the stabilizer of its parity key |
+| §3.7 parallel sector loop | open | sectors run one after another |
+| §3.8 screening; branch-consistent µ search | open | sectors are re-solved at every µ evaluation, but a jump in n(µ) is not detected |
+| §3.9 odd-N G↑/G↓; orbit-aware projection | open | ties are only reported |
+| §3.10.1 count labels (J_P = 0) | detected, not handled | warned as `counts_conserved` |
+| §4 step 7 (DMFT side) | open | outside this repo |
+| §5 V2/V9c-type checks on a toy | **done** (single rank) | two-band toy: every sector matches exact diagonalization; the wrapper returns the true ground state where the legacy solve is 0.039 Ha high |
+| §5 V3 (1×2 U = 70), V9c on production Hamiltonians | open | first thing to run |
+| MPI | not validated | ASCI on the toy models already fails on 2 ranks without these changes; MPI issues are being debugged on another branch |
 
 ## 0. Summary
 
