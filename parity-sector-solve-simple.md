@@ -1,6 +1,8 @@
 # Band-parity sector solve: minimal implementation proposal
 
-> **STATUS: PROPOSAL, NOT IMPLEMENTED.** Written 2026-10-03. Line numbers refer to `4bb55e2`.
+> **STATUS: PHASE 1 IMPLEMENTED (2026-10-03), plus per-sector failure handling from §10.** Phase 2
+> (NROTS > 0, §9) is not implemented. §11 lists what was built, where it differs from this
+> proposal, and what is still unverified. Line numbers in §1–§9 refer to `4bb55e2`.
 >
 > This is a reduced first step of `symmetry-sector-solve.md`. It implements only the band-parity
 > part of §3.3 and §3.5–3.7 of that plan, under the restrictions of §0 below. Everything else in
@@ -497,3 +499,62 @@ matter next are:
 4. several starts per sector, if the U → 0 runs show traps inside a sector.
 
 The rest belongs to the 2×2, SDP baths, or J_P = 0.
+
+---
+
+## 11. Implementation notes (phase 1)
+
+### 11.1 What was built
+
+| Piece | Where |
+|---|---|
+| `ParityLabels`, `ParityMasks<N>`, `ParityTarget`, `parity_key_string` | `include/macis/asci/parity_labels.hpp` |
+| `build_parity_labels` (detection, verification, cleaning, count warning) | `src/macis/parity_sectors.cpp` |
+| `enumerate_parity_keys`, `parity_stabilizer`, `parity_seed` | `include/macis/parity_sectors.hpp` |
+| Sector filter, `ASCISettings::parity_target` | `include/macis/asci/determinant_search.hpp` |
+| Sector wrapper, guess split, ED sector path, per-sector failure handling, `parity_sectors.dat`, `setup_parity_sectors` | `src/macis/impurity_solver.cpp` |
+| `impurity_params::{parity_labels, parity_etol, parity_only}` | `include/macis/impurity_solver.hpp` |
+| Keys `ASCI.PARITY_SOLVE`, `PARITY_TOL`, `PARITY_ETOL`, `PARITY_ONLY` | `run_asci_impsolv_dop`, `run_asci_impsolv_mu_vs_n`, `explore_charge_sectors` |
+| Tests T0–T6 | `tests/parity_sectors.cxx` |
+
+### 11.2 Differences from the proposal
+
+- **Seed (§4).** On the toy, the (o,o) seed is `0d22u0`: one impurity orbital empty and one singly
+  occupied, with ⟨D|H|D⟩ = −10.4 against +12.0 for the (e,e) home seed. It is a local minimum of the
+  diagonal energy, but it is **not** one electron per impurity band. T4 therefore checks the
+  local-minimum property only.
+- **Descent doubles** are limited to pairs of moves that each touch an impurity orbital. That keeps
+  the cost bounded at large `n_active`. Bath-only rearrangements are one-body and are reached by
+  singles.
+- **Failure handling (pulled forward from §10).**
+  - A sector that throws (for example, refinement not converging) is reported as `FAILED`, and the
+    others still run.
+  - The output says `PARITY_COVERAGE INCOMPLETE` and names the failed sectors. The call throws only
+    if every sector fails.
+  - The seed assertion (`require_in_sector`) uses the same path, so a seed outside its sector is
+    reported as a failed sector, never solved silently.
+- **Guess slices** are written as `<fname>.par_<letters>`, e.g. `wfn.dat.par_oe`.
+- **`active_ordm.dat` and `rot_matrix.dat`** are now written by `SolveImpurityASCI_rot` after the
+  solve, once, for the returned state, on every call (as before).
+- **Cheap mode** (`ASCI_cheap`) is not refused. It re-diagonalizes the winner's space, so it stays
+  in the winner's sector, as §5.1 says.
+
+### 11.3 Verification
+
+- **Serial unit tests:** all 7 parity test cases pass, plus `ASCI impurity seed ordering`.
+  - Each sector, ASCI and ED, matches `parity-sector-toy-ed.py` to 1e-8.
+  - With `PARITY_SOLVE`, the (e,e) sector is bit-for-bit the legacy solve.
+  - The filter drops 0 candidates, also at a 60-determinant budget, where (o,o) still wins.
+  - Guess files work both in one sector and spanning both sectors.
+  - `SYMMETRIZE_DETS` with degenerate bands: `PARITY_TIE` is reported at odd N.
+  - The charge-sector search with parity on finds the exact ground sector, for both CAS and ASCI.
+- **Full suite:** 41 of 42 test cases pass. The failing one, `ASCI Symmetric Search`
+  (`determinant_symmetry.cxx:318`), fails identically without these changes.
+- **Not verified:**
+  - **MPI.** On 2 ranks, ASCI on these tiny models already fails without the parity code (the
+    upstream `ASCI` test: "Davidson Did Not Converge!"), and MPI issues are being debugged on another
+    branch. The MPI-specific code here is untested: the drop-count `allreduce`, `gather_ci_vector`,
+    and the root-only guess-slice writes followed by a barrier.
+  - **Frozen production Hamiltonians** (§7: 1×2 U = 70, the single-site two-band case).
+  - **Phase 2** (§9).
+

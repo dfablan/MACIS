@@ -16,6 +16,7 @@
 #include <macis/asci/determinant_contributions.hpp>
 #include <macis/asci/determinant_sort.hpp>
 #include <macis/asci/determinant_symmetry.hpp>
+#include <macis/asci/parity_labels.hpp>
 #include <macis/sd_operations.hpp>
 #include <macis/types.hpp>
 #include <macis/util/dist_quickselect.hpp>
@@ -81,6 +82,12 @@ struct ASCISettings {
   // shared_ptr because ASCISettings is passed by value through
   // asci_grow -> asci_iter -> asci_search.
   std::shared_ptr<const std::vector<std::vector<uint32_t>>> sym_group;
+
+  // Band-parity sector constraint, set only by the parity-sector wrapper
+  // (ASCI.PARITY_SOLVE): asci_search drops every candidate whose band-parity
+  // key differs from the target. With parity-clean integrals no such
+  // candidate is generated, so a nonzero drop count in the log is a bug.
+  std::shared_ptr<const ParityTarget> parity_target;
 };
 
 template <size_t N>
@@ -581,6 +588,25 @@ std::vector<wfn_t<N>> asci_search(
   auto keep_large_st = clock_type::now();
   // Finalize scores
   for(auto& x : asci_pairs) x.rv = -std::abs(x.rv);
+
+  // Keep only the target band-parity sector. Rank-local and before the top-K,
+  // so no communication beyond the logged count is needed.
+  if(asci_settings.parity_target) {
+    const ParityMasks<N> pm(*asci_settings.parity_target->labels);
+    const auto target = asci_settings.parity_target->key;
+    size_t ndropped = asci_pairs.size();
+    asci_pairs.erase(
+        std::remove_if(asci_pairs.begin(), asci_pairs.end(),
+                       [&](const auto& x) { return pm.key(x.state) != target; }),
+        asci_pairs.end());
+    ndropped -= asci_pairs.size();
+    MACIS_MPI_CODE(if(world_size > 1) ndropped =
+                       allreduce(ndropped, MPI_SUM, comm);)
+    logger->info("  * PARITY FILTER {}: dropped {} candidates",
+                 parity_key_string(target,
+                                   asci_settings.parity_target->labels->ngroups),
+                 ndropped);
+  }
 
   // Insert all dets with their coefficients as seeds
   for(size_t i = 0; i < ncdets; ++i) {

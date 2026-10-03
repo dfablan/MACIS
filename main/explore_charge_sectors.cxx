@@ -613,6 +613,19 @@ int main(int argc, char** argv) {
         p.orb_rot[i * p.n_active + i] = 1.0;
       p.E = 0.0;
 
+      // Band-parity sector solve (parity-sector-solve-simple.md). Set up before the
+      // active integrals are built: it zeroes parity-breaking integrals up to
+      // PARITY_TOL in T, Td and V, and the active copies must see that.
+      {
+        bool parity_solve = false;
+        double parity_tol = 1e-10;
+        OPT_KEYWORD("ASCI.PARITY_SOLVE", parity_solve, bool);
+        OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
+        OPT_KEYWORD("ASCI.PARITY_ETOL", p.parity_etol, double);
+        OPT_KEYWORD("ASCI.PARITY_ONLY", p.parity_only, std::vector<int>);
+        if(parity_solve) macis::setup_parity_sectors(p, parity_tol);
+      }
+
       // Copy integrals into active subsets
       p.T_active.resize(p.n_active * p.n_active);
       p.Td_active.resize(p.n_active * p.n_active);
