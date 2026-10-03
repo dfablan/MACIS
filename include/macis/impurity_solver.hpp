@@ -184,58 +184,132 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
       ws[i] = w0 + (wf - w0) / double(gf_settings.nws - 1) * double(i);
     }
 
-  // GF vector
-  std::vector<std::vector<std::complex<double>>> GF(
-      gf_settings.nws,
-      std::vector<std::complex<double>>(p.n_active * p.n_active,
-                                        std::complex<double>(0., 0.)));
-  std::vector<std::vector<std::complex<double>>> GF_tmp(
-      gf_settings.nws,
-      std::vector<std::complex<double>>(p.n_active * p.n_active,
-                                        std::complex<double>(0., 0.)));
-
-  // GS vector
-  std::vector<int> todelete_p;
-  std::vector<int> todelete_h;
+  using gf_t = std::vector<std::vector<std::complex<double>>>;
 
   EASCI -= (p.E_core + p.E_inactive);
-  // Lowest N+1 / N-1 energies the band Lanczos reaches (upper bounds)
-  double E_add = std::numeric_limits<double>::quiet_NaN();
-  double E_rem = std::numeric_limits<double>::quiet_NaN();
-  // The N+/-1 GF spaces can exceed INT32_MAX Hamiltonian nonzeros, so the GF
-  // path uses 64-bit CSR indices (the ASCI Hamiltonian stays 32-bit).
-  // Evaluate particle GF
-  macis::RunGFCalc<N, int64_t>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true, ws,
-                               occs, gf_settings, todelete_p, &E_add);
 
-  // std::cout << "GF Particle part calculated." << std::endl;
-  // for(int i = 0; i < p.n_imp; i++) {
-  //   for(int j = 0; j < p.n_imp; j++)
-  //     std::cout << GF_tmp[0][i + j * p.n_active] << " " << std::endl;
-  // }
+  // Particle + hole GF of psi0 for the (orbital, spin) list of `s`, in the
+  // rotated basis, and the lowest N+1 / N-1 energies the band Lanczos reaches
+  // (upper bounds)
+  auto particle_plus_hole = [&](const macis::GFSettings &s, double &E_add,
+                                double &E_rem) {
+    gf_t GF(s.nws, std::vector<std::complex<double>>(
+                       p.n_active * p.n_active, std::complex<double>(0., 0.)));
+    gf_t GF_tmp = GF;
+    std::vector<int> todelete_p, todelete_h;
+    E_add = E_rem = std::numeric_limits<double>::quiet_NaN();
+    // The N+/-1 GF spaces can exceed INT32_MAX Hamiltonian nonzeros, so the
+    // GF path uses 64-bit CSR indices (the ASCI Hamiltonian stays 32-bit).
+    macis::RunGFCalc<N, int64_t>(GF_tmp, psi0, ham_gen, p.dets, EASCI, true,
+                                 ws, occs, s, todelete_p, &E_add);
+    macis::RunGFCalc<N, int64_t>(GF, psi0, ham_gen, p.dets, EASCI, false, ws,
+                                 occs, s, todelete_h, &E_rem);
+    // Both sectors return full GF_orbs_comp^2 matrices: RunGFCalc pads the
+    // dropped (vanishing add/remove vector) rows/cols with zeros. They may
+    // have dropped different orbitals (e.g. a fully occupied orbital is
+    // dropped from the particle sector while an empty one is dropped from the
+    // hole sector), but each sector's contribution to a dropped orbital is
+    // zero, so the two matrices can simply be added elementwise.
+    for(size_t iw = 0; iw < s.nws; iw++)
+      for(size_t k = 0; k < GF[iw].size(); k++) GF[iw][k] += GF_tmp[iw][k];
+    return GF;
+  };
 
-  // Evaluate hole GF
-  macis::RunGFCalc<N, int64_t>(GF, psi0, ham_gen, p.dets, EASCI, false, ws,
-                               occs, gf_settings, todelete_h, &E_rem);
+  double E_add, E_rem;
+  gf_t GF = particle_plus_hole(gf_settings, E_add, E_rem);
+
+  // Spin average (symmetry-sector-solve.md, sec. 3.9). With NALPHA != NBETA
+  // the solved state is the m = Sz member of a spin multiplet (at odd N, one
+  // member of a doublet), and its G_up != G_down. Its partner with m = -Sz,
+  // the spin flip of psi0, is degenerate with it whenever H is spin-flip
+  // symmetric, and its GF is G_{-m}(a, b) = G_m(flip a, flip b), where flip
+  // swaps the spin of an (orbital, spin) entry of GF.ORBS_COMP/IS_UP_COMP.
+  // The ensemble GF is the average of the two. With SU(2) symmetry this is
+  // also the average over the whole multiplet: sum_sigma G_sigma(m) does not
+  // depend on m (Wigner-Eckart), so it holds for any S. At NALPHA == NBETA
+  // the state is its own spin flip and nothing changes.
+  if(p.nalpha != p.nbeta) {
+    // H is spin-flip symmetric unless the spin-down one-body terms differ
+    // (V is spin-free here)
+    double max_dT = 0.;
+    if(p.spin_dep)
+      for(size_t k = 0; k < p.T.size() and k < p.Td.size(); ++k)
+        max_dT = std::max(max_dT, std::abs(p.T[k] - p.Td[k]));
+    const auto &comp = gf_settings.GF_orbs_comp;
+    const auto &up = gf_settings.is_up_comp;
+    if(!gf_settings.spin_average) {
+      std::cout << "WARNING: GF_SPIN_AVERAGE off (GF.SPIN_AVERAGE = FALSE) at "
+                   "(NALPHA, NBETA) = ("
+                << p.nalpha << ", " << p.nbeta
+                << "): the GF is that of the single m = Sz state, spin-biased"
+                << std::endl;
+    } else if(max_dT > 1e-10) {
+      std::cout << "GF_SPIN_AVERAGE none: spin-dependent one-body terms "
+                   "(max |T - Td| = "
+                << max_dT
+                << "), so the spin-flipped state is not degenerate with the "
+                   "solved one; the GF of the solved state is returned"
+                << std::endl;
+    } else {
+      if(up.size() != comp.size())
+        throw std::runtime_error(
+            "evaluate_GF: GF.IS_UP_COMP must have one entry per GF.ORBS_COMP "
+            "entry for the spin average");
+      // flipped[a] = position of (comp[a], !up[a]) in the list, if present
+      std::vector<int> flipped(comp.size(), -1);
+      for(size_t a = 0; a < comp.size(); ++a)
+        for(size_t b = 0; b < comp.size(); ++b)
+          if(comp[b] == comp[a] and up[b] != up[a]) flipped[a] = int(b);
+      const bool closed = std::find(flipped.begin(), flipped.end(), -1) ==
+                          flipped.end();
+      const size_t n = comp.size();
+      gf_t GF_flip;
+      if(closed) {
+        // Both spins of every orbital are in the list: the partner's GF is a
+        // permutation of this one
+        GF_flip = GF;
+        for(size_t iw = 0; iw < GF.size(); ++iw)
+          for(size_t a = 0; a < n; ++a)
+            for(size_t b = 0; b < n; ++b)
+              GF_flip[iw][a * n + b] = GF[iw][flipped[a] * n + flipped[b]];
+      } else {
+        // Otherwise compute the opposite spin channel of every entry on the
+        // same state
+        auto fs = gf_settings;
+        fs.is_up_comp.flip();
+        fs.is_up_basis.flip();
+        fs.writeGF = false;
+        double E_add_f, E_rem_f;
+        GF_flip = particle_plus_hole(fs, E_add_f, E_rem_f);
+        // Both runs bound the same N+1 / N-1 energies; keep the tighter
+        E_add = std::fmin(E_add, E_add_f);
+        E_rem = std::fmin(E_rem, E_rem_f);
+      }
+      // How spin-biased the single state was, before averaging
+      double bias = 0., scale = 0.;
+      for(size_t iw = 0; iw < GF.size(); ++iw)
+        for(size_t k = 0; k < GF[iw].size(); ++k) {
+          bias = std::max(bias, std::abs(GF[iw][k] - GF_flip[iw][k]));
+          scale = std::max(scale, std::abs(GF[iw][k]));
+          GF[iw][k] = 0.5 * (GF[iw][k] + GF_flip[iw][k]);
+        }
+      const auto flags = std::cout.flags();
+      const auto prec = std::cout.precision();
+      std::cout << std::scientific << std::setprecision(3)
+                << "GF_SPIN_AVERAGE (NALPHA, NBETA) = (" << p.nalpha << ", "
+                << p.nbeta << "): G = [G_m(a,b) + G_m(flip a, flip b)] / 2, "
+                << (closed ? "both spins requested, no extra GF run"
+                           : "opposite spin channel computed in a second run")
+                << "; max |G_m - G_-m| = " << bias << " (max |G| = " << scale
+                << ")" << std::endl;
+      std::cout.flags(flags);
+      std::cout.precision(prec);
+    }
+  }
 
   report_sector_check(E_add - EASCI, E_rem - EASCI, p);
 
   EASCI += p.E_core + p.E_inactive;
-
-  // Both sectors now return full GF_orbs_comp^2 matrices: RunGFCalc pads the
-  // dropped (vanishing add/remove vector) rows/cols with zeros. They may have
-  // dropped different orbitals (e.g. a fully occupied orbital is dropped from
-  // the particle sector while an empty one is dropped from the hole sector),
-  // but each sector's contribution to a dropped orbital is zero, so the two
-  // matrices can simply be added elementwise.
-  for(size_t iw = 0; iw < gf_settings.nws; iw++)
-    for(size_t k = 0; k < GF[iw].size(); k++) GF[iw][k] += GF_tmp[iw][k];
-
-  // std::cout << "GF hole part calculated." << std::endl;
-  // for(int i = 0; i < p.n_imp; i++) {
-  //   for(int j = 0; j < p.n_imp; j++)
-  //     std::cout << GF[0][i + j * p.n_active] << " " << std::endl;
-  // }
 
   // Rotate the GF back to original basis
 

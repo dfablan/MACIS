@@ -493,7 +493,7 @@ its "Implementation status" table.
 | 3.6 | ⟨S²⟩ of every result, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` (Sz = 1 vs 0 in the same sector) | missing | spin-trap diagnosis, the 1×2 `--check-spin` violations (V6) |
 | 3.7 | Parallel (sector × start) communicator split; per-sector subdirectories; per-sector wavefunctions for later warm starts; wrapping or refusing cheap mode | serial; cheap mode stays in the winner's sector | wall time at 3 bands or many starts |
 | 3.8 | Screening at small budgets; µ search that re-checks sectors at the converged µ and reports a density jump when the winner switches between µ points | partial: sectors are re-solved at every µ evaluation, so each point is on the lowest branch, but a jump in n(µ) is not detected | doping runs near a crossing (V7) |
-| 3.9 | Odd-N Green's function: compute G↑ and G↓ and average (F10). Orbit-aware G projection on the DMFT side (F11) | interim: `CI.GF` at odd N is refused (throws) in `run_asci_impsolv_dop`; averaging G↑/G↓ missing; ties are only reported (`PARITY_TIE`) | odd-N runs (`RUN_U2_Irrep`), degenerate bands at odd N |
+| 3.9 | Odd-N Green's function: compute G↑ and G↓ and average (F10). Orbit-aware G projection on the DMFT side (F11) | G↑/G↓ spin average **done** in `evaluate_GF` (NALPHA ≠ NBETA, `GF.SPIN_AVERAGE`); ties are only reported (`PARITY_TIE`) | odd-N runs (`RUN_U2_Irrep`), degenerate bands at odd N |
 | 3.10.1 | Count labels (J_P = 0, or density-density Hund with per-spin counts); sector windows; detecting the group from verified permutations | detected and warned only | J_P = 0 and density-density runs; the 3-band J = 0 collapse hypothesis |
 | 4, step 7 | DMFT side: keys in `Read_Vars`; health check reads `parity_sectors.dat`; orbit-aware projection threshold | missing (outside this repo) | DMFT integration (V8) |
 | 5 | Validation V0, V1, V2, V4–V8, V9b, V9d | only V3/V9c-type checks and the unit tests here | sign-off of the full plan |
@@ -503,7 +503,7 @@ its "Implementation status" table.
 matter next are:
 
 1. ~~per-sector failure handling~~ (done);
-2. odd-N G↑/G↓;
+2. ~~odd-N G↑/G↓~~ (done: spin average in `evaluate_GF`);
 3. ⟨S²⟩, to confirm the Hund-triplet winners;
 4. several starts per sector, if the U → 0 runs show traps inside a sector.
 

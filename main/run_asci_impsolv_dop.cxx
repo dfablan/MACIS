@@ -29,24 +29,6 @@ T vec_sum(const std::vector<T>& x) {
   return std::accumulate(x.begin(), x.end(), T(0));
 }
 
-// The Green's function of an odd-N state is refused for now
-// (symmetry-sector-solve.md, §3.9). At odd N the ground state is a spin
-// doublet, m = +-1/2, and a single member of it has G_up != G_down, while
-// GF.IS_UP_COMP computes one spin channel per orbital: the result would be
-// spin-biased, not the doublet average DMFT needs. Remove this once both
-// channels are computed and averaged.
-void require_even_N_for_GF(size_t nalpha, size_t nbeta, const char* when) {
-  if((nalpha + nbeta) % 2 == 0) return;
-  throw std::runtime_error(
-      std::string("CI.GF = TRUE with an odd number of electrons (NALPHA = ") +
-      std::to_string(nalpha) + ", NBETA = " + std::to_string(nbeta) + ", " +
-      when +
-      ") is not supported yet: the state is one member of a spin doublet and "
-      "its Green's function differs between spin up and spin down, so a "
-      "single-channel GF would be biased. Use an even N, or set CI.GF = "
-      "FALSE.");
-}
-
 int main(int argc, char** argv) {
   using hrt_t = std::chrono::high_resolution_clock;
   using dur_t = std::chrono::duration<double, std::milli>;
@@ -422,12 +404,6 @@ int main(int argc, char** argv) {
     if(sector_settings.margin < 1)
       throw std::runtime_error("DOP.SECTOR_MARGIN must be >= 1");
 
-    // Without the sector search N stays that of the input: refuse an odd-N
-    // GF before the mu search spends anything. With it, N is only known
-    // after the search and is checked there.
-    if(testGF and !sector_settings.enabled)
-      require_even_N_for_GF(params.nalpha, params.nbeta, "from input.in");
-
     double mu_fixed;
 
     if(sector_settings.enabled) {
@@ -492,7 +468,6 @@ int main(int argc, char** argv) {
   }
 
   else {
-    if(testGF) require_even_N_for_GF(params.nalpha, params.nbeta, "from input.in");
     std::cout << "Doping routines have not been called\n";
     std::cout << "mu should be equal to -U/2 for have filling in single band "
                  "models\n";
@@ -613,11 +588,6 @@ int main(int argc, char** argv) {
     }
   }
 
-  // The charge-sector search may have moved the run to an odd N
-  if(testGF)
-    require_even_N_for_GF(params.nalpha, params.nbeta,
-                          "the ground-state charge sector found by the search");
-
   // Optionally compute the dynamical impurity Sz-Sz response instead in addition to the Green's function.
   bool sz_resolvent = false;
   OPT_KEYWORD("GF.SZ_RESOLVENT", sz_resolvent, bool);
@@ -676,6 +646,8 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
     OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
     OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
+    // NALPHA != NBETA (e.g. odd N): average over the state and its spin flip
+    OPT_KEYWORD("GF.SPIN_AVERAGE", gf_settings.spin_average, bool);
 
     std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,

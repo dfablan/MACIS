@@ -43,7 +43,7 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.7 `SYMMETRIZE_DETS` interplay | **done** | each sector uses the stabilizer of its parity key |
 | §3.7 parallel sector loop | open | sectors run one after another |
 | §3.8 screening; branch-consistent µ search | open | sectors are re-solved at every µ evaluation, but a jump in n(µ) is not detected |
-| §3.9 odd-N G↑/G↓; orbit-aware projection | **odd N refused** (interim) | `run_asci_impsolv_dop` throws when `CI.GF = TRUE` and N is odd: before the solve when N is fixed by the input, and after the charge-sector search when the search ends at odd N. Averaging G↑ and G↓ and the orbit-aware projection are open; parity ties are only reported |
+| §3.9 odd-N G↑/G↓; orbit-aware projection | **spin average done**; orbit-aware projection open | `evaluate_GF`: when NALPHA ≠ NBETA (every odd N) the returned G is [G_m(a,b) + G_m(flip a, flip b)]/2, the average over the solved state and its degenerate spin flip (with SU(2), the whole multiplet). The opposite channel comes from a permutation when `GF.IS_UP_COMP` lists both spins of every orbital, else from a second GF run. Skipped (and reported) when T ≠ Td; `GF.SPIN_AVERAGE = FALSE` turns it off. Parity ties are only reported |
 | §3.10.1 count labels (J_P = 0) | detected, not handled | warned as `counts_conserved` |
 | §4 step 7 (DMFT side) | open | outside this repo |
 | §5 V2/V9c-type checks on a toy | **done** (single rank) | two-band toy: every sector matches exact diagonalization; the wrapper returns the true ground state where the legacy solve is 0.039 Ha high |

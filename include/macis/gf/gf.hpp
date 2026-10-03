@@ -62,6 +62,9 @@ struct GFSettings {
   bool real_g = true;
   double beta = 1.;
   bool imag_freq = true;
+  // evaluate_GF: when NALPHA != NBETA, return the average over the solved
+  // state and its spin-flipped partner (GF.SPIN_AVERAGE), see evaluate_GF
+  bool spin_average = true;
 };
 
 /**
