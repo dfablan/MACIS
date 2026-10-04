@@ -186,9 +186,9 @@ void report_sector_check(double dE_add, double dE_rem,
  *    orthogonal partner), and a broken symmetry is warned, not averaged.
  */
 template <size_t N>
-void band_orbit_average_gf(
-    std::vector<std::vector<std::complex<double>>> &GF,
-    const macis::impurity_params<N> &p, const macis::GFSettings &s) {
+void band_orbit_average_gf(std::vector<std::vector<std::complex<double>>> &GF,
+                           const macis::impurity_params<N> &p,
+                           const macis::GFSettings &s) {
   const auto &stg = p.asci_settings;
   const bool have_group =
       stg.symmetrize_dets and stg.sym_group and !stg.sym_group->empty();
@@ -231,9 +231,8 @@ void band_orbit_average_gf(
   const uint32_t key = pm.key(p.dets.front());
   const auto keystr = macis::parity_key_string(key, L.ngroups);
   // Ties reported by the parity solve that produced this state
-  const std::vector<uint32_t> tied = p.parity_winner_key == key
-                                         ? p.parity_tied_keys
-                                         : std::vector<uint32_t>{};
+  const std::vector<uint32_t> tied =
+      p.parity_winner_key == key ? p.parity_tied_keys : std::vector<uint32_t>{};
   auto keys_string = [&](const std::vector<uint32_t> &ks) {
     std::string out;
     for(auto k : ks) out += " " + macis::parity_key_string(k, L.ngroups);
