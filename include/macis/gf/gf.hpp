@@ -65,6 +65,10 @@ struct GFSettings {
   // evaluate_GF: when NALPHA != NBETA, return the average over the solved
   // state and its spin-flipped partner (GF.SPIN_AVERAGE), see evaluate_GF
   bool spin_average = true;
+  // evaluate_GF: when the solved state's band-parity sector is not mapped onto
+  // itself by the SYMMETRIZE_DETS group (e.g. (e,o) at odd N with a band swap),
+  // average over the orbit of the state under that group (GF.BAND_AVERAGE)
+  bool band_average = true;
 };
 
 /**

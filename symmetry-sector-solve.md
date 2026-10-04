@@ -50,7 +50,7 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.7 `SYMMETRIZE_DETS` interplay | **done** | each sector uses the stabilizer of its parity key |
 | §3.7 parallel sector loop | open | sectors run one after another |
 | §3.8 screening; branch-consistent µ search | open | sectors are re-solved at every µ evaluation, but a jump in n(µ) is not detected |
-| §3.9 odd-N G↑/G↓; orbit-aware projection | **spin average done**; orbit-aware projection open | `evaluate_GF`: when NALPHA ≠ NBETA (every odd N) the returned G is [G_m(a,b) + G_m(flip a, flip b)]/2, the average over the solved state and its degenerate spin flip (with SU(2), the whole multiplet). The opposite channel comes from a permutation when `GF.IS_UP_COMP` lists both spins of every orbital, else from a second GF run. Skipped (and reported) when T ≠ Td; `GF.SPIN_AVERAGE = FALSE` turns it off. Parity ties are only reported |
+| §3.9 odd-N G↑/G↓; orbit-aware projection | **spin average done**; **band-orbit average done** (needs `SYMMETRIZE_DETS`, so NROTS = 0) | `evaluate_GF`: when NALPHA ≠ NBETA (every odd N) the returned G is [G_m(a,b) + G_m(flip a, flip b)]/2, the average over the solved state and its degenerate spin flip (with SU(2), the whole multiplet). The opposite channel comes from a permutation when `GF.IS_UP_COMP` lists both spins of every orbital, else from a second GF run. Skipped (and reported) when T ≠ Td; `GF.SPIN_AVERAGE = FALSE` turns it off. Band orbit (`band_orbit_average_gf`, after the back-rotation): when the winner's parity key is not invariant under the `SYMMETRIZE_DETS` group (odd N with a band swap), G(a,b) = 1/m Σ_r G(g_r⁻¹a, g_r⁻¹b) over one element per image key, printed as `GF_BAND_AVERAGE` with the bias removed; `GF.BAND_AVERAGE = FALSE` turns it off. Not silent otherwise: a `PARITY_TIE` with no group (`SYMMETRIZE_DETS` off, every NROTS > 0 run) or outside the group's orbit is warned, and `SYMMETRIZE_DETS` without `PARITY_SOLVE` warns when the state is not invariant under the group (sign-free overlap Σ_d \|C_d\|\|C_g(d)\|). Test `tests/gf_band_average.cxx` |
 | §3.10.1 count labels (J_P = 0) | detected, not handled | warned as `counts_conserved` |
 | §4 step 7 (DMFT side) | open | outside this repo |
 | §5 V2/V9c-type checks on a toy | **done** (single rank) | two-band toy: every sector matches exact diagonalization; the wrapper returns the true ground state where the legacy solve is 0.039 Ha high |
@@ -412,7 +412,9 @@ unknown keys.
   (V5).
 - **Spatial degeneracy (orbit size > 1).** The group projection of G equals the orbit-averaged
   ensemble, **provided** the projection is enabled (F11; it's off by default) and every
-  ground-state degeneracy lies inside that orbit. The `RuntimeError` above
+  ground-state degeneracy lies inside that orbit. **Implemented solver-side** for the band-parity
+  orbit under the `SYMMETRIZE_DETS` group (`GF_BAND_AVERAGE`, see the status table); without a
+  group the tie is warned and the DMFT-side projection is still needed. The `RuntimeError` above
   `symmetrize_warn_thresh` must take the orbit size into account: an expected defect from a
   degenerate winner is not a broken solver.
 

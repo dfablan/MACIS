@@ -5,6 +5,7 @@
 #include <iostream>
 #include <limits>
 #include <macis/asci/grow.hpp>
+#include <macis/asci/parity_labels.hpp>
 #include <macis/asci/refine.hpp>
 #include <macis/gf/dynamical_properties.hpp>
 #include <macis/gf/gf.hpp>
@@ -24,6 +25,7 @@
 #include <sparsexx/io/write_dist_mm.hpp>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 using macis::NumActive;
 using macis::NumCanonicalOccupied;
@@ -96,6 +98,11 @@ struct impurity_params {
   double parity_etol = 1e-6;  // ASCI.PARITY_ETOL: near-tie report threshold
   std::vector<int>
       parity_only;  // ASCI.PARITY_ONLY: one 0/1 per band; empty = all
+  // Outcome of the last parity solve, read by evaluate_GF's band average:
+  // the winner's key and the sectors that tied with it within PARITY_ETOL
+  // (PARITY_TIE)
+  uint32_t parity_winner_key = 0;
+  std::vector<uint32_t> parity_tied_keys;
 };
 
 /**
@@ -138,6 +145,203 @@ void report_sector_check(double dE_add, double dE_rem,
         << "  (NaN: no electron could be added/removed, or GF.USE_BANDLAN "
            "is off -- the bound comes from the band Lanczos only)"
         << std::endl;
+  std::cout.flags(flags);
+  std::cout.precision(prec);
+}
+
+/**
+ * @brief Averages the impurity GF over the orbit of the solved state under the
+ *        SYMMETRIZE_DETS orbital-permutation group, when the state's
+ *        band-parity sector is not invariant under that group
+ *        (GF.BAND_AVERAGE; symmetry-sector-solve.md, sec. 3.9).
+ *
+ * In a parity sector the determinant space is closed only under the stabilizer
+ * of the sector's key (parity_stabilizer). At odd N with a band swap the keys
+ * (e,o) and (o,e) are exchanged, the stabilizer is trivial, and the solved
+ * state is ONE of two exactly degenerate partners, psi and U_g psi, with
+ * U_g c_q U_g^+ = c_{g(q)}. Its GF is band-polarized; the ensemble GF at
+ * T = 0 is the orbit average
+ *
+ *   G(a, b) = 1/m sum_r G_psi(g_r^-1 a, g_r^-1 b),   m = |orbit of the key|,
+ *
+ * over one group element g_r per distinct image key g_r.key (identity
+ * included). Elements of the stabilizer are NOT averaged over: there the
+ * state is already invariant, and averaging would hide a real symmetry
+ * breaking of the solver. When the stabilizer is the whole group (m = 1,
+ * e.g. every even-N (e,e) / (o,o) sector with a band swap) nothing is done.
+ *
+ * The GF must be in the ORIGINAL basis (call after the back-rotation): the
+ * permutation acts on orbital labels. Every g_r must map GF.ORBS_COMP onto
+ * itself with the spin kept; otherwise the average is skipped and reported.
+ * H is invariant under the group by construction (prepare_det_symmetry
+ * checks T, Td and V), so the partners are degenerate.
+ *
+ * Never silent when the returned GF may break a degeneracy:
+ *  - PARITY_SOLVE on but no group (SYMMETRIZE_DETS off, e.g. any NROTS > 0
+ *    run): warns if the parity solve reported a PARITY_TIE with the winner;
+ *  - a tied sector outside the orbit of the winner's key: warned;
+ *  - SYMMETRIZE_DETS on without PARITY_SOLVE (no labels): the state is
+ *    checked against each group element through the sign-free overlap
+ *    sum_d |C_d| |C_{g(d)}| (= 1 for a state invariant up to signs, ~0 for an
+ *    orthogonal partner), and a broken symmetry is warned, not averaged.
+ */
+template <size_t N>
+void band_orbit_average_gf(
+    std::vector<std::vector<std::complex<double>>> &GF,
+    const macis::impurity_params<N> &p, const macis::GFSettings &s) {
+  const auto &stg = p.asci_settings;
+  const bool have_group =
+      stg.symmetrize_dets and stg.sym_group and !stg.sym_group->empty();
+  if(p.dets.empty() or p.dets.size() != p.C.size()) return;
+
+  // No parity labels: nothing to average by key. With a group, check that
+  // the state is invariant under it, and warn otherwise.
+  if(!p.parity_labels) {
+    if(!have_group) return;
+    std::unordered_map<macis::wfn_t<N>, size_t> index;
+    index.reserve(p.dets.size());
+    for(size_t i = 0; i < p.dets.size(); ++i) index.emplace(p.dets[i], i);
+    double norm = 0.;
+    for(auto c : p.C) norm += c * c;
+    double min_ovl = 1.;
+    for(const auto &g : *stg.sym_group) {
+      double ovl = 0.;
+      for(size_t i = 0; i < p.dets.size(); ++i) {
+        const auto it = index.find(macis::permute_orbitals(p.dets[i], g));
+        if(it != index.end()) ovl += std::abs(p.C[i] * p.C[it->second]);
+      }
+      min_ovl = std::min(min_ovl, ovl / norm);
+    }
+    if(min_ovl < 1. - 1e-6)
+      std::cout << "WARNING: GF_BAND_AVERAGE none: the solved state is not "
+                   "invariant under the SYMMETRIZE_DETS group (min_g sum_d "
+                   "|C_d||C_g(d)| = "
+                << min_ovl
+                << "), so its GF breaks that symmetry. It is one of several "
+                   "degenerate partners (e.g. a band-parity sector at odd N); "
+                   "set ASCI.PARITY_SOLVE = TRUE to average the GF over them"
+                << std::endl;
+    return;
+  }
+
+  const auto &L = *p.parity_labels;
+  const macis::ParityMasks<N> pm(L);
+  // Parity key of the solved state: the same for every determinant of a
+  // parity-sector solve
+  const uint32_t key = pm.key(p.dets.front());
+  const auto keystr = macis::parity_key_string(key, L.ngroups);
+  // Ties reported by the parity solve that produced this state
+  const std::vector<uint32_t> tied = p.parity_winner_key == key
+                                         ? p.parity_tied_keys
+                                         : std::vector<uint32_t>{};
+  auto keys_string = [&](const std::vector<uint32_t> &ks) {
+    std::string out;
+    for(auto k : ks) out += " " + macis::parity_key_string(k, L.ngroups);
+    return out;
+  };
+
+  if(!have_group) {
+    if(!tied.empty())
+      std::cout << "WARNING: GF_BAND_AVERAGE none: parity sector " << keystr
+                << " tied with" << keys_string(tied)
+                << " (PARITY_TIE), but no symmetry group is available "
+                   "(ASCI.SYMMETRIZE_DETS off; it requires NROTS = 0) to "
+                   "relate them. The GF is that of one of the tied states and "
+                   "may be band-polarized; symmetrize it on the DMFT side"
+                << std::endl;
+    return;
+  }
+  const auto &group = *stg.sym_group;
+
+  // One representative per distinct image key
+  std::map<uint32_t, const std::vector<uint32_t> *> reps;
+  for(const auto &g : group) {
+    uint32_t img = 0;
+    for(size_t a = 0; a < L.ngroups; ++a) {
+      const int b = L.group_of[g[L.group_orbs[a].front()]];
+      if(b >= 0 and ((key >> a) & 1u)) img |= (1u << b);
+    }
+    reps.emplace(img, &g);
+  }
+
+  // Ties the group does not explain are not averaged over
+  std::vector<uint32_t> unexplained;
+  for(auto k : tied)
+    if(!reps.count(k)) unexplained.push_back(k);
+  if(!unexplained.empty())
+    std::cout << "WARNING: GF_BAND_AVERAGE: parity sector " << keystr
+              << " tied with" << keys_string(unexplained)
+              << " (PARITY_TIE), which the SYMMETRIZE_DETS group does not map "
+                 "it onto; the GF is not averaged over "
+              << (unexplained.size() > 1 ? "those sectors" : "that sector")
+              << std::endl;
+
+  if(reps.size() <= 1) return;  // sector invariant: the state is symmetric
+
+  const auto &comp = s.GF_orbs_comp;
+  const auto &up = s.is_up_comp;
+  const size_t n = comp.size();
+
+  if(!s.band_average) {
+    std::cout << "WARNING: GF_BAND_AVERAGE off (GF.BAND_AVERAGE = FALSE) in "
+                 "parity sector "
+              << keystr << ": the GF is that of one of " << reps.size()
+              << " degenerate partners, band-polarized" << std::endl;
+    return;
+  }
+  if(up.size() != n or GF.empty() or GF[0].size() != n * n) {
+    std::cout << "WARNING: GF_BAND_AVERAGE none: GF.ORBS_COMP / IS_UP_COMP do "
+                 "not match the computed GF size; the GF of parity sector "
+              << keystr << " is returned band-polarized" << std::endl;
+    return;
+  }
+
+  // idx_r[a] = position in the list of the entry g_r^-1 maps entry a to
+  std::vector<std::vector<size_t>> idx;
+  for(const auto &kv : reps) {
+    const auto &g = *kv.second;
+    std::vector<uint32_t> ginv(g.size());
+    for(size_t q = 0; q < g.size(); ++q) ginv[g[q]] = q;
+    std::vector<size_t> ix(n);
+    for(size_t a = 0; a < n; ++a) {
+      bool found = false;
+      for(size_t b = 0; b < n and !found; ++b)
+        if(uint32_t(comp[b]) == ginv[comp[a]] and up[b] == up[a]) {
+          ix[a] = b;
+          found = true;
+        }
+      if(!found) {
+        std::cout << "WARNING: GF_BAND_AVERAGE none: the band permutation "
+                     "maps GF.ORBS_COMP entry "
+                  << comp[a] << " outside the list; the GF of parity sector "
+                  << keystr << " is returned band-polarized" << std::endl;
+        return;
+      }
+    }
+    idx.push_back(std::move(ix));
+  }
+
+  double bias = 0., scale = 0.;
+  const double w = 1. / double(idx.size());
+  for(auto &Gw : GF) {
+    const auto G0 = Gw;
+    for(auto &x : Gw) x = 0.;
+    for(const auto &ix : idx)
+      for(size_t a = 0; a < n; ++a)
+        for(size_t b = 0; b < n; ++b) {
+          const auto v = G0[ix[a] * n + ix[b]];
+          bias = std::max(bias, std::abs(G0[a * n + b] - v));
+          Gw[a * n + b] += w * v;
+        }
+    for(const auto &x : G0) scale = std::max(scale, std::abs(x));
+  }
+  const auto flags = std::cout.flags();
+  const auto prec = std::cout.precision();
+  std::cout << std::scientific << std::setprecision(3)
+            << "GF_BAND_AVERAGE parity sector " << keystr
+            << ": G = 1/m sum_r G(g_r^-1 a, g_r^-1 b), m = " << idx.size()
+            << " degenerate partners; max |G - G_partner| = " << bias
+            << " (max |G| = " << scale << ")" << std::endl;
   std::cout.flags(flags);
   std::cout.precision(prec);
 }
@@ -370,6 +574,10 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
     for(int j = 0; j < p.n_imp; j++)
       for(int k = 0; k < p.n_imp; k++) GF[iw][j + k * G_n_orbs] = rotG(j, k);
   }
+
+  // Band-orbit average, in the original basis where the permutation group of
+  // SYMMETRIZE_DETS acts on orbital labels (see band_orbit_average_gf)
+  band_orbit_average_gf<N>(GF, p, gf_settings);
 
   if(gf_settings.writeGF_singlef)
     macis::write_GF(GF, ws, gf_settings.GF_orbs_comp, std::vector<int>{});

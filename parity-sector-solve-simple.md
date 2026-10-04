@@ -272,7 +272,10 @@ write active_ordm.dat and rot_matrix.dat for the winner; print table; write pari
   `PARITY_TIE`. With degenerate bands at odd N, the (o,e) and (e,o) sectors are exact partners
   under band swap. The winner then breaks band symmetry, so G_AA ≠ G_BB.
   - Today's solver has the same issue: it lands in one of the two.
-  - The DMFT side should average the bands (the existing symmetrization, plan §3.9).
+  - **Done solver-side:** with `SYMMETRIZE_DETS`, `evaluate_GF` averages the GF over the orbit of
+    the winner's key under the group (`GF_BAND_AVERAGE`, `GF.BAND_AVERAGE`). Without a group
+    (`SYMMETRIZE_DETS` off, which includes every NROTS > 0 run) the tie is warned and the DMFT
+    side must average the bands (the existing symmetrization, plan §3.9).
   - We solve both partners anyway. This version doesn't exploit band swap to skip one, and
     agreement within tolerance is a free consistency check.
 
@@ -342,7 +345,7 @@ and the CAS µ search parity-correct.
 | T3 | Truncated budget (NTDETS ≈ 60) | every sector's `PARITY FILTER` count is 0; the winner is expected to stay (o,o) (the gap is 0.039 Ha), to be confirmed |
 | T4 | Seed repair | from the (3,3) legacy seed, `parity_seed` reaches (o,o) in one move, and descent never raises `⟨D\|H\|D⟩` or leaves the sector; the seed is logged (whether it is one electron per impurity band is a check, not an assumption) |
 | T5 | Charge-sector search + parity, warm | the N±1 seeds split into two slices each, and the final sector matches an exact scan |
-| T6 | `SYMMETRIZE_DETS`, degenerate bands, odd N | the band swap is dropped from the stabilizer, both partner sectors agree to `PARITY_ETOL`, and `PARITY_TIE` is printed |
+| T6 | `SYMMETRIZE_DETS`, degenerate bands, odd N | the band swap is dropped from the stabilizer, both partner sectors agree to `PARITY_ETOL`, and `PARITY_TIE` is printed; the GF is the average of the two partners, G_AA = G_BB (`tests/gf_band_average.cxx`) |
 
 **Frozen production Hamiltonians** (plan V3/V9, NROTS = 0):
 
@@ -493,7 +496,7 @@ its "Implementation status" table.
 | 3.6 | ⟨S²⟩ of every result, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` (Sz = 1 vs 0 in the same sector) | missing | spin-trap diagnosis, the 1×2 `--check-spin` violations (V6) |
 | 3.7 | Parallel (sector × start) communicator split; per-sector subdirectories; per-sector wavefunctions for later warm starts; wrapping or refusing cheap mode | serial; cheap mode stays in the winner's sector | wall time at 3 bands or many starts |
 | 3.8 | Screening at small budgets; µ search that re-checks sectors at the converged µ and reports a density jump when the winner switches between µ points | partial: sectors are re-solved at every µ evaluation, so each point is on the lowest branch, but a jump in n(µ) is not detected | doping runs near a crossing (V7) |
-| 3.9 | Odd-N Green's function: compute G↑ and G↓ and average (F10). Orbit-aware G projection on the DMFT side (F11) | G↑/G↓ spin average **done** in `evaluate_GF` (NALPHA ≠ NBETA, `GF.SPIN_AVERAGE`); ties are only reported (`PARITY_TIE`) | odd-N runs (`RUN_U2_Irrep`), degenerate bands at odd N |
+| 3.9 | Odd-N Green's function: compute G↑ and G↓ and average (F10). Orbit-aware G projection on the DMFT side (F11) | G↑/G↓ spin average **done** in `evaluate_GF` (NALPHA ≠ NBETA, `GF.SPIN_AVERAGE`); band-orbit average **done** with `SYMMETRIZE_DETS` (`GF.BAND_AVERAGE`); a tie without a group is warned | odd-N runs (`RUN_U2_Irrep`), degenerate bands at odd N |
 | 3.10.1 | Count labels (J_P = 0, or density-density Hund with per-spin counts); sector windows; detecting the group from verified permutations | detected and warned only | J_P = 0 and density-density runs; the 3-band J = 0 collapse hypothesis |
 | 4, step 7 | DMFT side: keys in `Read_Vars`; health check reads `parity_sectors.dat`; orbit-aware projection threshold | missing (outside this repo) | DMFT integration (V8) |
 | 5 | Validation V0, V1, V2, V4–V8, V9b, V9d | only V3/V9c-type checks and the unit tests here | sign-off of the full plan |

@@ -648,6 +648,9 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
     // NALPHA != NBETA (e.g. odd N): average over the state and its spin flip
     OPT_KEYWORD("GF.SPIN_AVERAGE", gf_settings.spin_average, bool);
+    // Parity sector not invariant under the SYMMETRIZE_DETS group: average
+    // over the orbit of the solved state
+    OPT_KEYWORD("GF.BAND_AVERAGE", gf_settings.band_average, bool);
 
     std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,

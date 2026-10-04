@@ -29,6 +29,7 @@ add_executable( macis_test
   impurity_seed.cxx
   parity_sectors.cxx
   gf_spin_average.cxx
+  gf_band_average.cxx
   gf.cxx
 )
 target_link_libraries( macis_test PUBLIC macis Catch2::Catch2 )

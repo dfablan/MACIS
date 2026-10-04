@@ -1115,8 +1115,10 @@ void report_parity_sectors(const std::vector<SectorRun<N>>& runs, int winner,
          << macis::parity_key_string(runs[i].key, L.ngroups)
          << " agree within PARITY_ETOL = " << etol
          << ": the ground state may be degenerate across them (e.g. band "
-            "swap at odd N); the returned state, and its Green's function, "
-            "then break that symmetry\n";
+            "swap at odd N), and the returned state then breaks that "
+            "symmetry. evaluate_GF averages its Green's function over the "
+            "partners the SYMMETRIZE_DETS group relates (GF_BAND_AVERAGE) and "
+            "warns otherwise\n";
   if(failed.empty())
     os << "PARITY_COVERAGE COMPLETE\n";
   else {
@@ -1280,6 +1282,13 @@ double solve_parity_sectors(impurity_params<N>& p, one_solver_t<N> solve,
   p.asci_wfn_fname = saved_fname;
   p.asci_E0 = saved_E0;
   p.compute_asci_E0 = saved_compute_E0;
+  // For evaluate_GF's band average (band_orbit_average_gf)
+  p.parity_winner_key = w.key;
+  p.parity_tied_keys.clear();
+  for(size_t i = 0; i < runs.size(); ++i)
+    if(runs[i].ok and int(i) != winner and
+       std::abs(runs[i].E - w.E) < p.parity_etol)
+      p.parity_tied_keys.push_back(runs[i].key);
   x_out = std::move(w.x);
   return w.E;
 }
