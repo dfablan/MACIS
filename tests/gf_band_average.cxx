@@ -16,6 +16,9 @@
 namespace {
 
 constexpr size_t NB = 64;
+// Separate solves of the two partner sectors are exact mirror images (they
+// agree to 1e-12 here); the permutation identities inside one run as well
+constexpr double PARTNER_TOL = 1e-10;
 using params_t = macis::impurity_params<NB>;
 using gf_t = std::vector<std::vector<std::complex<double>>>;
 
@@ -188,27 +191,27 @@ TEST_CASE("GF band average over the parity-sector orbit") {
   }
   REQUIRE(p.parity_tied_keys.size() == 1);
 
-  // Each partner sector alone, raw GF of one impurity orbital at a time
-  // (one-seed band Lanczos runs are exact on this model)
+  // Each partner sector alone, raw GF of both impurity orbitals
   auto pa = make(3, 2, Opts{true, true, {1, 0}});
   auto pb = make(3, 2, Opts{true, true, {0, 1}});
   const double Ea = macis::SolveImpurityASCI<NB>(pa);
   const double Eb = macis::SolveImpurityASCI<NB>(pb);
   REQUIRE(Ea == Approx(E).margin(1e-8));
   REQUIRE(Eb == Approx(E).margin(1e-8));
-  gf_t Ga0, Ga1, Gb0, Gb1;
+  gf_t Ra, Rb;
   {
-    CoutCapture cap;  // {0} alone is not closed under the swap: reported
-    Ga0 = impurity_gf(pa, Ea, {0}, true);
+    CoutCapture cap;
+    Ra = impurity_gf(pa, Ea, {0, 1}, false);
+    Rb = impurity_gf(pb, Eb, {0, 1}, false);
+    // A list the swap does not map onto itself (bath orbital 2 -> 3) is
+    // reported and left as is
+    impurity_gf(pa, Ea, {0, 2}, true);
     CHECK(has(cap.str(), "GF_BAND_AVERAGE none: the band permutation maps"));
-    Ga1 = impurity_gf(pa, Ea, {1}, true);
-    Gb0 = impurity_gf(pb, Eb, {0}, true);
-    Gb1 = impurity_gf(pb, Eb, {1}, true);
   }
   // Each partner is band-polarized, and the swap exchanges them
-  CHECK(max_diff(Ga0, 0, Ga1, 0) > 1e-3);
-  CHECK(max_diff(Ga0, 0, Gb1, 0) < 1e-8);
-  CHECK(max_diff(Ga1, 0, Gb0, 0) < 1e-8);
+  CHECK(max_diff(Ra, 0, Ra, 3) > 1e-3);
+  CHECK(max_diff(Ra, 0, Rb, 3) < PARTNER_TOL);
+  CHECK(max_diff(Ra, 3, Rb, 0) < PARTNER_TOL);
 
   SECTION("averaged: (G_A + G_B) / 2, the same for either partner") {
     CoutCapture cap;
@@ -225,11 +228,11 @@ TEST_CASE("GF band average over the parity-sector orbit") {
       CHECK(std::abs(G[iw][1]) < 1e-12);  // no band-mixing element
       CHECK(std::abs(G[iw][2]) < 1e-12);
     }
-    // ... which is the ensemble of the two partner sectors. The two-seed
-    // run is compared at a looser tolerance: the band Lanczos does not
-    // deflate (see tests/gf_spin_average.cxx)
+    // ... which is the ensemble of the two partner sectors
     for(size_t iw = 0; iw < G.size(); ++iw)
-      CHECK(std::abs(G[iw][0] - 0.5 * (Ga0[iw][0] + Gb0[iw][0])) < 1e-2);
+      for(size_t k : {0, 3})
+        CHECK(std::abs(G[iw][k] - 0.5 * (Ra[iw][k] + Rb[iw][k])) <
+              PARTNER_TOL);
     // Either partner gives the same average
     const auto Ga = impurity_gf(pa, Ea, {0, 1}, true);
     const auto Gb = impurity_gf(pb, Eb, {0, 1}, true);
