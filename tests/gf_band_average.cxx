@@ -231,8 +231,7 @@ TEST_CASE("GF band average over the parity-sector orbit") {
     // ... which is the ensemble of the two partner sectors
     for(size_t iw = 0; iw < G.size(); ++iw)
       for(size_t k : {0, 3})
-        CHECK(std::abs(G[iw][k] - 0.5 * (Ra[iw][k] + Rb[iw][k])) <
-              PARTNER_TOL);
+        CHECK(std::abs(G[iw][k] - 0.5 * (Ra[iw][k] + Rb[iw][k])) < PARTNER_TOL);
     // Either partner gives the same average
     const auto Ga = impurity_gf(pa, Ea, {0, 1}, true);
     const auto Gb = impurity_gf(pb, Eb, {0, 1}, true);
