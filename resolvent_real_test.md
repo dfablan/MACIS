@@ -222,6 +222,20 @@ Notes:
   interpreting any element with `μ ≠ ν`; on CAS they are identically 1.
   With `ORB_EXPAND_BASIS`, `capture_expanded` is 1 for every expanded pair;
   a pair flagged `unresolved = 1` still misses weight.
+- **`ORB_EXPAND_BASIS` with `TOT_SD = 1` is not enough.** Capture 1 means only that
+  the seed is in the basis. The response in the added sector is still described by
+  only `TOT_SD` layers of singles. On a 2-band J = 0 test, the off-diagonal elements
+  had a 28% error at `TOT_SD = 1`, 6e-6 at `TOT_SD = 2`, and were exact at
+  `TOT_SD = 3`. Rerun with increasing `TOT_SD` (and `TRUNC_SIZE`) until the
+  expanded elements stop changing, and report that.
+- **Basis size.** The growth also adds determinants in sectors that no seed
+  reaches. They don't change the result, but they enlarge the basis. With
+  `TRUNC_SIZE = 100000000` the growth is effectively uncapped; check the
+  `basis_size` line of `_gram.dat` and the `basis expanded from … to …` line on
+  stdout.
+- **Single rank only.** The expansion is verified on one MPI rank. A 2-rank run
+  of the resolvent tests hung (`PLAN_capture_basis_expansion.md`, §Open issues),
+  so don't rely on multi-rank output until that is understood.
 - `DELTA_RESOLVENT` is effectively mandatory for the charge trace `q_0`
   (elastic piece `⟨N_imp⟩²/z`) and useful elsewhere.
 
