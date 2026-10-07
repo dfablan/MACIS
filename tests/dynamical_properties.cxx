@@ -7,12 +7,15 @@
  */
 
 #include <Eigen/Dense>
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <macis/csr_hamiltonian.hpp>
 #include <macis/gf/dynamical_properties.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
+#include <macis/hamiltonian_generator/sd_build.hpp>
 #include <map>
+#include <numeric>
 #include <utility>
 
 #include "ut_common.hpp"
@@ -1732,7 +1735,7 @@ TEST_CASE(
 TEST_CASE("Dynamical properties - basis expansion norbs fallback") {
   ROOT_ONLY(MPI_COMM_WORLD);
 
-  // settings.norbs = 0 uses occs.size(): same basis and result as norbs = 4.
+  // settings.norbs = 0 uses n_active: same basis and result as norbs = 4.
   // Without either the expansion cannot generate singles and refuses.
   const size_t n_imp = 2, n = 4;
   FlavorModel m;
@@ -1750,18 +1753,71 @@ TEST_CASE("Dynamical properties - basis expansion norbs fallback") {
   explicit_norbs.norbs = n;
   macis::GFSettings fallback = explicit_norbs;
   fallback.norbs = 0;
-  const std::vector<double> occs(n, 0.5);  // every orbital active
 
   const auto a = macis::RunResolventOrbitalMatrix<N, int32_t>(
       m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
       ws, explicit_norbs);
   const auto b = macis::RunResolventOrbitalMatrix<N, int32_t>(
       m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
-      ws, fallback, false, occs);
+      ws, fallback, false, /*n_active=*/n);
   REQUIRE(a.expanded_size > a.base_size);
   REQUIRE(a.expanded_size == b.expanded_size);
   REQUIRE(a.resolvent == b.resolvent);
   REQUIRE_THROWS(macis::RunResolventOrbitalMatrix<N, int32_t>(
       m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
       ws, fallback));
+}
+
+TEST_CASE("Dynamical properties - coupled_to_base selects the ground sector") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Base: the largest half of psi0's flavor sector (a truncated ASCI space).
+  // Every other determinant of that sector is H-connected to it; no
+  // determinant of another flavor sector is, at any distance.
+  const size_t n = 4;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen);
+
+  std::vector<size_t> order(m.sector.size());
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    return std::abs(m.psi_sector(a)) > std::abs(m.psi_sector(b));
+  });
+  std::vector<macis::wfn_t<N>> base;
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> in_base;
+  for(size_t k = 0; k < order.size() / 2; ++k) {
+    in_base.emplace(m.sector[order[k]], base.size());
+    base.push_back(m.sector[order[k]]);
+  }
+  std::vector<macis::wfn_t<N>> added;
+  for(const auto& d : m.fci)
+    if(!in_base.count(d)) added.push_back(d);
+
+  const int gs_sector = flavor_sector(m.sector[0]);
+  auto check = [&](macis::HamiltonianGenerator<N>& gen) {
+    const auto coupled =
+        macis::coupled_to_base<N, int32_t>(base, added, gen, 1.E-6);
+    size_t n_coupled = 0;
+    for(size_t k = 0; k < added.size(); ++k) {
+      REQUIRE(coupled[k] == (flavor_sector(added[k]) == gs_sector));
+      n_coupled += coupled[k];
+    }
+    REQUIRE(n_coupled == m.sector.size() - base.size());
+    REQUIRE(n_coupled > 0);
+    REQUIRE(n_coupled < added.size());
+  };
+  SECTION("double-loop generator") { check(ham_gen); }
+  SECTION("SD-build generator (the driver's)") {
+    // It stores each row's diagonal at the row's own index, so a rectangular
+    // block with the columns in the wrong order shows false couplings.
+    macis::SDBuildHamiltonianGenerator<N> sd_gen(
+        macis::matrix_span<double>(m.T.data(), n, n),
+        macis::rank4_span<double>(m.V.data(), n, n, n, n));
+    sd_gen.SetNimp(2);
+    check(sd_gen);
+  }
 }

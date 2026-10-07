@@ -334,6 +334,12 @@ inline void write_orbital_resolvent_matrix(
   gram_file << "# retained_rank " << result.rank << "\n";
   gram_file << "# basis_size base " << result.base_size << " expanded "
             << result.expanded_size << "\n";
+  // leaked: growth seeds; grown: determinants grown from them; dropped: grown
+  // determinants coupled to the ground-state sector (not kept); capped: growth
+  // stopped by GF.TRUNC_SIZE.
+  gram_file << "# expansion leaked " << result.expansion_seeds << " grown "
+            << result.expansion_grown << " dropped " << result.expansion_dropped
+            << " capped " << int(result.growth_capped) << "\n";
   // capture_base: on the ASCI basis. capture_expanded: on the basis the
   // resolvent was computed in. unresolved = 1: still below
   // GF.ORB_MIN_CAPTURE there, so the pair's elements miss weight (and may be
@@ -567,46 +573,48 @@ auto evaluate_resolvent_orbital_matrix(
   const auto ws = detail::build_bosonic_resolvent_grid(gf_settings);
   const double E0 = EASCI - (p.E_core + p.E_inactive);
 
-  // The basis expansion grows in the same active space as the GF basis
-  // (evaluate_GF): per-spin occupations of the active orbitals.
-  std::vector<double> occs;
-  if(gf_settings.orb_expand_basis) {
-    std::vector<double> active_ordm(p.n_active * p.n_active);
-    std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
-    ham_gen.form_rdms(
-        p.dets.begin(), p.dets.end(), p.dets.begin(), p.dets.end(), p.C.data(),
-        macis::matrix_span<double>(active_ordm.data(), p.n_active, p.n_active),
-        macis::rank4_span<double>(active_trdm.data(), p.n_active, p.n_active,
-                                  p.n_active, p.n_active));
-    occs.assign(p.n_active, 0.);
-    for(size_t i = 0; i < p.n_active; i++)
-      occs[i] = active_ordm[i + i * p.n_active] / 2.;
-    if(gf_settings.norbs == 0)
-      std::cout << "GF.ORB_EXPAND_BASIS: GF.NORBS not set, using n_active = "
-                << p.n_active << std::endl;
-  }
+  if(gf_settings.orb_expand_basis && gf_settings.norbs == 0)
+    std::cout << "GF.ORB_EXPAND_BASIS: GF.NORBS not set, using n_active = "
+              << p.n_active << std::endl;
 
   auto result = macis::RunResolventOrbitalMatrix<N>(
       psi0, ham_gen, p.dets, p.n_imp, channel, E0, ws, gf_settings,
-      subtract_mean, occs);
+      subtract_mean, p.n_active);
   const char *seed_kind =
       channel == macis::DiagChannel::Spin ? "spin" : "charge";
-  if(result.expanded_size > result.base_size)
-    std::cout << "ORBITAL RESOLVENT (" << label << "): basis expanded from "
-              << result.base_size << " to " << result.expanded_size
+  if(result.expansion_seeds > 0) {
+    std::cout << "ORBITAL RESOLVENT (" << label
+              << "): " << result.expansion_seeds
+              << " leaked determinants grown to " << result.expansion_grown
+              << "; " << result.expansion_dropped
+              << " dropped as coupled to the ground-state sector; basis "
+              << result.base_size << " -> " << result.expanded_size
               << " determinants" << std::endl;
+    if(result.growth_capped)
+      std::cerr << "WARNING: orbital " << seed_kind
+                << " basis growth stopped at GF.TRUNC_SIZE = "
+                << gf_settings.trunc_size << " (" << result.expansion_seeds
+                << " leaked determinants, " << result.expansion_grown
+                << " grown): fewer than GF.TOT_SD layers were added"
+                << std::endl;
+  }
   for(Eigen::Index pair = 0; pair < result.capture.size(); ++pair) {
     if(result.capture(pair) >= gf_settings.orb_min_capture) continue;
     std::cerr << "WARNING: orbital " << seed_kind << " seed (" << pair / p.n_imp
               << ", " << pair % p.n_imp << ") capture fraction "
               << result.capture(pair) << " is below GF.ORB_MIN_CAPTURE = "
               << gf_settings.orb_min_capture;
-    if(result.expanded[pair])
+    if(!result.expanded[pair])
+      std::cerr << "; not expanded (GF.ORB_EXPAND_BASIS off), its elements "
+                   "miss weight and zeros are not symmetry zeros";
+    else if(result.capture_expanded(pair) >= gf_settings.orb_min_capture)
       std::cerr << "; basis expanded, capture now "
                 << result.capture_expanded(pair);
     else
-      std::cerr << "; not expanded (GF.ORB_EXPAND_BASIS off), its elements "
-                   "miss weight and zeros are not symmetry zeros";
+      std::cerr << "; UNRESOLVED after expansion (capture "
+                << result.capture_expanded(pair)
+                << "): its missing images couple to the ground-state sector "
+                   "and were dropped, its elements miss weight";
     std::cerr << std::endl;
   }
   if(gf_settings.writeGF_singlef)

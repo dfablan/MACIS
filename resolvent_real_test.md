@@ -198,8 +198,8 @@ USE_BANDLAN = ON
 NLANITS = 3000          # >= a few x retained rank r
 ORB_DEFLATE_TOL = 1E-10
 ORB_MIN_CAPTURE = 0.95
-ORB_EXPAND_BASIS = TRUE # grow the basis for seeds below ORB_MIN_CAPTURE
-                        # (PLAN_capture_basis_expansion.md); converge TOT_SD
+ORB_EXPAND_BASIS = FALSE # TRUE recovers the mu != nu elements at capture 0; then
+                         # converge TOT_SD (TOT_SD = 1 is not enough), see notes
 BETA = 157
 NWS = 1000
 WMIN = 0.0
@@ -220,22 +220,34 @@ Notes:
   it should not fire. If it does, the deflation tolerance is too loose.
 - On a truncated ASCI space, read `_gram.dat` capture fractions before
   interpreting any element with `μ ≠ ν`; on CAS they are identically 1.
-  With `ORB_EXPAND_BASIS`, `capture_expanded` is 1 for every expanded pair;
-  a pair flagged `unresolved = 1` still misses weight.
+  With `ORB_EXPAND_BASIS`, read `capture_expanded`; a pair flagged
+  `unresolved = 1` still misses weight (its missing images lie in the
+  ground-state sector, which the expansion does not touch).
 - **`ORB_EXPAND_BASIS` with `TOT_SD = 1` is not enough.** Capture 1 means only that
   the seed is in the basis. The response in the added sector is still described by
-  only `TOT_SD` layers of singles. On a 2-band J = 0 test, the off-diagonal elements
-  had a 28% error at `TOT_SD = 1`, 6e-6 at `TOT_SD = 2`, and were exact at
-  `TOT_SD = 3`. Rerun with increasing `TOT_SD` (and `TRUNC_SIZE`) until the
-  expanded elements stop changing, and report that.
-- **Basis size.** The growth also adds determinants in sectors that no seed
-  reaches. They don't change the result, but they enlarge the basis. With
-  `TRUNC_SIZE = 100000000` the growth is effectively uncapped; check the
-  `basis_size` line of `_gram.dat` and the `basis expanded from … to …` line on
-  stdout.
+  only `TOT_SD` layers of singles. On a 2-band J = 0 test (Spin channel,
+  `GFSEEDTHRES = 1E-3`), the off-diagonal elements had a 28% error at `TOT_SD = 1`,
+  6e-6 at `TOT_SD = 2`, and were exact at `TOT_SD = 3`. Rerun with increasing
+  `TOT_SD` (and `TRUNC_SIZE`) until the expanded elements stop changing, and report
+  that.
+- **What the expansion changes.** Grown determinants that couple to the ground-state
+  sector are dropped, so the diagonal block (`r_0`, `r_2`, `q_0`, `q_2`) is the
+  gate-off result: on a truncated test basis the two agreed to 6e-11. Only the
+  elements of the expanded pairs change. The remaining grown determinants lie in
+  other sectors, including some no seed reaches, so they enlarge the basis without
+  changing the result. With `TRUNC_SIZE = 100000000` the growth is effectively
+  uncapped; check the `basis_size` and `expansion` lines of `_gram.dat` (leaked,
+  grown, dropped, capped) and the matching stdout line. A warning is printed if
+  `TRUNC_SIZE` stops the growth.
+- **Runs made before the sector filter** (commits `072380a` to `ffb5098`) are not
+  covered by the previous note. With the flag on and a truncated ASCI basis, their
+  diagonal block is wrong (it moved by 11–13% on the test). Take `A`, `B` (`r_0`,
+  `r_2`, `q_0`, `q_2`) from a flag-off run, and `C`, `D` (`r_1`, `q_1`) from the
+  flag-on run, which are unaffected when their `capture_base` is exactly 0.
 - **Single rank only.** The expansion is verified on one MPI rank. A 2-rank run
-  of the resolvent tests hung (`PLAN_capture_basis_expansion.md`, §Open issues),
-  so don't rely on multi-rank output until that is understood.
+  of the resolvent tests hung, and the distributed Hamiltonian built with the
+  driver's generator looks wrong on ≥ 2 ranks (`PLAN_capture_basis_expansion.md`,
+  §Open issues). Don't rely on multi-rank output until both are understood.
 - `DELTA_RESOLVENT` is effectively mandatory for the charge trace `q_0`
   (elastic piece `⟨N_imp⟩²/z`) and useful elsewhere.
 

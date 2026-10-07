@@ -1,26 +1,54 @@
 # Plan: capture-gated basis expansion for the orbital matrix resolvent
 
-> **STATUS: IMPLEMENTED (2026-10-07), key `GF.ORB_EXPAND_BASIS`.** Differences from the design below:
+> **STATUS: IMPLEMENTED (2026-10-07), key `GF.ORB_EXPAND_BASIS`, with the sector filter of
+> §Warning (2026-10-08).** Differences from the design below:
 >
 > - `get_GF_basis_AS_1El` is **not** refactored (§A). The growth is a separate
 >   `grow_basis_by_singles` in `dynamical_properties.hpp` that mirrors its loop, so the GF path
->   cannot change and test 1 is not needed. It also never adds or grows from a `base_dets`
+>   cannot change and test 1 is not needed. It never adds or grows from a `base_dets`
 >   determinant. `trunc_size = 0` means no cap.
 > - §B is `orbital_bilinear_image` (`OrbitalBilinearImage`); the max-|b| merge is
 >   `merge_leaked_images`.
-> - When the basis was expanded, `capture_expanded` is recomputed for **every** pair, not only
->   the marked ones.
-> - Tests 2–7 are in `tests/dynamical_properties.cxx`.
-> - End to end: a 2-band J = 0 model with an orbital-diagonal bath (8 orbitals, ASCI filling the
->   1296-determinant ground sector). With expansion, every element in both channels matches the
->   CAS run to 1e-14. Without it, the off-diagonal elements are 0 (CAS: |R| ≈ 3). With
->   `GFSEEDTHRES = 1E-3`, the off-diagonal error is 2.8e-1 at `TOT_SD = 1`, 5.9e-6 at
->   `TOT_SD = 2`, and 6e-15 at `TOT_SD = 3`. Converge `TOT_SD` in production.
-> - Not done: the 2-rank MPI hang (§Open issues) is still undiagnosed, so only single-rank runs
->   are verified.
-> - The singles growth also adds determinants in sectors that no seed reaches. They are
->   harmless, since H has no matrix elements between sectors, but they enlarge the basis.
->   `TRUNC_SIZE` caps them.
+> - The active space of the growth comes from the per-spin occupations of $\psi_0$ on
+>   `base_dets` (`orbital_occupations`), not from `p.occs` (§C.3), so it is always in the basis
+>   of the determinants.
+> - **Sector filter (§Warning).** After growing, every grown determinant that $H$ couples to
+>   `base_dets`, directly or through other grown determinants, is dropped (`coupled_to_base`, a
+>   search over the nonzero elements of $H$ with the Lanczos threshold `1e-6`). This needs no
+>   flavor or parity labels and works at any $J$. The kept determinants have no matrix element
+>   with $\psi_0$'s sector, so the diagonal block equals the gate-off result and $\psi_0$ stays an
+>   eigenvector. It replaces both fixes proposed in §Warning and keeps one shared Lanczos run, so
+>   cross elements between marked and unmarked pairs are still computed.
+> - A pair that leaks only inside $\psi_0$'s sector ($0<$ capture $<$ `ORB_MIN_CAPTURE`) loses
+>   those images to the filter. It is reported `unresolved` with a warning, not expanded.
+> - `capture_expanded` is recomputed for every pair. `_gram.dat` also reports the number of
+>   leaked, grown and dropped determinants, and whether `TRUNC_SIZE` stopped the growth (also a
+>   warning).
+>
+> **Runs made before the sector filter** (commits `072380a` to `ffb5098`): with the gate on and a
+> truncated ASCI basis, their diagonal block is wrong (§Warning). On the test below it moved by
+> 11–13%. Take $A$ and $B$ from a gate-off run, and $C$ and $D$ from the gate-on run. $C$ and $D$
+> are unaffected when their `capture_base` is exactly 0.
+>
+> **Verification.**
+>
+> - Tests 2, 3, 4 and 7 are in `tests/dynamical_properties.cxx`.
+> - Test 5 is partial: it compares gate-on-but-not-needed with gate-off in the new code, not with
+>   the old code.
+> - Test 6 is partial: it tests `merge_leaked_images` directly.
+> - `coupled_to_base` has its own test (truncated base: it flags exactly $\psi_0$'s sector, with
+>   both Hamiltonian generators).
+> - Test 8 and $J>0$ versions of tests 2–3 are **not** written yet.
+> - End to end, 2-band $J=0$ model with an orbital-diagonal bath (8 orbitals, 4900 determinants):
+>   - ASCI filling the 1296-determinant ground sector, `TOT_SD = 6`: every element matches CAS
+>     to 3e-14.
+>   - ASCI truncated to 309 determinants, `TOT_SD = 1`: the diagonal block equals gate-off to
+>     6e-11. 450 of 2387 grown determinants are dropped, and the off-diagonal pairs reach
+>     capture 1.
+>   - `TOT_SD` convergence of the off-diagonal block (Spin channel, full sector,
+>     `GFSEEDTHRES = 1E-3`): error 2.8e-1 at 1, 5.9e-6 at 2, 6e-15 at 3. Converge `TOT_SD` in
+>     production.
+> - Only single-rank runs are verified (§Open issues).
 
 ## Context
 
@@ -248,7 +276,9 @@ With the gate on, the consequences hold even when every marked pair reaches
    the "ASCI" basis, so the growth finds no new determinant in $\psi_0$'s sector. Test 5 covers
    only gate-off.
 
-**Fix.** Use one or both of the following:
+**Fix.** *Implemented differently:* a connectivity filter (`coupled_to_base`, see STATUS) drops
+every grown determinant coupled to `base_dets` by $H$. It reaches the goal of both options below
+without sector labels and keeps one Lanczos run. The options as originally proposed:
 
 - **Separate Lanczos runs per sector (preferred).**
   - Run the unmarked pairs on `base_dets` exactly as today, and the marked pairs on the grown
@@ -378,6 +408,22 @@ If neither holds, the cause is something else and this plan does not apply.
 ---
 
 ## Open issues
+
+- **`SDBuildHamiltonianGenerator` on ≥ 2 ranks (found by reading the code, not reproduced).**
+  - `make_csr_hamiltonian_block_` (`sd_build.hpp`) always stores the diagonal element of bra row
+    `i` at column `i`, which is only right for a square tile.
+  - `make_dist_csr_hamiltonian` (`csr_hamiltonian.hpp:76`) builds the off-diagonal tile with the
+    local rows as bras and *all* determinants as kets.
+  - So on ≥ 2 ranks every local row gets a spurious element, equal to its diagonal energy, at
+    global column `i`. That column is the wrong determinant on rank > 0, and a column of its own
+    (zeroed) block on rank 0.
+  - This affects every distributed Hamiltonian built with this generator (ASCI, GF, resolvents in
+    the drivers), not only this plan. `DoubleLoopHamiltonianGenerator`, used by the unit tests,
+    loops over every ket and is not affected, so this does not explain the test hang below.
+  - The sector filter was hit by the same quirk (a rectangular block) and now orders its columns
+    so the diagonal lands on the row's own determinant. Its test covers both generators.
+  - Check: compare a 1-rank and a 2-rank `make_dist_csr_hamiltonian` mat-vec with the SD-build
+    generator.
 
 - **2-rank MPI hang.** `mpirun -np 2 ./macis_test "Dynamical properties*"` hung (killed after
   10 min, no output); a single rank passes all 17 tests. Not yet diagnosed. The expansion makes

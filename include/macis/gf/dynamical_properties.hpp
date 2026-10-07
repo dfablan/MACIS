@@ -325,6 +325,79 @@ std::vector<std::bitset<nbits>> grow_basis_by_singles(
   return found;
 }
 
+/**
+ * @brief Per-spin occupation of each of the first norbs spatial orbitals in
+ *        wfn0, i.e. the diagonal of the spin-summed 1-RDM divided by 2, as
+ *        evaluate_GF computes it for the GF active space.
+ */
+template <size_t nbits>
+std::vector<double> orbital_occupations(
+    const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
+    size_t norbs) {
+  assert(wfn0.size() == Eigen::Index(dets.size()));
+  assert(norbs <= nbits / 2);
+  std::vector<double> occs(norbs, 0.0);
+  for(Eigen::Index k = 0; k < wfn0.size(); ++k) {
+    const double w = wfn0[k] * wfn0[k];
+    for(size_t i = 0; i < norbs; ++i)
+      occs[i] +=
+          w * (double(dets[k].test(i)) + double(dets[k].test(i + nbits / 2)));
+  }
+  const double norm = 2.0 * wfn0.squaredNorm();
+  if(norm > 0.0)
+    for(auto &o : occs) o /= norm;
+  return occs;
+}
+
+/**
+ * @brief Flags the determinants of `added` that the Hamiltonian couples to
+ *        `base`, directly or through other determinants of `added`: the
+ *        H-connected component of `base` within base + added. Couplings are
+ *        the matrix elements a CSR build with threshold h_thresh keeps, so
+ *        with h_thresh equal to the resolvent's, the unflagged determinants
+ *        have exactly no matrix element with base in the Lanczos Hamiltonian.
+ */
+template <size_t nbits, typename index_t = int32_t>
+std::vector<bool> coupled_to_base(const std::vector<std::bitset<nbits>> &base,
+                                  const std::vector<std::bitset<nbits>> &added,
+                                  HamiltonianGenerator<nbits> &Hgen,
+                                  double h_thresh) {
+  std::vector<bool> coupled(added.size(), false);
+  if(added.empty() || base.empty()) return coupled;
+  // Columns: added, then base. Rows: added, i.e. the first na columns. The
+  // added block comes first because SDBuildHamiltonianGenerator stores the
+  // diagonal element of row i at column i (it assumes a square tile); this
+  // order puts it on the row's own determinant. H is symmetric, so each row
+  // also lists the added neighbours that couple back to it.
+  const size_t na = added.size();
+  std::vector<std::bitset<nbits>> all(added);
+  all.insert(all.end(), base.begin(), base.end());
+  const auto H = make_csr_hamiltonian_block<index_t>(
+      all.begin(), all.begin() + na, all.begin(), all.end(), Hgen, h_thresh);
+  const auto &rowptr = H.rowptr();
+  const auto &colind = H.colind();
+
+  std::vector<size_t> stack;
+  for(size_t i = 0; i < na; ++i)
+    for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p)
+      if(size_t(colind[p]) >= na) {
+        coupled[i] = true;
+        stack.push_back(i);
+        break;
+      }
+  while(!stack.empty()) {
+    const size_t i = stack.back();
+    stack.pop_back();
+    for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p) {
+      const size_t j = colind[p];
+      if(j >= na || coupled[j]) continue;
+      coupled[j] = true;
+      stack.push_back(j);
+    }
+  }
+  return coupled;
+}
+
 struct OrbitalResolventResult {
   Eigen::MatrixXd gram;
   Eigen::VectorXd gram_eigenvalues;
@@ -333,10 +406,22 @@ struct OrbitalResolventResult {
   // Capture fraction on the basis the resolvent was computed in. Equal to
   // capture unless the basis was expanded.
   Eigen::VectorXd capture_expanded;
-  // Pairs whose leaked images were added to the basis (orb_expand_basis).
+  // Pairs marked for expansion (orb_expand_basis, capture below
+  // orb_min_capture).
   std::vector<bool> expanded;
   size_t base_size = 0;
   size_t expanded_size = 0;
+  // Expansion bookkeeping: leaked images used as growth seeds, determinants
+  // grown (seeds included), and grown determinants dropped because H couples
+  // them to base_dets (psi0's sector). expanded_size = base_size + grown -
+  // dropped.
+  size_t expansion_seeds = 0;
+  size_t expansion_grown = 0;
+  size_t expansion_dropped = 0;
+  // True if the grown set exceeded settings.trunc_size, which stops the
+  // growth (possibly before tot_SD layers, or with no growth at all when the
+  // seeds alone exceed it).
+  bool growth_capped = false;
   size_t rank = 0;
   std::vector<std::vector<std::complex<double>>> resolvent;
 };
@@ -366,17 +451,30 @@ struct OrbitalResolventResult {
  *        grown by grow_basis_by_singles (tot_SD, trunc_size, GFseedThres,
  *        asThres, norbs, as for the GF basis). A determinant leaked by several
  *        pairs is gated by its largest |amplitude|, so pairs cannot cancel.
- *        All pairs are then evaluated on the single basis
- *        base_dets + added, with wfn0 zero-padded. With the flag unset, or no
- *        pair below threshold, the result is identical to the unexpanded one.
+ *
+ *        The growth also produces determinants in wfn0's own sector that
+ *        base_dets (a truncated ASCI space) does not contain. Kept, they would
+ *        enlarge the space of the diagonal seeds and make wfn0 a non-eigenstate
+ *        (poles below E0). So every grown determinant that H couples to
+ *        base_dets, directly or through other grown determinants
+ *        (coupled_to_base, same matrix-element threshold as the Lanczos
+ *        Hamiltonian), is dropped. The kept determinants have no matrix
+ *        element with base_dets, so the response of the unmarked pairs is the
+ *        unexpanded one (to rounding). A pair that leaks only inside wfn0's
+ *        sector (0 < capture < orb_min_capture) loses those images and stays
+ *        below threshold: check capture_expanded.
+ *
+ *        All pairs are then evaluated on the single basis base_dets + kept,
+ *        with wfn0 zero-padded. With the flag unset, or no pair below
+ *        threshold, the result is identical to the unexpanded one.
  *
  * @param[in] DiagChannel channel: Spin (S_{mu nu}) or Charge (N_{mu nu}).
  * @param[in] bool subtract_mean: If true, use the fluctuation seeds
  *            (O_{mu nu} - <O_{mu nu}>)|wfn0>.
- * @param[in] occs: Per-spin occupations of the active orbitals, defining the
- *            active space of the growth (see active_space_orbitals). Only used
- *            for the expansion. If empty, every orbital is active. If
- *            settings.norbs is 0, occs.size() is used as norbs.
+ * @param[in] n_active: Number of active orbitals, used as norbs for the
+ *            growth when settings.norbs is 0. The active space of the growth
+ *            is set by the per-spin occupations of wfn0
+ *            (orbital_occupations, active_space_orbitals with asThres).
  */
 template <size_t nbits, typename index_t = int32_t>
 OrbitalResolventResult RunResolventOrbitalMatrix(
@@ -384,7 +482,10 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
     DiagChannel channel, double E0, const std::vector<std::complex<double>> &ws,
     const GFSettings &settings, bool subtract_mean = false,
-    const std::vector<double> &occs = {}) {
+    size_t n_active = 0) {
+  // Matrix elements below this are dropped from the Lanczos Hamiltonian; the
+  // sector filter of the expansion uses the same threshold.
+  constexpr double h_thresh = 1.E-6;
   if(n_imp > nbits / 2)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
@@ -423,16 +524,13 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   std::vector<std::bitset<nbits>> dets(base_dets);
   Eigen::VectorXd psi0 = wfn0;
   if(!leaked.empty()) {
-    const size_t norbs = settings.norbs ? settings.norbs : occs.size();
-    if(norbs == 0)
+    const size_t norbs = settings.norbs ? settings.norbs : n_active;
+    if(norbs == 0 || norbs > nbits / 2)
       throw std::runtime_error(
           "RunResolventOrbitalMatrix: basis expansion needs settings.norbs "
-          "or the orbital occupations");
-    std::vector<uint32_t> as_orbs;
-    if(occs.empty())
-      for(uint32_t i = 0; i < norbs; ++i) as_orbs.push_back(i);
-    else
-      as_orbs = active_space_orbitals(occs, settings.asThres);
+          "or n_active, within the spatial-orbital capacity");
+    const auto as_orbs = active_space_orbitals(
+        orbital_occupations(wfn0, base_dets, norbs), settings.asThres);
 
     std::vector<std::bitset<nbits>> grow_seeds;
     std::vector<double> grow_amplitudes;
@@ -440,11 +538,23 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
       grow_seeds.push_back(det);
       grow_amplitudes.push_back(amp);
     }
-    const auto added = grow_basis_by_singles(
+    const auto grown = grow_basis_by_singles(
         grow_seeds, grow_amplitudes, det_index, as_orbs, norbs, settings);
-    for(const auto &det : added) {
-      det_index.emplace(det, dets.size());
-      dets.push_back(det);
+    result.expansion_seeds = grow_seeds.size();
+    result.expansion_grown = grown.size();
+    result.growth_capped = settings.trunc_size > 0 && settings.tot_SD > 0 &&
+                           grown.size() > settings.trunc_size;
+
+    // Keep only the grown determinants outside psi0's H-connected sector.
+    const auto coupled =
+        coupled_to_base<nbits, index_t>(base_dets, grown, Hgen, h_thresh);
+    for(size_t k = 0; k < grown.size(); ++k) {
+      if(coupled[k]) {
+        ++result.expansion_dropped;
+        continue;
+      }
+      det_index.emplace(grown[k], dets.size());
+      dets.push_back(grown[k]);
     }
     psi0.conservativeResize(dets.size());
     psi0.tail(dets.size() - base_dets.size()).setZero();
@@ -462,12 +572,6 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
       if(dets.size() == base_dets.size()) continue;
       result.capture_expanded(pair) = orbital_bilinear_captured_fraction(
           psi0, dets, det_index, mu, nu, channel);
-      // Every leaked image of a marked pair is kept by construction.
-      if(result.expanded[pair] && result.capture_expanded(pair) < 1.0 - 1e-12)
-        throw std::runtime_error(
-            "RunResolventOrbitalMatrix: an expanded seed is still not captured "
-            "(capture " +
-            std::to_string(result.capture_expanded(pair)) + ")");
     }
 
   // Optionally replace each seed O_{mu nu}|wfn0> by the fluctuation
@@ -512,7 +616,7 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
       vecs[i * psi.rows() + k] = psi(k, i);
 
   auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
-                                                  dets.end(), Hgen, 1.E-6);
+                                                  dets.end(), Hgen, h_thresh);
   int nLanIts = std::min<int>(
       std::max<int>(settings.nLanIts, int(result.rank) + 1), dets.size());
   std::vector<std::vector<std::complex<double>>> reduced;
