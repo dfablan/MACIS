@@ -25,7 +25,6 @@ include( FetchContent )
   )
   FetchContent_Declare( lapackpp
     GIT_REPOSITORY https://github.com/icl-utk-edu/lapackpp.git
-    GIT_TAG 5bc9c85201ace48213df5ac7d1ef026c9668dfbd
   )
   
   FetchContent_MakeAvailable( blaspp )
