@@ -29,7 +29,8 @@ each seed $S_{\mu\nu}\ket{\psi_0}$ onto the ASCI determinant basis and reports t
 **capture fraction** (§1.3 of that plan, `spin_bilinear_captured_fraction`,
 `include/macis/gf/dynamical_properties.hpp:156`). That plan's §1.4 held back a basis-expansion
 fallback "until the diagnostic says it is needed". Real calculations now say so: at Kanamori
-$J=0$ the capture fraction is **exactly zero** for some off-diagonal pairs $\mu\neq\nu$.
+$J=0$ the capture fraction is **exactly zero** for some off-diagonal pairs $\mu\neq\nu$, and it
+stays exactly zero at $J>0$ (§Diagnosis, "$J>0$: parity survives").
 
 ### Diagnosis
 
@@ -48,6 +49,37 @@ plus the bath orbitals attached to it, per spin). Then:
 The pairs that go to zero are exactly the $(\mu,\nu)$ no one-body term connects. That is the first
 thing to confirm against the integrals of the failing run (§Verification, step 0).
 
+#### $J>0$: parity survives
+
+Spin-flip and pair-hopping break the per-flavor, per-spin counts, but not all of the conservation.
+With the same orbital-diagonal one-body part:
+
+- Spin-flip $c^\dagger_{\mu\uparrow}c_{\nu\uparrow}c^\dagger_{\nu\downarrow}c_{\mu\downarrow}$
+  changes $N_{\mu\uparrow}$ and $N_{\mu\downarrow}$ by $\pm1$ but leaves $N_\mu$ unchanged.
+- Pair-hopping $c^\dagger_{\mu\uparrow}c^\dagger_{\mu\downarrow}c_{\nu\downarrow}c_{\nu\uparrow}$
+  changes $N_\mu$ by $2$.
+
+So $H$ still conserves the flavor parity $\Pi_\mu=(-1)^{N_\mu}$ of every flavor. In the $O(2)$
+two-band case this is the reflection $c_\nu\to-c_\nu$. The same chain of argument goes through with
+sectors labelled by parities instead of counts:
+
+- Every ASCI determinant has the ground state's parities.
+- $X_{\mu\nu}$ ($S$ or $N$, $\mu\neq\nu$) changes $N_\mu$ and $N_\nu$ by $\pm1$, so it flips
+  $\Pi_\mu$ and $\Pi_\nu$. Every image falls outside the basis, and the capture is again exactly $0$,
+  not just small. Adding more determinants of the same parity cannot fix it.
+- The diagonal bilinears preserve every $\Pi_\mu$, which is also the physical reason the
+  diagonal $\leftrightarrow$ interorbital cross elements vanish. On ASCI those zeros are therefore
+  **guaranteed**, so they cannot test anything.
+
+Observed 2026-10-06 on the two-band Kanamori run `…/2bands/Doping/selected_calculations/J_0.2/U_27.00`
+($U=27$, $J/U=0.2$, Irrep bath, 2.5 M ASCI determinants, `NROTS = 0`). All determinants in `wfn.out`
+have even $N$ in flavor 1. The capture fraction is $0$ for $(0,1)$ and $(1,0)$ in both the spin and
+charge channels, and the whole interorbital block is identically zero.
+
+The parity argument needs no $J=0$ assumption. It fails only if a one-body term connects $\mu$ and
+$\nu$ (interorbital hybridization, bath sites shared between flavors), or if the determinant basis
+uses orbitals that mix flavors, such as a natural-orbital rotation of the bath across flavors.
+
 ### Why this matters
 
 A zero-capture seed becomes a zero column of the Gram matrix. Deflation discards it and the output
@@ -57,6 +89,11 @@ read it as a symmetry-imposed zero.
 - **Degenerate orbitals and bath.** At $J=0$ the symmetry is $SU(2n)$ and the missing element is
   recoverable:
   $R_{\mu\nu;\mu\nu}=\tfrac12\,(R_{\mu\mu;\mu\mu}+R_{\nu\nu;\nu\nu}-2R_{\mu\mu;\nu\nu})$.
+- **Degenerate orbitals at $J>0$.** The $SU(2n)$ identity no longer holds, so nothing can be
+  recovered. With two bands and $O(2)$ symmetry, $r_1=C-D$ (the $A_2$ channel, likewise $q_1$)
+  exists only in the interorbital block. $C+D$ is the only independent route to $r_2$, so the
+  $O(2)$ check $A-B=C+D$ cannot be made. A zero $C,D$ makes that check fail on every frequency.
+  This is a basis artifact, not a symmetry violation.
 - **Non-degenerate orbitals** (crystal field, $D_{4h}$ with $xy$ split off). The inter-orbital
   particle–hole response carries independent information and is simply missing.
 
@@ -146,7 +183,8 @@ After the capture pass and before building the seeds:
    - Band Lanczos needs one Hamiltonian, so every pair (expanded or not) is seeded in this one
      basis.
    - Mixing sectors is harmless. $H$ has no matrix elements between them, seeds in different
-     sectors are orthogonal, and their Gram cross-block is exactly zero.
+     sectors are orthogonal, and their Gram cross-block is exactly zero. **But** the growth also
+     adds determinants to $\psi_0$'s own sector, which is not harmless; see §Warning.
    - `subtract_mean` stays correct because $\psi_0$ is still represented exactly.
 5. **Seeds on the expanded basis.** Call the existing `apply_spin_bilinear(wfn0_ext, expanded,
    expanded_index, mu, nu)`. The rest of the pipeline (Gram, deflation, `BandResolvent`,
@@ -179,10 +217,73 @@ After the capture pass and before building the seeds:
 
 ---
 
+## Warning: the growth step re-enters the ground-state sector
+
+Design C.4 assumes the growth adds determinants only to the target sectors. It does not.
+
+- `generate_singles_spin_as` (`sd_operations.hpp:302`) generates every single excitation among
+  `as_orbs`, whatever the flavor. On a doped run almost every orbital passes `asThres`. In
+  `J_0.2/U_27.00` the occupations run from $1.1\times10^{-3}$ to $0.995$ against
+  `asThres = 1e-4`, so all 16 orbitals are active.
+- A single that moves an electron back from flavor $\mu$ to flavor $\nu$ returns a target-sector
+  determinant to $\psi_0$'s sector. This already happens in the first layer, at any $J$
+  (including $J=0$).
+- ASCI truncated $\psi_0$'s sector, so most of these determinants are not in `base_dets`. They
+  enter `expanded` as new determinants in $\psi_0$'s sector.
+
+With the gate on, the consequences hold even when every marked pair reaches
+`capture_expanded = 1`:
+
+1. **The diagonal block changes.** The diagonal seeds live in $\psi_0$'s sector, so their Lanczos
+   now runs over a larger basis than ASCI's. $A$ and $B$ (hence $r_0, r_2, q_0, q_2$) move away
+   from the gate-off values, although no diagonal pair was marked.
+2. **$\psi_0$ is no longer an eigenvector.**
+   - $\psi_0$ diagonalizes $H$ projected onto `base_dets`, not onto `expanded`.
+   - The new determinants are singles or doubles of `base_dets`, so $H$ couples them to $\psi_0$.
+   - The spectrum of $\psi_0$'s sector on `expanded` can then fall below $E_0$. That puts poles at
+     $\omega<0$ and gives the fluctuation seeds weight on a state lower than $\psi_0$, which is
+     unphysical at $T=0$.
+   - The "$\psi_0$ is still represented exactly" argument of C.4 is true but not sufficient.
+3. **The planned tests cannot see it.** Tests 2–4 use the *complete* FCI ground-state sector as
+   the "ASCI" basis, so the growth finds no new determinant in $\psi_0$'s sector. Test 5 covers
+   only gate-off.
+
+**Fix.** Use one or both of the following:
+
+- **Separate Lanczos runs per sector (preferred).**
+  - Run the unmarked pairs on `base_dets` exactly as today, and the marked pairs on the grown
+    basis.
+  - The block between the two sectors is exactly zero by symmetry, so nothing is lost.
+  - The diagonal block is bit-identical to gate-off by construction.
+  - This replaces the "one shared basis" of C.4, at the cost of a second CSR build and Lanczos run.
+- **Filter the grown basis by sector.**
+  - Drop every grown determinant whose flavor parities match $\psi_0$'s.
+  - Parities are conserved at every $J$. At $J=0$ the filter also removes other count sectors of
+    the same parity, but no seed reaches those.
+  - Flavors are the connected components of the one-body hopping graph.
+  - This alone makes the shared basis of C.4 safe. Combined with separate runs, it only saves
+    memory, because the marked seeds never reach $\psi_0$'s sector anyway.
+
+If the gate fires on a pair whose seed stays in $\psi_0$'s sector (a truncation leak with
+$0<$ capture $<1$, possible when a one-body term connects $\mu$ and $\nu$), neither fix applies:
+there is no sector to separate. Then either re-diagonalize $\psi_0$ on `expanded`, or leave that
+pair unexpanded and report its capture.
+
+**Test** (test 8 under §Verification): a truncated base. Keep the top-$k$ determinants of the
+ground-state sector and re-diagonalize there, so $\psi_0$ is an exact eigenvector of the truncated
+problem, as with ASCI. Then, with the gate on, assert that:
+
+- the diagonal block equals the gate-off result to machine precision;
+- $\psi_0$'s sector has no pole below $E_0$.
+
+---
+
 ## Cost
 
 - **Sectors.** Each off-diagonal pair lands in its own sector $(N_\mu+1, N_\nu-1)$. At $J=0$
-  with 3 orbitals, up to 6 extra sectors, each with its own growth.
+  with 3 orbitals, up to 6 extra sectors, each with its own growth. At $J>0$ the target is a
+  parity sector, and $(\mu,\nu)$ and $(\nu,\mu)$ flip the same two parities, so they share one.
+  That gives 1 extra sector for 2 orbitals and up to 3 for 3 orbitals.
 - **Size.** Expect the same order of magnitude as a Green's-function basis per pair, in total
   capped by `trunc_size`. The CSR build over `expanded` dominates, as in the Green's-function
   path.
@@ -221,9 +322,14 @@ ninja -C build macis_test
 ```
 
 **0. Confirm the diagnosis on the failing run.** Before writing code, check the production
-integrals: are the zero-capture pairs exactly those that no one-body term links? Is
-$(N_{\mu\uparrow}, N_{\mu\downarrow})$ per flavor identical on every ASCI determinant? If not, the
-cause is something else and this plan does not apply.
+integrals: are the zero-capture pairs exactly those that no one-body term links? Then check the
+ASCI determinants (`wfn.out`):
+
+- At $J=0$, is $(N_{\mu\uparrow}, N_{\mu\downarrow})$ per flavor identical on every determinant?
+- At $J>0$ these counts legitimately vary, so a "no" here does **not** rule the plan out. Check
+  instead that the flavor parity $(-1)^{N_\mu}$ is identical on every determinant.
+
+If neither holds, the cause is something else and this plan does not apply.
 
 **Unit tests**
 
@@ -235,11 +341,14 @@ cause is something else and this plan does not apply.
    (`n_imp=2`, `n_active=4`, each impurity orbital hybridised only with its own bath orbital).
    Take the FCI determinants filtered to the ground state's flavor sector as the "ASCI" basis.
    Assert that the capture fraction is exactly $0$ for $\mu\neq\nu$ and exactly $1$ for
-   $\mu=\nu$. This pins the diagnosis in a test.
+   $\mu=\nu$. This pins the diagnosis in a test. Repeat at $J>0$, with spin-flip and
+   pair-hopping switched on, filtering the FCI determinants by the ground state's flavor
+   **parities** instead of its counts. The capture must still be exactly $0$.
 3. **Expansion recovers the exact answer.** Same system, gate on, `tot_SD` large enough to fill
    the (small) target sectors. Assert `capture_expanded == 1` and compare every $R$ element with
    the dense Lehmann reference on the full FCI space (`lehmann_element`,
-   `Approx().epsilon(1e-6).margin(1e-8)`).
+   `Approx().epsilon(1e-6).margin(1e-8)`). Run it on both the $J=0$ and the $J>0$ systems of
+   test 2.
 4. **$SU(4)$ identity.** Degenerate version of test 3 (equal on-site energies and hybridisations,
    $U'=U$, $J=0$). Assert
    $R_{01;01}=\tfrac12(R_{00;00}+R_{11;11}-2R_{00;11})$. First check that the ground state is
@@ -250,6 +359,9 @@ cause is something else and this plan does not apply.
 6. **Growth seeds do not interfere.** Construct two pairs that leak into the same determinant with
    opposite amplitudes. Assert that the determinant is still grown from ($\max|b|$, not the sum).
 7. **`norbs = 0` fallback** gives the same basis as `norbs = n_active`.
+8. **Truncated base, gate on** (§Warning). With a top-$k$ base and $\psi_0$ re-diagonalized on it,
+   the diagonal block equals the gate-off result to machine precision, and $\psi_0$'s sector has
+   no pole below $E_0$.
 
 **Production**
 
@@ -258,6 +370,10 @@ cause is something else and this plan does not apply.
 - Degenerate bands: the $SU(2n)$ identity should hold within the `tot_SD` / `trunc_size`
   convergence.
 - Small $J>0$: the expanded result should connect continuously to $J=0$.
+- $J>0$, two degenerate bands (the `J_0.2/U_27.00` case under §Diagnosis): $(0,1)$ and $(1,0)$
+  should report `capture_expanded = 1`. $C$ and $D$ should be nonzero. The $O(2)$ identity
+  $A-B=C+D$ should hold within the `tot_SD` / `trunc_size` convergence, provided the bath is
+  orbital-symmetric.
 
 ---
 

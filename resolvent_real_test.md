@@ -15,9 +15,9 @@ Sources read for this note:
 
 Target data:
 
-- 2-band: `/g100/home/userexternal/dfloreza/scratch/dfloreza/Ulysses_move/multiband_singlesite/2bands/Doping/selected_calculations`
+- 2-band: `~/g100_move_Collura/Ulysses_move/multiband_singlesite/2bands/Doping/selected_calculations`
   (`J_0`, `J_0.1`, `J_0.2`, `J_0.25`, `J_0.3333`, `J_0.4`, `J_0.5`; each a `U` sweep).
-- 3-band: `/g100/home/userexternal/dfloreza/scratch/dfloreza/Leonardo_move/3band/singlesite/Doping/selected_calculations`
+- 3-band: `~/g100_move_Collura/Leonardo_move/3band/singlesite/Doping/selected_calculations`
   (`J_0`, `J_.05`, `J_.1`, `J_.2`, `J_.25`, `J_.3`, `J_.333`, `J_.35`, `J_.4`, `J_.5`; each a `U` sweep).
 
 ---
