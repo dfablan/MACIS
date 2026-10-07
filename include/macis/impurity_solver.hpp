@@ -340,6 +340,9 @@ inline void write_orbital_resolvent_matrix(
   gram_file << "# expansion leaked " << result.expansion_seeds << " grown "
             << result.expansion_grown << " dropped " << result.expansion_dropped
             << " capped " << int(result.growth_capped) << "\n";
+  // Independent band-Lanczos runs (ASCI basis + reached components of the
+  // kept determinants); retained_rank above is their sum.
+  gram_file << "# lanczos_blocks " << result.lanczos_blocks << "\n";
   // capture_base: on the ASCI basis. capture_expanded: on the basis the
   // resolvent was computed in. unresolved = 1: still below
   // GF.ORB_MIN_CAPTURE there, so the pair's elements miss weight (and may be
@@ -589,7 +592,8 @@ auto evaluate_resolvent_orbital_matrix(
               << "; " << result.expansion_dropped
               << " dropped as coupled to the ground-state sector; basis "
               << result.base_size << " -> " << result.expanded_size
-              << " determinants" << std::endl;
+              << " determinants in " << result.lanczos_blocks
+              << " independent Lanczos runs" << std::endl;
     if(result.growth_capped)
       std::cerr << "WARNING: orbital " << seed_kind
                 << " basis growth stopped at GF.TRUNC_SIZE = "

@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <stdexcept>
@@ -350,26 +351,31 @@ std::vector<double> orbital_occupations(
 }
 
 /**
- * @brief Flags the determinants of `added` that the Hamiltonian couples to
- *        `base`, directly or through other determinants of `added`: the
- *        H-connected component of `base` within base + added. Couplings are
- *        the matrix elements a CSR build with threshold h_thresh keeps, so
- *        with h_thresh equal to the resolvent's, the unflagged determinants
- *        have exactly no matrix element with base in the Lanczos Hamiltonian.
+ * @brief Splits `added` by H-connectivity, with couplings those a CSR build
+ *        with threshold h_thresh keeps (with the resolvent's threshold, the
+ *        Lanczos Hamiltonian's nonzero elements):
+ *
+ *        - -1: H couples the determinant to `base`, directly or through other
+ *          determinants of `added` (the H-connected component of base);
+ *        - c >= 0: the determinant belongs to the c-th connected component of
+ *          the rest, numbered in order of first appearance in `added`.
+ *
+ *        Different labels have no matrix element between them.
  */
 template <size_t nbits, typename index_t = int32_t>
-std::vector<bool> coupled_to_base(const std::vector<std::bitset<nbits>> &base,
+std::vector<int> added_components(const std::vector<std::bitset<nbits>> &base,
                                   const std::vector<std::bitset<nbits>> &added,
                                   HamiltonianGenerator<nbits> &Hgen,
                                   double h_thresh) {
-  std::vector<bool> coupled(added.size(), false);
-  if(added.empty() || base.empty()) return coupled;
+  const size_t na = added.size();
+  constexpr int unset = std::numeric_limits<int>::min();
+  std::vector<int> label(na, unset);
+  if(na == 0) return label;
   // Columns: added, then base. Rows: added, i.e. the first na columns. The
   // added block comes first because SDBuildHamiltonianGenerator stores the
   // diagonal element of row i at column i (it assumes a square tile); this
   // order puts it on the row's own determinant. H is symmetric, so each row
   // also lists the added neighbours that couple back to it.
-  const size_t na = added.size();
   std::vector<std::bitset<nbits>> all(added);
   all.insert(all.end(), base.begin(), base.end());
   const auto H = make_csr_hamiltonian_block<index_t>(
@@ -377,26 +383,133 @@ std::vector<bool> coupled_to_base(const std::vector<std::bitset<nbits>> &base,
   const auto &rowptr = H.rowptr();
   const auto &colind = H.colind();
 
+  // Flood-fill from a set of start rows, labelling every reachable added row.
   std::vector<size_t> stack;
+  auto flood = [&](int value) {
+    while(!stack.empty()) {
+      const size_t i = stack.back();
+      stack.pop_back();
+      for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p) {
+        const size_t j = colind[p];
+        if(j >= na || label[j] != unset) continue;
+        label[j] = value;
+        stack.push_back(j);
+      }
+    }
+  };
+
+  // psi0's component: rows with a matrix element into base.
   for(size_t i = 0; i < na; ++i)
     for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p)
       if(size_t(colind[p]) >= na) {
-        coupled[i] = true;
+        label[i] = -1;
         stack.push_back(i);
         break;
       }
-  while(!stack.empty()) {
-    const size_t i = stack.back();
-    stack.pop_back();
-    for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p) {
-      const size_t j = colind[p];
-      if(j >= na || coupled[j]) continue;
-      coupled[j] = true;
-      stack.push_back(j);
-    }
+  flood(-1);
+
+  // The remaining components.
+  int ncomp = 0;
+  for(size_t i = 0; i < na; ++i) {
+    if(label[i] != unset) continue;
+    label[i] = ncomp;
+    stack.push_back(i);
+    flood(ncomp);
+    ++ncomp;
   }
+  return label;
+}
+
+/**
+ * @brief Flags the determinants of `added` that H couples to `base`, directly
+ *        or through other determinants of `added` (added_components == -1).
+ */
+template <size_t nbits, typename index_t = int32_t>
+std::vector<bool> coupled_to_base(const std::vector<std::bitset<nbits>> &base,
+                                  const std::vector<std::bitset<nbits>> &added,
+                                  HamiltonianGenerator<nbits> &Hgen,
+                                  double h_thresh) {
+  const auto label =
+      added_components<nbits, index_t>(base, added, Hgen, h_thresh);
+  std::vector<bool> coupled(label.size());
+  for(size_t k = 0; k < label.size(); ++k) coupled[k] = label[k] == -1;
   return coupled;
 }
+
+namespace detail {
+
+/**
+ * @brief Adds to R the band-Lanczos matrix resolvent of the seed columns over
+ *        `dets`: Gram matrix, deflation of its eigenvalues below
+ *        orb_deflate_tol * lambda_max, BandResolvent on the orthonormalized
+ *        retained seeds, back-transform to the npairs x npairs matrix per
+ *        frequency. Returns the retained rank (0: nothing added).
+ */
+template <size_t nbits, typename index_t>
+size_t add_block_resolvent(const Eigen::MatrixXd &seeds,
+                           std::vector<std::bitset<nbits>> &dets,
+                           HamiltonianGenerator<nbits> &Hgen, double E0,
+                           const std::vector<std::complex<double>> &ws,
+                           const GFSettings &settings, double h_thresh,
+                           std::vector<std::vector<std::complex<double>>> &R) {
+  const Eigen::Index npairs = seeds.cols();
+  const Eigen::MatrixXd gram = seeds.transpose() * seeds;
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(gram);
+  if(eig.info() != Eigen::Success)
+    throw std::runtime_error(
+        "RunResolventOrbitalMatrix: Gram eigensolve failed");
+  const double lambda_max =
+      eig.eigenvalues().size() ? eig.eigenvalues().maxCoeff() : 0.0;
+  if(lambda_max <= 0.0) return 0;
+
+  std::vector<Eigen::Index> retained;
+  for(Eigen::Index i = 0; i < eig.eigenvalues().size(); ++i)
+    if(eig.eigenvalues()(i) > settings.orb_deflate_tol * lambda_max)
+      retained.push_back(i);
+  const size_t rank = retained.size();
+  if(rank == 0) return 0;
+
+  Eigen::MatrixXd Ur(npairs, rank);
+  Eigen::VectorXd lambdas(rank);
+  for(size_t i = 0; i < rank; ++i) {
+    Ur.col(i) = eig.eigenvectors().col(retained[i]);
+    lambdas(i) = eig.eigenvalues()(retained[i]);
+  }
+  Eigen::MatrixXd psi =
+      seeds * Ur * lambdas.cwiseSqrt().cwiseInverse().asDiagonal();
+  std::vector<double> vecs(psi.size());
+  for(size_t i = 0; i < rank; ++i)
+    for(Eigen::Index k = 0; k < psi.rows(); ++k)
+      vecs[i * psi.rows() + k] = psi(k, i);
+
+  auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
+                                                  dets.end(), Hgen, h_thresh);
+  // BandLan does not deflate: a seed's Krylov chain that is exhausted keeps
+  // taking (zero) band slots while the other chains continue. A complete
+  // calculation can therefore need up to rank * dets.size() iterations, not
+  // dets.size(); capping at dets.size() truncated the longer chains on small
+  // bases.
+  const int nLanIts = int(std::min<size_t>(
+      std::max<size_t>(settings.nLanIts, rank + 1), rank * dets.size()));
+  std::vector<std::vector<std::complex<double>>> reduced;
+  BandResolvent(hamil, vecs, ws, reduced, nLanIts, E0, true, rank, dets.size(),
+                settings.print, settings.saveGFmats);
+
+  const Eigen::MatrixXd B = Ur * lambdas.cwiseSqrt().asDiagonal();
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    Eigen::MatrixXcd reduced_matrix(rank, rank);
+    for(size_t k = 0; k < rank; ++k)
+      for(size_t l = 0; l < rank; ++l)
+        reduced_matrix(k, l) = reduced[iw][k * rank + l];
+    const Eigen::MatrixXcd full = B * reduced_matrix * B.transpose();
+    for(Eigen::Index k = 0; k < npairs; ++k)
+      for(Eigen::Index l = 0; l < npairs; ++l)
+        R[iw][k * npairs + l] += full(k, l);
+  }
+  return rank;
+}
+
+}  // namespace detail
 
 struct OrbitalResolventResult {
   Eigen::MatrixXd gram;
@@ -422,6 +535,10 @@ struct OrbitalResolventResult {
   // growth (possibly before tot_SD layers, or with no growth at all when the
   // seeds alone exceed it).
   bool growth_capped = false;
+  // Independent band-Lanczos runs: base_dets, plus one per connected
+  // component of the kept determinants that some seed reaches.
+  size_t lanczos_blocks = 0;
+  // Sum of the retained ranks of all runs.
   size_t rank = 0;
   std::vector<std::vector<std::complex<double>>> resolvent;
 };
@@ -523,6 +640,11 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   // determinants if any pair was marked.
   std::vector<std::bitset<nbits>> dets(base_dets);
   Eigen::VectorXd psi0 = wfn0;
+  // Block of each determinant: 0 for base_dets, 1 + c for the kept grown
+  // determinants of connected component c. H has no matrix element between
+  // blocks.
+  std::vector<size_t> block_of(base_dets.size(), 0);
+  size_t nblocks = 1;
   if(!leaked.empty()) {
     const size_t norbs = settings.norbs ? settings.norbs : n_active;
     if(norbs == 0 || norbs > nbits / 2)
@@ -545,16 +667,19 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     result.growth_capped = settings.trunc_size > 0 && settings.tot_SD > 0 &&
                            grown.size() > settings.trunc_size;
 
-    // Keep only the grown determinants outside psi0's H-connected sector.
-    const auto coupled =
-        coupled_to_base<nbits, index_t>(base_dets, grown, Hgen, h_thresh);
+    // Keep only the grown determinants outside psi0's H-connected sector,
+    // and remember the connected component each kept one belongs to.
+    const auto label =
+        added_components<nbits, index_t>(base_dets, grown, Hgen, h_thresh);
     for(size_t k = 0; k < grown.size(); ++k) {
-      if(coupled[k]) {
+      if(label[k] < 0) {
         ++result.expansion_dropped;
         continue;
       }
       det_index.emplace(grown[k], dets.size());
       dets.push_back(grown[k]);
+      block_of.push_back(1 + label[k]);
+      nblocks = std::max(nblocks, size_t(2 + label[k]));
     }
     psi0.conservativeResize(dets.size());
     psi0.tail(dets.size() - base_dets.size()).setZero();
@@ -574,66 +699,52 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
           psi0, dets, det_index, mu, nu, channel);
     }
 
-  // Optionally replace each seed O_{mu nu}|wfn0> by the fluctuation
-  // (O_{mu nu} - <O_{mu nu}>)|wfn0>, cancelling the elastic pole exactly as in
-  // RunResolventDiagonal. wfn0 lies in base_dets, so the projected seed still
-  // gives the exact <O_{mu nu}>. The Gram matrix then becomes the fluctuation
-  // covariance and remains the zeroth moment of R. The capture fractions
-  // above describe the bare operator: the subtracted component is in-basis.
-  if(subtract_mean)
-    seeds -= psi0 * ((psi0.transpose() * seeds) / psi0.squaredNorm());
-
-  result.gram = seeds.transpose() * seeds;
+  // H is block diagonal over the blocks, so the resolvent is the sum of the
+  // resolvents of the seeds' restrictions to each block, each run on its own
+  // Hamiltonian. Separate runs keep a small block (e.g. a truncated psi0
+  // sector) from being exhausted inside a longer band-Lanczos run, which
+  // has no deflation or reorthogonalization. Block 0 is base_dets alone, so
+  // the elements of the unexpanded pairs are exactly the gate-off ones.
+  result.gram = Eigen::MatrixXd::Zero(npairs, npairs);
   result.resolvent.assign(ws.size(), std::vector<std::complex<double>>(
                                          npairs * npairs, {0.0, 0.0}));
+  std::vector<std::vector<Eigen::Index>> block_rows(nblocks);
+  for(size_t k = 0; k < dets.size(); ++k) block_rows[block_of[k]].push_back(k);
+  for(size_t b = 0; b < nblocks; ++b) {
+    const auto &rows = block_rows[b];
+    Eigen::MatrixXd block_seeds(rows.size(), npairs);
+    std::vector<std::bitset<nbits>> block_dets(rows.size());
+    for(size_t r = 0; r < rows.size(); ++r) {
+      block_seeds.row(r) = seeds.row(rows[r]);
+      block_dets[r] = dets[rows[r]];
+    }
+
+    // Optionally replace each seed O_{mu nu}|wfn0> by the fluctuation
+    // (O_{mu nu} - <O_{mu nu}>)|wfn0>, cancelling the elastic pole exactly as
+    // in RunResolventDiagonal. wfn0 lies in base_dets (block 0), so the
+    // projected seed still gives the exact <O_{mu nu}>. The Gram matrix then
+    // becomes the fluctuation covariance and remains the zeroth moment of R.
+    // The capture fractions above describe the bare operator: the subtracted
+    // component is in-basis.
+    if(subtract_mean && b == 0)
+      block_seeds -=
+          wfn0 * ((wfn0.transpose() * block_seeds) / wfn0.squaredNorm());
+
+    // A block no seed reaches contributes nothing: skip its CSR build.
+    if(b > 0 && block_seeds.squaredNorm() == 0.0) continue;
+    result.gram += block_seeds.transpose() * block_seeds;
+    const size_t block_rank = detail::add_block_resolvent<nbits, index_t>(
+        block_seeds, block_dets, Hgen, E0, ws, settings, h_thresh,
+        result.resolvent);
+    result.rank += block_rank;
+    if(block_rank > 0) ++result.lanczos_blocks;
+  }
+
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(result.gram);
   if(eig.info() != Eigen::Success)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: Gram eigensolve failed");
   result.gram_eigenvalues = eig.eigenvalues();
-  const double lambda_max =
-      eig.eigenvalues().size() ? eig.eigenvalues().maxCoeff() : 0.0;
-  if(lambda_max <= 0.0) return result;
-
-  std::vector<Eigen::Index> retained;
-  for(Eigen::Index i = 0; i < eig.eigenvalues().size(); ++i)
-    if(eig.eigenvalues()(i) > settings.orb_deflate_tol * lambda_max)
-      retained.push_back(i);
-  result.rank = retained.size();
-  if(result.rank == 0) return result;
-
-  Eigen::MatrixXd Ur(npairs, result.rank);
-  Eigen::VectorXd lambdas(result.rank);
-  for(size_t i = 0; i < result.rank; ++i) {
-    Ur.col(i) = eig.eigenvectors().col(retained[i]);
-    lambdas(i) = eig.eigenvalues()(retained[i]);
-  }
-  Eigen::MatrixXd psi =
-      seeds * Ur * lambdas.cwiseSqrt().cwiseInverse().asDiagonal();
-  std::vector<double> vecs(psi.size());
-  for(size_t i = 0; i < result.rank; ++i)
-    for(Eigen::Index k = 0; k < psi.rows(); ++k)
-      vecs[i * psi.rows() + k] = psi(k, i);
-
-  auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
-                                                  dets.end(), Hgen, h_thresh);
-  int nLanIts = std::min<int>(
-      std::max<int>(settings.nLanIts, int(result.rank) + 1), dets.size());
-  std::vector<std::vector<std::complex<double>>> reduced;
-  BandResolvent(hamil, vecs, ws, reduced, nLanIts, E0, true, result.rank,
-                dets.size(), settings.print, settings.saveGFmats);
-
-  const Eigen::MatrixXd B = Ur * lambdas.cwiseSqrt().asDiagonal();
-  for(size_t iw = 0; iw < ws.size(); ++iw) {
-    Eigen::MatrixXcd reduced_matrix(result.rank, result.rank);
-    for(size_t k = 0; k < result.rank; ++k)
-      for(size_t l = 0; l < result.rank; ++l)
-        reduced_matrix(k, l) = reduced[iw][k * result.rank + l];
-    const Eigen::MatrixXcd full = B * reduced_matrix * B.transpose();
-    for(size_t k = 0; k < npairs; ++k)
-      for(size_t l = 0; l < npairs; ++l)
-        result.resolvent[iw][k * npairs + l] = full(k, l);
-  }
   return result;
 }
 

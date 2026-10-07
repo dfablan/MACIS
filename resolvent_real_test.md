@@ -231,13 +231,14 @@ Notes:
   `TOT_SD` (and `TRUNC_SIZE`) until the expanded elements stop changing, and report
   that.
 - **What the expansion changes.** Grown determinants that couple to the ground-state
-  sector are dropped, so the diagonal block (`r_0`, `r_2`, `q_0`, `q_2`) is the
-  gate-off result: on a truncated test basis the two agreed to 6e-11. Only the
-  elements of the expanded pairs change. The remaining grown determinants lie in
-  other sectors, including some no seed reaches, so they enlarge the basis without
-  changing the result. With `TRUNC_SIZE = 100000000` the growth is effectively
-  uncapped; check the `basis_size` and `expansion` lines of `_gram.dat` (leaked,
-  grown, dropped, capped) and the matching stdout line. A warning is printed if
+  sector are dropped, and the ASCI basis runs in its own Lanczos, separate from
+  each connected group of added determinants. So the diagonal block (`r_0`,
+  `r_2`, `q_0`, `q_2`) is the gate-off result (bit-identical on a truncated test
+  basis), and only the elements of the expanded pairs change. The remaining grown
+  determinants lie in other sectors; groups no seed reaches are skipped. With
+  `TRUNC_SIZE = 100000000` the growth is effectively uncapped: check the
+  `basis_size`, `expansion` (leaked, grown, dropped, capped) and `lanczos_blocks`
+  lines of `_gram.dat` and the matching stdout line. A warning is printed if
   `TRUNC_SIZE` stops the growth.
 - **Runs made before the sector filter** (commits `072380a` to `ffb5098`) are not
   covered by the previous note. With the flag on and a truncated ASCI basis, their

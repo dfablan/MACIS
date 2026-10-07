@@ -13,12 +13,23 @@
 >   `base_dets` (`orbital_occupations`), not from `p.occs` (§C.3), so it is always in the basis
 >   of the determinants.
 > - **Sector filter (§Warning).** After growing, every grown determinant that $H$ couples to
->   `base_dets`, directly or through other grown determinants, is dropped (`coupled_to_base`, a
->   search over the nonzero elements of $H$ with the Lanczos threshold `1e-6`). This needs no
->   flavor or parity labels and works at any $J$. The kept determinants have no matrix element
->   with $\psi_0$'s sector, so the diagonal block equals the gate-off result and $\psi_0$ stays an
->   eigenvector. It replaces both fixes proposed in §Warning and keeps one shared Lanczos run, so
->   cross elements between marked and unmarked pairs are still computed.
+>   `base_dets`, directly or through other grown determinants, is dropped (`added_components`
+>   label $-1$, a search over the nonzero elements of $H$ with the Lanczos threshold `1e-6`).
+>   This needs no flavor or parity labels and works at any $J$. The kept determinants have no
+>   matrix element with $\psi_0$'s sector, so $\psi_0$ stays an eigenvector.
+> - **One Lanczos run per block** (2026-10-08). $H$ is block diagonal over `base_dets` and the
+>   connected components of the kept determinants, so the resolvent is the sum of one band-Lanczos
+>   run per block, each on the seeds' restriction to it (`detail::add_block_resolvent`). Blocks
+>   no seed reaches are skipped. `base_dets` runs alone, exactly as with the gate off, so the
+>   diagonal block is the gate-off result (bit-identical in the end-to-end check below). One
+>   shared run was not enough: `BandLan` has no deflation, and a small block exhausted inside a
+>   longer run gave errors of a few percent (test 8). Cross elements between marked and unmarked
+>   pairs still come out right, because each block's run carries every seed.
+> - **Iteration cap.** The band-Lanczos iteration count was capped at the basis size. Without
+>   deflation an exhausted chain keeps taking zero slots, so the longer chains were truncated
+>   (2.7% error on test 8's 8-determinant base, gate off as well). The cap is now
+>   `rank * size`. It only binds when `GF.NLANITS` exceeds the basis size, i.e. on very small
+>   bases, so production results are unchanged.
 > - A pair that leaks only inside $\psi_0$'s sector ($0<$ capture $<$ `ORB_MIN_CAPTURE`) loses
 >   those images to the filter. It is reported `unresolved` with a warning, not expanded.
 > - `capture_expanded` is recomputed for every pair. `_gram.dat` also reports the number of
@@ -30,21 +41,30 @@
 > 11–13%. Take $A$ and $B$ from a gate-off run, and $C$ and $D$ from the gate-on run. $C$ and $D$
 > are unaffected when their `capture_base` is exactly 0.
 >
-> **Verification.**
+> **Verification** (`tests/dynamical_properties.cxx`).
 >
-> - Tests 2, 3, 4 and 7 are in `tests/dynamical_properties.cxx`.
-> - Test 5 is partial: it compares gate-on-but-not-needed with gate-off in the new code, not with
->   the old code.
-> - Test 6 is partial: it tests `merge_leaked_images` directly.
-> - `coupled_to_base` has its own test (truncated base: it flags exactly $\psi_0$'s sector, with
->   both Hamiltonian generators).
-> - Test 8 and $J>0$ versions of tests 2–3 are **not** written yet.
+> - Tests 2 and 3 run at $J=0$ (flavor-count sector) and at $J=0.2$ (Kanamori exchange and pair
+>   hopping, flavor-parity sector; the test checks that $\psi_0$ really spans several count
+>   sectors).
+> - Test 8 (truncated base, $\psi_0$ re-diagonalized on it), at both $J$, both channels, with and
+>   without `subtract_mean`:
+>   - the filter drops exactly the rest of $\psi_0$'s sector;
+>   - the diagonal block equals gate-off to 1e-12;
+>   - every element equals the dense Lehmann sum over base plus the other sectors;
+>   - no state of $\psi_0$'s sector below $E_k$ carries weight.
+>
+>   With the coupled determinants kept (the pre-filter behaviour), the test fails.
+> - Tests 4 and 7 are in. Test 5 is partial: it compares gate-on-but-not-needed with gate-off in
+>   the new code, not with the old code. Test 6 is partial: it tests `merge_leaked_images`
+>   directly.
+> - `coupled_to_base` has its own test (it flags exactly $\psi_0$'s sector, with both Hamiltonian
+>   generators).
 > - End to end, 2-band $J=0$ model with an orbital-diagonal bath (8 orbitals, 4900 determinants):
 >   - ASCI filling the 1296-determinant ground sector, `TOT_SD = 6`: every element matches CAS
->     to 3e-14.
->   - ASCI truncated to 309 determinants, `TOT_SD = 1`: the diagonal block equals gate-off to
->     6e-11. 450 of 2387 grown determinants are dropped, and the off-diagonal pairs reach
->     capture 1.
+>     to 5e-14.
+>   - ASCI truncated to 309 determinants, `TOT_SD = 1`: the diagonal block in the output files
+>     is bit-identical to gate-off. 450 of 2387 grown determinants are dropped, the rest run in
+>     4 component blocks, and the off-diagonal pairs reach capture 1.
 >   - `TOT_SD` convergence of the off-diagonal block (Spin channel, full sector,
 >     `GFSEEDTHRES = 1E-3`): error 2.8e-1 at 1, 5.9e-6 at 2, 6e-15 at 3. Converge `TOT_SD` in
 >     production.

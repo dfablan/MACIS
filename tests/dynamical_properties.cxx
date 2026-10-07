@@ -16,6 +16,7 @@
 #include <macis/hamiltonian_generator/sd_build.hpp>
 #include <map>
 #include <numeric>
+#include <set>
 #include <utility>
 
 #include "ut_common.hpp"
@@ -1379,14 +1380,17 @@ TEST_CASE(
 namespace {
 
 // Two impurity orbitals (0, 1), each hybridised only with its own bath orbital
-// (2, 3), with density-density U (intra) and U' (inter), J = 0. Every
-// one-body term stays inside one flavor {mu, mu + 2}, so H conserves the
-// electron count of each flavor and spin.
+// (2, 3), with density-density U (intra) and U' (inter). Every one-body term
+// stays inside one flavor {mu, mu + 2}. At J = 0, H conserves the electron
+// count of each flavor and spin. J > 0 adds the Kanamori exchange (spin flip)
+// and pair hopping, with U' = U - 2J (non-degenerate case only): they move
+// electrons between flavors in pairs, so only the parity of each flavor's
+// electron count is conserved.
 void flavor_diagonal_integrals(std::vector<double>& T, std::vector<double>& V,
-                               bool degenerate) {
+                               bool degenerate, double J = 0.0) {
   const size_t n = 4, n_imp = 2;
   const double U = 1.0;
-  const double Up = degenerate ? U : 0.6;
+  const double Up = degenerate ? U : (J > 0.0 ? U - 2.0 * J : 0.6);
   const double eps_imp[2] = {-0.5, degenerate ? -0.5 : -0.3};
   const double eps_bath[2] = {0.3, degenerate ? 0.3 : 0.2};
   const double hyb[2] = {0.4, degenerate ? 0.4 : 0.55};
@@ -1398,10 +1402,17 @@ void flavor_diagonal_integrals(std::vector<double>& T, std::vector<double>& V,
     T[b * n + b] = eps_bath[mu];
     T[mu * n + b] = T[b * n + mu] = hyb[mu];
   }
-  // Chemist's notation (pq|rs): (pp|pp) = U, (pp|qq) = U', no exchange.
+  // Chemist's notation (pq|rs): (pp|pp) = U, (pp|qq) = U'. For p != q,
+  // exchange (pq|qp) = J and pair hopping (pq|pq) = J. Every entry is set
+  // together with its reversed-index partner, so the layout of the flattened
+  // index does not matter.
   for(size_t p = 0; p < n_imp; ++p)
-    for(size_t q = 0; q < n_imp; ++q)
+    for(size_t q = 0; q < n_imp; ++q) {
       V[((p * n + p) * n + q) * n + q] = p == q ? U : Up;
+      if(p == q) continue;
+      V[((p * n + q) * n + q) * n + p] = J;
+      V[((p * n + q) * n + p) * n + q] = J;
+    }
 }
 
 // Flavor sector of a determinant: electron count of each flavor {f, f + 2}
@@ -1416,18 +1427,36 @@ int flavor_sector(const macis::wfn_t<N>& det) {
   return key;
 }
 
-// The determinants of the ground state's flavor sector, i.e. what an ASCI
-// solve grown through H-connected determinants can reach, and psi0 on them.
+// Flavor parity of a determinant: bit f = parity of the electron count of
+// flavor {f, f + 2}, both spins. The label H conserves at J > 0.
+int flavor_parity(const macis::wfn_t<N>& det) {
+  int key = 0;
+  for(int f = 0; f < 2; ++f) {
+    int count = 0;
+    for(int spin = 0; spin < 2; ++spin) {
+      const int off = spin * int(N / 2);
+      count += int(det.test(f + off)) + int(det.test(f + 2 + off));
+    }
+    key |= (count % 2) << f;
+  }
+  return key;
+}
+
+using SectorKey = int (*)(const macis::wfn_t<N>&);
+
+// The determinants of the ground state's sector (flavor counts by default, or
+// flavor parities), i.e. what an ASCI solve grown through H-connected
+// determinants can reach, and psi0 on them.
 std::vector<macis::wfn_t<N>> ground_sector_dets(
     const std::vector<macis::wfn_t<N>>& dets, const Eigen::VectorXd& psi0,
-    Eigen::VectorXd& psi_sector) {
+    Eigen::VectorXd& psi_sector, SectorKey sector_of = flavor_sector) {
   Eigen::Index kmax;
   psi0.cwiseAbs().maxCoeff(&kmax);
-  const int key = flavor_sector(dets[kmax]);
+  const int key = sector_of(dets[kmax]);
   std::vector<macis::wfn_t<N>> sector;
   std::vector<double> coeffs;
   for(size_t k = 0; k < dets.size(); ++k)
-    if(flavor_sector(dets[k]) == key) {
+    if(sector_of(dets[k]) == key) {
       sector.push_back(dets[k]);
       coeffs.push_back(psi0(k));
     }
@@ -1446,15 +1475,16 @@ struct FlavorModel {
 };
 
 template <class Gen>
-void solve_flavor_model(FlavorModel& m, Gen& ham_gen) {
+void solve_flavor_model(FlavorModel& m, Gen& ham_gen,
+                        SectorKey sector_of = flavor_sector) {
   m.fci = half_filled_fci_dets();
   m.es.compute(dense_hamiltonian(m.fci, ham_gen));
-  // A single ground state: at J = 0 a degeneracy across flavor sectors would
-  // make psi0 a mixture of sectors.
+  // A single ground state: a degeneracy across sectors would make psi0 a
+  // mixture of sectors.
   REQUIRE(m.es.eigenvalues()(1) - m.es.eigenvalues()(0) > 1e-3);
   m.E0 = m.es.eigenvalues()(0);
   m.psi0 = m.es.eigenvectors().col(0);
-  m.sector = ground_sector_dets(m.fci, m.psi0, m.psi_sector);
+  m.sector = ground_sector_dets(m.fci, m.psi0, m.psi_sector, sector_of);
   REQUIRE(m.psi_sector.norm() == Approx(1.0).epsilon(1e-12));
   REQUIRE(m.sector.size() < m.fci.size());
 }
@@ -1554,42 +1584,73 @@ TEST_CASE("Dynamical properties - basis growth gating and merge") {
   }
 }
 
+namespace {
+
+// The two symmetry situations of PLAN_capture_basis_expansion.md: at J = 0
+// the per-flavor counts are conserved; at J > 0 spin flip and pair hopping
+// break them and only the per-flavor parities survive. Either way S_{mu nu}
+// and N_{mu nu}, mu != nu, leave psi0's sector.
+struct JCase {
+  double J;
+  SectorKey sector_of;
+  const char* name;
+};
+const JCase j_cases[] = {{0.0, flavor_sector, "J = 0, flavor-count sector"},
+                         {0.2, flavor_parity, "J = 0.2, flavor-parity sector"}};
+
+// At J > 0 the parity sector must really be wider than one count sector:
+// psi0 has weight on several flavor-count sectors, so the J > 0 terms act.
+void require_counts_mixed(const FlavorModel& m) {
+  std::set<int> counts;
+  for(Eigen::Index k = 0; k < m.psi_sector.size(); ++k)
+    if(std::abs(m.psi_sector(k)) > 1e-6)
+      counts.insert(flavor_sector(m.sector[k]));
+  REQUIRE(counts.size() > 1);
+}
+
+}  // namespace
+
 TEST_CASE(
     "Dynamical properties - off-diagonal capture is exactly zero in a flavor "
     "sector") {
   ROOT_ONLY(MPI_COMM_WORLD);
 
   // The diagnosis of PLAN_capture_basis_expansion.md: with a flavor-diagonal
-  // bath at J = 0, a basis confined to the ground state's flavor sector
-  // captures none of S_{mu nu}|psi0> / N_{mu nu}|psi0> for mu != nu, and all of
-  // it for mu = nu. Without expansion the off-diagonal elements are zero.
+  // bath, a basis confined to the ground state's sector (flavor counts at
+  // J = 0, flavor parities at J > 0) captures none of S_{mu nu}|psi0> /
+  // N_{mu nu}|psi0> for mu != nu, and all of it for mu = nu. Without
+  // expansion the off-diagonal elements are zero.
   const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
-  FlavorModel m;
-  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
-  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
-  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
-                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
-  solve_flavor_model(m, ham_gen);
+  for(const auto& c : j_cases) {
+    INFO(c.name);
+    FlavorModel m;
+    flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false, c.J);
+    using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+    generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                           macis::rank4_span<double>(m.V.data(), n, n, n, n));
+    solve_flavor_model(m, ham_gen, c.sector_of);
+    if(c.J > 0.0) require_counts_mixed(m);
 
-  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
-  macis::GFSettings settings;
-  settings.nLanIts = 100;
-  for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge}) {
-    const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-        m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings);
-    REQUIRE(result.base_size == m.sector.size());
-    REQUIRE(result.expanded_size == m.sector.size());
-    for(size_t mu = 0; mu < n_imp; ++mu)
-      for(size_t nu = 0; nu < n_imp; ++nu) {
-        const size_t pair = mu * n_imp + nu;
-        REQUIRE(result.capture(pair) == (mu == nu ? 1.0 : 0.0));
-        REQUIRE(result.capture_expanded(pair) == result.capture(pair));
-        REQUIRE_FALSE(result.expanded[pair]);
-        if(mu == nu) continue;
-        for(size_t iw = 0; iw < ws.size(); ++iw)
-          for(size_t l = 0; l < M; ++l)
-            REQUIRE(std::abs(result.resolvent[iw][pair * M + l]) == 0.0);
-      }
+    const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+    macis::GFSettings settings;
+    settings.nLanIts = 100;
+    for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge}) {
+      const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+          m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings);
+      REQUIRE(result.base_size == m.sector.size());
+      REQUIRE(result.expanded_size == m.sector.size());
+      for(size_t mu = 0; mu < n_imp; ++mu)
+        for(size_t nu = 0; nu < n_imp; ++nu) {
+          const size_t pair = mu * n_imp + nu;
+          REQUIRE(result.capture(pair) == (mu == nu ? 1.0 : 0.0));
+          REQUIRE(result.capture_expanded(pair) == result.capture(pair));
+          REQUIRE_FALSE(result.expanded[pair]);
+          if(mu == nu) continue;
+          for(size_t iw = 0; iw < ws.size(); ++iw)
+            for(size_t l = 0; l < M; ++l)
+              REQUIRE(std::abs(result.resolvent[iw][pair * M + l]) == 0.0);
+        }
+    }
   }
 }
 
@@ -1598,59 +1659,183 @@ TEST_CASE(
     "resolvent") {
   ROOT_ONLY(MPI_COMM_WORLD);
 
-  // Same flavor-sector basis, gate on: the leaked sectors are grown until
-  // complete (tot_SD = 4 on 4 orbitals), so every element, off-diagonal ones
-  // included, must match the dense Lehmann sum on the full FCI space.
+  // Same sector basis, gate on: the leaked sectors are grown until complete
+  // (tot_SD = 4 on 4 orbitals), so every element, off-diagonal ones included,
+  // must match the dense Lehmann sum on the full FCI space.
   const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
-  FlavorModel m;
-  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
-  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
-  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
-                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
-  solve_flavor_model(m, ham_gen);
+  for(const auto& c : j_cases) {
+    INFO(c.name);
+    FlavorModel m;
+    flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false, c.J);
+    using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+    generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                           macis::rank4_span<double>(m.V.data(), n, n, n, n));
+    solve_flavor_model(m, ham_gen, c.sector_of);
 
-  const std::vector<std::complex<double>> ws = {
-      {0.5, 0.2}, {2.0, 0.2}, {-1.0, 0.1}};
-  macis::GFSettings settings;
-  settings.nLanIts = 200;
-  settings.orb_expand_basis = true;
-  settings.tot_SD = 4;
-  settings.GFseedThres = 0.0;
-  settings.norbs = n;
+    const std::vector<std::complex<double>> ws = {
+        {0.5, 0.2}, {2.0, 0.2}, {-1.0, 0.1}};
+    macis::GFSettings settings;
+    settings.nLanIts = 200;
+    settings.orb_expand_basis = true;
+    settings.tot_SD = 4;
+    settings.GFseedThres = 0.0;
+    settings.norbs = n;
 
-  for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge})
-    for(bool subtract_mean : {false, true}) {
-      const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
-          m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings,
-          subtract_mean);
-      REQUIRE(result.base_size == m.sector.size());
-      REQUIRE(result.expanded_size > result.base_size);
-      for(size_t mu = 0; mu < n_imp; ++mu)
-        for(size_t nu = 0; nu < n_imp; ++nu) {
-          const size_t pair = mu * n_imp + nu;
-          REQUIRE(result.expanded[pair] == (mu != nu));
-          REQUIRE(result.capture_expanded(pair) == 1.0);
+    for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge})
+      for(bool subtract_mean : {false, true}) {
+        const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+            m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings,
+            subtract_mean);
+        REQUIRE(result.base_size == m.sector.size());
+        REQUIRE(result.expanded_size > result.base_size);
+        // The base is the complete sector: nothing grown can couple to it.
+        REQUIRE(result.expansion_dropped == 0);
+        for(size_t mu = 0; mu < n_imp; ++mu)
+          for(size_t nu = 0; nu < n_imp; ++nu) {
+            const size_t pair = mu * n_imp + nu;
+            REQUIRE(result.expanded[pair] == (mu != nu));
+            REQUIRE(result.capture_expanded(pair) == 1.0);
+          }
+
+        const Eigen::MatrixXd seeds = bilinear_seeds(m.psi0, m.fci, n_imp, ch);
+        Eigen::MatrixXd ref_seeds = seeds;
+        if(subtract_mean) ref_seeds -= m.psi0 * (m.psi0.transpose() * seeds);
+        const Eigen::MatrixXd overlaps =
+            m.es.eigenvectors().transpose() * ref_seeds;
+        REQUIRE((result.gram - ref_seeds.transpose() * ref_seeds)
+                    .cwiseAbs()
+                    .maxCoeff() == Approx(0.0).margin(1e-12));
+        for(size_t iw = 0; iw < ws.size(); ++iw) {
+          std::vector<std::complex<double>> ref(M * M);
+          for(size_t k = 0; k < M; ++k)
+            for(size_t l = 0; l < M; ++l)
+              ref[k * M + l] =
+                  lehmann_element(m.es, overlaps, k, l, m.E0, ws[iw]);
+          // The off-diagonal elements must be the nonzero exact ones.
+          REQUIRE(std::abs(ref[1 * M + 1]) > 1e-3);
+          require_resolvents_close(result.resolvent[iw], ref);
+        }
+      }
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - expansion on a truncated base keeps the diagonal "
+    "block and psi0's spectrum") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Test 8 of PLAN_capture_basis_expansion.md, at J = 0 and J > 0. The base
+  // is the top half of psi0's sector, as a truncated ASCI space, and psi0 is
+  // re-diagonalized on it, so it is an exact eigenvector of the truncated
+  // problem with energy Ek > E0. Growing the leaked images reaches the rest of
+  // psi0's sector, whose lowest state lies below Ek: kept, those determinants
+  // would change the diagonal block and put poles below Ek. With the sector
+  // filter:
+  //   - the diagonal block equals the gate-off result (it is computed in its
+  //     own Lanczos run on base, as with the gate off);
+  //   - every element equals the dense Lehmann sum over base + the other
+  //     sectors, so psi0's sector contributes only base states, all >= Ek.
+  const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
+  for(const auto& c : j_cases) {
+    INFO(c.name);
+    FlavorModel m;
+    flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false, c.J);
+    using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+    generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                           macis::rank4_span<double>(m.V.data(), n, n, n, n));
+    solve_flavor_model(m, ham_gen, c.sector_of);
+
+    // Truncated base: the largest half of psi0's sector, re-diagonalized.
+    std::vector<size_t> order(m.sector.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+      return std::abs(m.psi_sector(a)) > std::abs(m.psi_sector(b));
+    });
+    std::vector<macis::wfn_t<N>> base;
+    for(size_t k = 0; k < order.size() / 2; ++k)
+      base.push_back(m.sector[order[k]]);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es_base(
+        dense_hamiltonian(base, ham_gen));
+    const double Ek = es_base.eigenvalues()(0);
+    const Eigen::VectorXd psik = es_base.eigenvectors().col(0);
+    // The truncation matters: the full sector has a state below Ek.
+    REQUIRE(Ek - m.E0 > 1e-4);
+
+    // Reference basis: base + every determinant outside psi0's sector.
+    const int gs_key = c.sector_of(m.sector[0]);
+    std::vector<macis::wfn_t<N>> ref_basis(base);
+    for(const auto& d : m.fci)
+      if(c.sector_of(d) != gs_key) ref_basis.push_back(d);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es_ref(
+        dense_hamiltonian(ref_basis, ham_gen));
+    Eigen::VectorXd psi_ref = Eigen::VectorXd::Zero(ref_basis.size());
+    psi_ref.head(base.size()) = psik;
+
+    const std::vector<std::complex<double>> ws = {
+        {-0.5, 0.05}, {0.5, 0.2}, {2.0, 0.2}};
+    macis::GFSettings off;
+    off.nLanIts = 200;
+    macis::GFSettings on = off;
+    on.orb_expand_basis = true;
+    on.tot_SD = 4;
+    on.GFseedThres = 0.0;
+    on.norbs = n;
+
+    const size_t diag_pairs[] = {0 * n_imp + 0, 1 * n_imp + 1};
+    for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge})
+      for(bool subtract_mean : {false, true}) {
+        const auto a = macis::RunResolventOrbitalMatrix<N, int32_t>(
+            psik, ham_gen, base, n_imp, ch, Ek, ws, off, subtract_mean);
+        const auto b = macis::RunResolventOrbitalMatrix<N, int32_t>(
+            psik, ham_gen, base, n_imp, ch, Ek, ws, on, subtract_mean);
+
+        // The filter was needed: the growth reached psi0's sector.
+        REQUIRE(b.expansion_dropped > 0);
+        REQUIRE(b.expansion_dropped ==
+                m.sector.size() - base.size());  // all of its rest
+        REQUIRE(b.expanded_size == ref_basis.size());
+        REQUIRE(b.capture_expanded(1) == 1.0);
+        REQUIRE(b.capture_expanded(2) == 1.0);
+        // psi0's sector and the off-diagonal seeds' sector(s) run separately.
+        REQUIRE(a.lanczos_blocks == 1);
+        REQUIRE(b.lanczos_blocks >= 2);
+        REQUIRE((b.gram - a.gram).block(0, 0, 1, 1).norm() == 0.0);
+
+        for(size_t iw = 0; iw < ws.size(); ++iw)
+          for(size_t k : diag_pairs)
+            for(size_t l : diag_pairs) {
+              const auto x = a.resolvent[iw][k * M + l];
+              const auto y = b.resolvent[iw][k * M + l];
+              REQUIRE(std::real(y) ==
+                      Approx(std::real(x)).epsilon(1e-12).margin(1e-14));
+              REQUIRE(std::imag(y) ==
+                      Approx(std::imag(x)).epsilon(1e-12).margin(1e-14));
+            }
+
+        const Eigen::MatrixXd seeds =
+            bilinear_seeds(psi_ref, ref_basis, n_imp, ch);
+        Eigen::MatrixXd ref_seeds = seeds;
+        if(subtract_mean) ref_seeds -= psi_ref * (psi_ref.transpose() * seeds);
+        const Eigen::MatrixXd overlaps =
+            es_ref.eigenvectors().transpose() * ref_seeds;
+        for(size_t iw = 0; iw < ws.size(); ++iw) {
+          std::vector<std::complex<double>> ref(M * M);
+          for(size_t k = 0; k < M; ++k)
+            for(size_t l = 0; l < M; ++l)
+              ref[k * M + l] =
+                  lehmann_element(es_ref, overlaps, k, l, Ek, ws[iw]);
+          require_resolvents_close(b.resolvent[iw], ref);
         }
 
-      const Eigen::MatrixXd seeds = bilinear_seeds(m.psi0, m.fci, n_imp, ch);
-      Eigen::MatrixXd ref_seeds = seeds;
-      if(subtract_mean) ref_seeds -= m.psi0 * (m.psi0.transpose() * seeds);
-      const Eigen::MatrixXd overlaps =
-          m.es.eigenvectors().transpose() * ref_seeds;
-      REQUIRE((result.gram - ref_seeds.transpose() * ref_seeds)
-                  .cwiseAbs()
-                  .maxCoeff() == Approx(0.0).margin(1e-12));
-      for(size_t iw = 0; iw < ws.size(); ++iw) {
-        std::vector<std::complex<double>> ref(M * M);
-        for(size_t k = 0; k < M; ++k)
-          for(size_t l = 0; l < M; ++l)
-            ref[k * M + l] =
-                lehmann_element(m.es, overlaps, k, l, m.E0, ws[iw]);
-        // The off-diagonal elements must be the nonzero exact ones.
-        REQUIRE(std::abs(ref[1 * M + 1]) > 1e-3);
-        require_resolvents_close(result.resolvent[iw], ref);
+        // psi0's sector on the reference basis is the base alone: its
+        // diagonal-seed spectrum starts at Ek, so no pole of the diagonal
+        // block lies below 0.
+        for(size_t k : diag_pairs)
+          for(Eigen::Index s = 0; s < es_ref.eigenvalues().size(); ++s)
+            if(std::abs(overlaps(s, k)) > 1e-8)
+              REQUIRE(es_ref.eigenvalues()(s) - Ek > -1e-10);
       }
-    }
+  }
 }
 
 TEST_CASE(
