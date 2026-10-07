@@ -99,11 +99,11 @@ Phenomena [(SPEC)](https://spec.labworks.org/home) Center.
 * CMake (3.14+)
 * BLAS / LAPACK
 * [BLAS++](https://github.com/icl-utk-edu/blaspp) / [LAPACK++](https://github.com/icl-utk-edu/lapackpp)
-* MPI 
 * [`std::mdspan`](https://en.cppreference.com/w/cpp/container/mdspan) with [Kokkos](https://github.com/kokkos/mdspan) extensions
 * spdlog
 * [GSL](https://www.gnu.org/software/gsl/) (fork only — required by the
   `mu`-fixing doping routines; see the fork note at the top)
+* MPI (Optional)
 * OpenMP (Optional)
 * Boost (Optional)
 * Catch2 (Testing)
@@ -168,6 +168,7 @@ target_link_libraries( my_target PUBLIC macis::macis )
 | Variable Name              | Description                                               | Default  |
 |----------------------------|-----------------------------------------------------------|----------|
 | `MACIS_ENABLE_OPENMP`      | Enable OpenMP Bindings                                    |  `ON`    |
+| `MACIS_ENABLE_MPI`         | Enable MPI Bindings                                       |  `ON`    |
 | `MACIS_ENABLE_BOOST`       | Enable Boost Bindings                                     |  `ON`    |
 | `BLAS_LIBRARIES`           | Full BLAS linker.                                         |  --      |
 | `LAPACK_LIBRARIES`         | Full LAPACK linker.                                       |  --      |
