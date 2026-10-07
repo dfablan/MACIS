@@ -632,6 +632,7 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.NLANITS", gf_settings.nLanIts, int);
     OPT_KEYWORD("GF.ORB_DEFLATE_TOL", gf_settings.orb_deflate_tol, double);
     OPT_KEYWORD("GF.ORB_MIN_CAPTURE", gf_settings.orb_min_capture, double);
+    OPT_KEYWORD("GF.ORB_EXPAND_BASIS", gf_settings.orb_expand_basis, bool);
     OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
     OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
     OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);

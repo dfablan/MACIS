@@ -1,5 +1,27 @@
 # Plan: capture-gated basis expansion for the orbital matrix resolvent
 
+> **STATUS: IMPLEMENTED (2026-10-07), key `GF.ORB_EXPAND_BASIS`.** Differences from the design below:
+>
+> - `get_GF_basis_AS_1El` is **not** refactored (§A). The growth is a separate
+>   `grow_basis_by_singles` in `dynamical_properties.hpp` that mirrors its loop, so the GF path
+>   cannot change and test 1 is not needed. It also never adds or grows from a `base_dets`
+>   determinant. `trunc_size = 0` means no cap.
+> - §B is `orbital_bilinear_image` (`OrbitalBilinearImage`); the max-|b| merge is
+>   `merge_leaked_images`.
+> - When the basis was expanded, `capture_expanded` is recomputed for **every** pair, not only
+>   the marked ones.
+> - Tests 2–7 are in `tests/dynamical_properties.cxx`.
+> - End to end: a 2-band J = 0 model with an orbital-diagonal bath (8 orbitals, ASCI filling the
+>   1296-determinant ground sector). With expansion, every element in both channels matches the
+>   CAS run to 1e-14. Without it, the off-diagonal elements are 0 (CAS: |R| ≈ 3). With
+>   `GFSEEDTHRES = 1E-3`, the off-diagonal error is 2.8e-1 at `TOT_SD = 1`, 5.9e-6 at
+>   `TOT_SD = 2`, and 6e-15 at `TOT_SD = 3`. Converge `TOT_SD` in production.
+> - Not done: the 2-rank MPI hang (§Open issues) is still undiagnosed, so only single-rank runs
+>   are verified.
+> - The singles growth also adds determinants in sectors that no seed reaches. They are
+>   harmless, since H has no matrix elements between sectors, but they enlarge the basis.
+>   `TRUNC_SIZE` caps them.
+
 ## Context
 
 The orbital-resolved spin resolvent (`PLAN_orbital_resolved_susceptibility.md`, Stages 1–2) projects

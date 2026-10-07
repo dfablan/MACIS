@@ -198,6 +198,8 @@ USE_BANDLAN = ON
 NLANITS = 3000          # >= a few x retained rank r
 ORB_DEFLATE_TOL = 1E-10
 ORB_MIN_CAPTURE = 0.95
+ORB_EXPAND_BASIS = TRUE # grow the basis for seeds below ORB_MIN_CAPTURE
+                        # (PLAN_capture_basis_expansion.md); converge TOT_SD
 BETA = 157
 NWS = 1000
 WMIN = 0.0
@@ -218,6 +220,8 @@ Notes:
   it should not fire. If it does, the deflation tolerance is too loose.
 - On a truncated ASCI space, read `_gram.dat` capture fractions before
   interpreting any element with `μ ≠ ν`; on CAS they are identically 1.
+  With `ORB_EXPAND_BASIS`, `capture_expanded` is 1 for every expanded pair;
+  a pair flagged `unresolved = 1` still misses weight.
 - `DELTA_RESOLVENT` is effectively mandatory for the charge trace `q_0`
   (elastic piece `⟨N_imp⟩²/z`) and useful elsewhere.
 

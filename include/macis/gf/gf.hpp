@@ -57,6 +57,11 @@ struct GFSettings {
   double orb_min_capture =
       0.95;  // minimal tolerated fraction of the weight of O_\mu_\nu |Psi_0> to
              // land inside the ASCI basis.
+  bool orb_expand_basis =
+      false;  // In the orbital-resolvent calculation, add the determinants
+              // missing for the seeds whose capture fraction is below
+              // orb_min_capture (grown with norbs, trunc_size, tot_SD,
+              // GFseedThres and asThres, as for the GF basis).
   bool writeGF = false;
   bool writeGF_singlef = false;
   bool print = false;

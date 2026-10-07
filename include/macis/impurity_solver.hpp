@@ -301,7 +301,7 @@ inline void write_resolvent_singlef(
 inline void write_orbital_resolvent_matrix(
     const std::string &label, size_t n_imp, macis::DiagChannel channel,
     const std::vector<std::complex<double>> &ws,
-    const macis::OrbitalResolventResult &result) {
+    const macis::OrbitalResolventResult &result, double min_capture) {
   bool write_file = true;
   MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
   if(!write_file) return;
@@ -332,10 +332,19 @@ inline void write_orbital_resolvent_matrix(
   std::ofstream gram_file(label + "_gram.dat");
   gram_file.precision(dbl::max_digits10);
   gram_file << "# retained_rank " << result.rank << "\n";
-  gram_file << "# pair mu nu capture\n";
+  gram_file << "# basis_size base " << result.base_size << " expanded "
+            << result.expanded_size << "\n";
+  // capture_base: on the ASCI basis. capture_expanded: on the basis the
+  // resolvent was computed in. unresolved = 1: still below
+  // GF.ORB_MIN_CAPTURE there, so the pair's elements miss weight (and may be
+  // basis-artifact zeros, not symmetry zeros).
+  gram_file << "# pair mu nu capture_base capture_expanded expanded "
+               "unresolved\n";
   for(size_t k = 0; k < npairs; ++k)
     gram_file << k << " " << k / n_imp << " " << k % n_imp << " "
-              << std::scientific << result.capture(k) << "\n";
+              << std::scientific << result.capture(k) << " "
+              << result.capture_expanded(k) << " " << int(result.expanded[k])
+              << " " << int(result.capture_expanded(k) < min_capture) << "\n";
   gram_file << "# eigenvalue\n";
   for(Eigen::Index k = 0; k < result.gram_eigenvalues.size(); ++k)
     gram_file << std::scientific << result.gram_eigenvalues(k) << "\n";
@@ -557,20 +566,52 @@ auto evaluate_resolvent_orbital_matrix(
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
   const auto ws = detail::build_bosonic_resolvent_grid(gf_settings);
   const double E0 = EASCI - (p.E_core + p.E_inactive);
-  auto result = macis::RunResolventOrbitalMatrix<N>(psi0, ham_gen, p.dets,
-                                                    p.n_imp, channel, E0, ws,
-                                                    gf_settings, subtract_mean);
+
+  // The basis expansion grows in the same active space as the GF basis
+  // (evaluate_GF): per-spin occupations of the active orbitals.
+  std::vector<double> occs;
+  if(gf_settings.orb_expand_basis) {
+    std::vector<double> active_ordm(p.n_active * p.n_active);
+    std::vector<double> active_trdm(active_ordm.size() * active_ordm.size());
+    ham_gen.form_rdms(
+        p.dets.begin(), p.dets.end(), p.dets.begin(), p.dets.end(), p.C.data(),
+        macis::matrix_span<double>(active_ordm.data(), p.n_active, p.n_active),
+        macis::rank4_span<double>(active_trdm.data(), p.n_active, p.n_active,
+                                  p.n_active, p.n_active));
+    occs.assign(p.n_active, 0.);
+    for(size_t i = 0; i < p.n_active; i++)
+      occs[i] = active_ordm[i + i * p.n_active] / 2.;
+    if(gf_settings.norbs == 0)
+      std::cout << "GF.ORB_EXPAND_BASIS: GF.NORBS not set, using n_active = "
+                << p.n_active << std::endl;
+  }
+
+  auto result = macis::RunResolventOrbitalMatrix<N>(
+      psi0, ham_gen, p.dets, p.n_imp, channel, E0, ws, gf_settings,
+      subtract_mean, occs);
   const char *seed_kind =
       channel == macis::DiagChannel::Spin ? "spin" : "charge";
-  for(Eigen::Index pair = 0; pair < result.capture.size(); ++pair)
-    if(result.capture(pair) < gf_settings.orb_min_capture)
-      std::cerr << "WARNING: orbital " << seed_kind << " seed ("
-                << pair / p.n_imp << ", " << pair % p.n_imp
-                << ") capture fraction " << result.capture(pair)
-                << " is below GF.ORB_MIN_CAPTURE = "
-                << gf_settings.orb_min_capture << std::endl;
+  if(result.expanded_size > result.base_size)
+    std::cout << "ORBITAL RESOLVENT (" << label << "): basis expanded from "
+              << result.base_size << " to " << result.expanded_size
+              << " determinants" << std::endl;
+  for(Eigen::Index pair = 0; pair < result.capture.size(); ++pair) {
+    if(result.capture(pair) >= gf_settings.orb_min_capture) continue;
+    std::cerr << "WARNING: orbital " << seed_kind << " seed (" << pair / p.n_imp
+              << ", " << pair % p.n_imp << ") capture fraction "
+              << result.capture(pair) << " is below GF.ORB_MIN_CAPTURE = "
+              << gf_settings.orb_min_capture;
+    if(result.expanded[pair])
+      std::cerr << "; basis expanded, capture now "
+                << result.capture_expanded(pair);
+    else
+      std::cerr << "; not expanded (GF.ORB_EXPAND_BASIS off), its elements "
+                   "miss weight and zeros are not symmetry zeros";
+    std::cerr << std::endl;
+  }
   if(gf_settings.writeGF_singlef)
-    detail::write_orbital_resolvent_matrix(label, p.n_imp, channel, ws, result);
+    detail::write_orbital_resolvent_matrix(label, p.n_imp, channel, ws, result,
+                                           gf_settings.orb_min_capture);
   return result;
 }
 

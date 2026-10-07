@@ -166,16 +166,19 @@ Eigen::VectorXd apply_orbital_bilinear(
   return out;
 }
 
-// Estimate the ratio between the norm of the in-basis component of
-// O_{mu nu}|wfn0> and the norm of the full O_{mu nu}|wfn0> vector, with
-// O_{mu nu} the bilinear of apply_orbital_bilinear. Some determinants can be
-// lost if the determinant basis is not complete, so this is a measure of how
-// much of O_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means all
-// determinants are captured, while a value of 0.0 means none are captured.
-// The channel matters: spin-up and spin-down hops can reach the same image,
-// and their relative sign decides whether they interfere constructively.
+// Image of O_{mu nu}|wfn0> relative to a determinant basis: the captured
+// fraction (see orbital_bilinear_captured_fraction) and the images that fall
+// outside the basis ("leaked"), with their accumulated coefficients, in
+// determinant order.
 template <size_t nbits>
-double orbital_bilinear_captured_fraction(
+struct OrbitalBilinearImage {
+  double capture = 1.0;
+  std::vector<std::bitset<nbits>> leaked;
+  std::vector<double> leaked_amplitude;
+};
+
+template <size_t nbits>
+OrbitalBilinearImage<nbits> orbital_bilinear_image(
     const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
     const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
         &det_index,
@@ -200,20 +203,140 @@ double orbital_bilinear_captured_fraction(
       images[image] += (spin ? dn_sign : 1.0) * sign * wfn0[k];
     }
   }
+  OrbitalBilinearImage<nbits> out;
   double captured_norm = 0.0;
   double total_norm = 0.0;
   for(const auto &[image, coefficient] : images) {
     const double norm = coefficient * coefficient;
     total_norm += norm;
-    if(det_index.find(image) != det_index.end()) captured_norm += norm;
+    if(det_index.find(image) != det_index.end()) {
+      captured_norm += norm;
+    } else {
+      out.leaked.push_back(image);
+      out.leaked_amplitude.push_back(coefficient);
+    }
   }
-  return total_norm > 0.0 ? captured_norm / total_norm : 1.0;
+  out.capture = total_norm > 0.0 ? captured_norm / total_norm : 1.0;
+  return out;
+}
+
+// Estimate the ratio between the norm of the in-basis component of
+// O_{mu nu}|wfn0> and the norm of the full O_{mu nu}|wfn0> vector, with
+// O_{mu nu} the bilinear of apply_orbital_bilinear. Some determinants can be
+// lost if the determinant basis is not complete, so this is a measure of how
+// much of O_{mu nu}|wfn0> is captured by the basis. A value of 1.0 means all
+// determinants are captured, while a value of 0.0 means none are captured.
+// The channel matters: spin-up and spin-down hops can reach the same image,
+// and their relative sign decides whether they interfere constructively.
+template <size_t nbits>
+double orbital_bilinear_captured_fraction(
+    const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &det_index,
+    size_t mu, size_t nu, DiagChannel ch) {
+  return orbital_bilinear_image(wfn0, dets, det_index, mu, nu, ch).capture;
+}
+
+// Adds the leaked images of one seed to the growth seeds of the basis
+// expansion. A determinant leaked by several seeds keeps its largest
+// |amplitude|: amplitudes of different operators are not summed, so they
+// cannot cancel and drop a determinant from the growth.
+template <size_t nbits>
+void merge_leaked_images(
+    std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> &merged,
+    const OrbitalBilinearImage<nbits> &image) {
+  for(size_t k = 0; k < image.leaked.size(); ++k) {
+    double &amp = merged[image.leaked[k]];
+    amp = std::max(amp, std::abs(image.leaked_amplitude[k]));
+  }
+}
+
+/**
+ * @brief Active orbitals of the GF basis growth: those whose per-spin
+ *        occupation lies in [asThres, 1 - asThres]. Same rule as
+ *        get_GF_basis_AS_1El.
+ */
+inline std::vector<uint32_t> active_space_orbitals(
+    const std::vector<double> &occs, double asThres) {
+  std::vector<uint32_t> as_orbs;
+  for(size_t i = 0; i < occs.size(); i++)
+    if(occs[i] >= asThres && occs[i] <= (1. - asThres)) as_orbs.push_back(i);
+  return as_orbs;
+}
+
+/**
+ * @brief Grows a determinant set from `seeds` by layers of active-space single
+ *        excitations, as get_GF_basis_AS_1El does for the GF basis:
+ *
+ *        - every seed not in `exclude` is kept;
+ *        - layer 1 grows only from the seeds with |amplitude| >= GFseedThres,
+ *          each later layer from the determinants the previous one added;
+ *        - settings.tot_SD layers, stopping once more than
+ *          settings.trunc_size determinants are kept (trunc_size = 0: no cap).
+ *
+ *        Determinants in `exclude` (the base basis) are never added or grown
+ *        from. The result is in insertion order and contains no duplicates.
+ *
+ * @param[in] seeds, amplitudes: Seed determinants (no duplicates) and the
+ *            coefficients that gate layer 1.
+ * @param[in] exclude: Determinants already in the basis.
+ * @param[in] as_orbs: Active orbitals (see active_space_orbitals).
+ * @param[in] norbs: Number of spatial orbitals passed to
+ *            generate_singles_spin_as.
+ */
+template <size_t nbits>
+std::vector<std::bitset<nbits>> grow_basis_by_singles(
+    const std::vector<std::bitset<nbits>> &seeds,
+    const std::vector<double> &amplitudes,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &exclude,
+    const std::vector<uint32_t> &as_orbs, size_t norbs,
+    const GFSettings &settings) {
+  assert(seeds.size() == amplitudes.size());
+  std::vector<std::bitset<nbits>> found;
+  std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>> found_pos;
+  auto add = [&](const std::bitset<nbits> &det) {
+    if(exclude.find(det) == exclude.end() &&
+       found_pos.emplace(det, found.size()).second)
+      found.push_back(det);
+  };
+  const auto within_cap = [&] {
+    return settings.trunc_size == 0 || found.size() <= settings.trunc_size;
+  };
+
+  std::vector<std::bitset<nbits>> frontier;
+  for(size_t k = 0; k < seeds.size(); ++k) {
+    add(seeds[k]);
+    if(std::abs(amplitudes[k]) >= settings.GFseedThres &&
+       exclude.find(seeds[k]) == exclude.end())
+      frontier.push_back(seeds[k]);
+  }
+
+  std::vector<std::bitset<nbits>> singles;
+  for(int layer = 1; layer <= settings.tot_SD && within_cap(); ++layer) {
+    const size_t start = found.size();
+    for(const auto &det : frontier) {
+      if(!within_cap()) break;
+      generate_singles_spin_as(norbs, det, singles, as_orbs);
+      for(const auto &s : singles) add(s);
+    }
+    frontier.assign(found.begin() + start, found.end());
+  }
+  return found;
 }
 
 struct OrbitalResolventResult {
   Eigen::MatrixXd gram;
   Eigen::VectorXd gram_eigenvalues;
+  // Capture fraction of every seed on the input basis (the diagnostic).
   Eigen::VectorXd capture;
+  // Capture fraction on the basis the resolvent was computed in. Equal to
+  // capture unless the basis was expanded.
+  Eigen::VectorXd capture_expanded;
+  // Pairs whose leaked images were added to the basis (orb_expand_basis).
+  std::vector<bool> expanded;
+  size_t base_size = 0;
+  size_t expanded_size = 0;
   size_t rank = 0;
   std::vector<std::vector<std::complex<double>>> resolvent;
 };
@@ -234,16 +357,34 @@ struct OrbitalResolventResult {
  *        elastic pole m_k m_l / w dominates the diagonal block unless
  *        subtract_mean is set.
  *
+ *        Basis expansion (settings.orb_expand_basis). A seed can leave the
+ *        symmetry sector of base_dets (e.g. S_{mu nu}, mu != nu, when H
+ *        conserves the electron count or parity of each orbital flavor), and
+ *        then its capture fraction is 0 and its elements come out as zeros.
+ *        With the flag set, every pair whose capture is below
+ *        settings.orb_min_capture has its leaked images added to the basis,
+ *        grown by grow_basis_by_singles (tot_SD, trunc_size, GFseedThres,
+ *        asThres, norbs, as for the GF basis). A determinant leaked by several
+ *        pairs is gated by its largest |amplitude|, so pairs cannot cancel.
+ *        All pairs are then evaluated on the single basis
+ *        base_dets + added, with wfn0 zero-padded. With the flag unset, or no
+ *        pair below threshold, the result is identical to the unexpanded one.
+ *
  * @param[in] DiagChannel channel: Spin (S_{mu nu}) or Charge (N_{mu nu}).
  * @param[in] bool subtract_mean: If true, use the fluctuation seeds
  *            (O_{mu nu} - <O_{mu nu}>)|wfn0>.
+ * @param[in] occs: Per-spin occupations of the active orbitals, defining the
+ *            active space of the growth (see active_space_orbitals). Only used
+ *            for the expansion. If empty, every orbital is active. If
+ *            settings.norbs is 0, occs.size() is used as norbs.
  */
 template <size_t nbits, typename index_t = int32_t>
 OrbitalResolventResult RunResolventOrbitalMatrix(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
     const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
     DiagChannel channel, double E0, const std::vector<std::complex<double>> &ws,
-    const GFSettings &settings, bool subtract_mean = false) {
+    const GFSettings &settings, bool subtract_mean = false,
+    const std::vector<double> &occs = {}) {
   if(n_imp > nbits / 2)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
@@ -257,15 +398,76 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   for(size_t k = 0; k < base_dets.size(); ++k)
     det_index.emplace(base_dets[k], k);
 
-  Eigen::MatrixXd seeds(base_dets.size(), npairs);
-  Eigen::VectorXd capture(npairs);
+  // Capture pass on the input basis. Leaked images of the pairs below
+  // threshold are merged with max |amplitude| (not summed: images of
+  // different operators must not interfere).
+  OrbitalResolventResult result;
+  result.capture.resize(npairs);
+  result.expanded.assign(npairs, false);
+  std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> leaked;
+  for(size_t mu = 0; mu < n_imp; ++mu)
+    for(size_t nu = 0; nu < n_imp; ++nu) {
+      const size_t pair = mu * n_imp + nu;
+      auto image =
+          orbital_bilinear_image(wfn0, base_dets, det_index, mu, nu, channel);
+      result.capture(pair) = image.capture;
+      if(!settings.orb_expand_basis ||
+         image.capture >= settings.orb_min_capture)
+        continue;
+      result.expanded[pair] = true;
+      merge_leaked_images(leaked, image);
+    }
+
+  // The basis the resolvent is computed in: base_dets, followed by the grown
+  // determinants if any pair was marked.
+  std::vector<std::bitset<nbits>> dets(base_dets);
+  Eigen::VectorXd psi0 = wfn0;
+  if(!leaked.empty()) {
+    const size_t norbs = settings.norbs ? settings.norbs : occs.size();
+    if(norbs == 0)
+      throw std::runtime_error(
+          "RunResolventOrbitalMatrix: basis expansion needs settings.norbs "
+          "or the orbital occupations");
+    std::vector<uint32_t> as_orbs;
+    if(occs.empty())
+      for(uint32_t i = 0; i < norbs; ++i) as_orbs.push_back(i);
+    else
+      as_orbs = active_space_orbitals(occs, settings.asThres);
+
+    std::vector<std::bitset<nbits>> grow_seeds;
+    std::vector<double> grow_amplitudes;
+    for(const auto &[det, amp] : leaked) {
+      grow_seeds.push_back(det);
+      grow_amplitudes.push_back(amp);
+    }
+    const auto added = grow_basis_by_singles(
+        grow_seeds, grow_amplitudes, det_index, as_orbs, norbs, settings);
+    for(const auto &det : added) {
+      det_index.emplace(det, dets.size());
+      dets.push_back(det);
+    }
+    psi0.conservativeResize(dets.size());
+    psi0.tail(dets.size() - base_dets.size()).setZero();
+  }
+  result.base_size = base_dets.size();
+  result.expanded_size = dets.size();
+
+  Eigen::MatrixXd seeds(dets.size(), npairs);
+  result.capture_expanded = result.capture;
   for(size_t mu = 0; mu < n_imp; ++mu)
     for(size_t nu = 0; nu < n_imp; ++nu) {
       const size_t pair = mu * n_imp + nu;
       seeds.col(pair) =
-          apply_orbital_bilinear(wfn0, base_dets, det_index, mu, nu, channel);
-      capture(pair) = orbital_bilinear_captured_fraction(
-          wfn0, base_dets, det_index, mu, nu, channel);
+          apply_orbital_bilinear(psi0, dets, det_index, mu, nu, channel);
+      if(dets.size() == base_dets.size()) continue;
+      result.capture_expanded(pair) = orbital_bilinear_captured_fraction(
+          psi0, dets, det_index, mu, nu, channel);
+      // Every leaked image of a marked pair is kept by construction.
+      if(result.expanded[pair] && result.capture_expanded(pair) < 1.0 - 1e-12)
+        throw std::runtime_error(
+            "RunResolventOrbitalMatrix: an expanded seed is still not captured "
+            "(capture " +
+            std::to_string(result.capture_expanded(pair)) + ")");
     }
 
   // Optionally replace each seed O_{mu nu}|wfn0> by the fluctuation
@@ -275,11 +477,9 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   // covariance and remains the zeroth moment of R. The capture fractions
   // above describe the bare operator: the subtracted component is in-basis.
   if(subtract_mean)
-    seeds -= wfn0 * ((wfn0.transpose() * seeds) / wfn0.squaredNorm());
+    seeds -= psi0 * ((psi0.transpose() * seeds) / psi0.squaredNorm());
 
-  OrbitalResolventResult result;
   result.gram = seeds.transpose() * seeds;
-  result.capture = std::move(capture);
   result.resolvent.assign(ws.size(), std::vector<std::complex<double>>(
                                          npairs * npairs, {0.0, 0.0}));
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(result.gram);
@@ -311,14 +511,13 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     for(Eigen::Index k = 0; k < psi.rows(); ++k)
       vecs[i * psi.rows() + k] = psi(k, i);
 
-  std::vector<std::bitset<nbits>> dets(base_dets);
   auto hamil = make_dist_csr_hamiltonian<index_t>(MPI_COMM_WORLD, dets.begin(),
                                                   dets.end(), Hgen, 1.E-6);
   int nLanIts = std::min<int>(
-      std::max<int>(settings.nLanIts, int(result.rank) + 1), base_dets.size());
+      std::max<int>(settings.nLanIts, int(result.rank) + 1), dets.size());
   std::vector<std::vector<std::complex<double>>> reduced;
   BandResolvent(hamil, vecs, ws, reduced, nLanIts, E0, true, result.rank,
-                base_dets.size(), settings.print, settings.saveGFmats);
+                dets.size(), settings.print, settings.saveGFmats);
 
   const Eigen::MatrixXd B = Ur * lambdas.cwiseSqrt().asDiagonal();
   for(size_t iw = 0; iw < ws.size(); ++iw) {

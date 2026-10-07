@@ -1372,3 +1372,396 @@ TEST_CASE(
         {f, f, f, 2.0 * f, 2.0 * f, 2.0 * f});
   }
 }
+
+namespace {
+
+// Two impurity orbitals (0, 1), each hybridised only with its own bath orbital
+// (2, 3), with density-density U (intra) and U' (inter), J = 0. Every
+// one-body term stays inside one flavor {mu, mu + 2}, so H conserves the
+// electron count of each flavor and spin.
+void flavor_diagonal_integrals(std::vector<double>& T, std::vector<double>& V,
+                               bool degenerate) {
+  const size_t n = 4, n_imp = 2;
+  const double U = 1.0;
+  const double Up = degenerate ? U : 0.6;
+  const double eps_imp[2] = {-0.5, degenerate ? -0.5 : -0.3};
+  const double eps_bath[2] = {0.3, degenerate ? 0.3 : 0.2};
+  const double hyb[2] = {0.4, degenerate ? 0.4 : 0.55};
+  T.assign(n * n, 0.0);
+  V.assign(n * n * n * n, 0.0);
+  for(size_t mu = 0; mu < n_imp; ++mu) {
+    const size_t b = mu + n_imp;
+    T[mu * n + mu] = eps_imp[mu];
+    T[b * n + b] = eps_bath[mu];
+    T[mu * n + b] = T[b * n + mu] = hyb[mu];
+  }
+  // Chemist's notation (pq|rs): (pp|pp) = U, (pp|qq) = U', no exchange.
+  for(size_t p = 0; p < n_imp; ++p)
+    for(size_t q = 0; q < n_imp; ++q)
+      V[((p * n + p) * n + q) * n + q] = p == q ? U : Up;
+}
+
+// Flavor sector of a determinant: electron count of each flavor {f, f + 2}
+// per spin, packed into one integer.
+int flavor_sector(const macis::wfn_t<N>& det) {
+  int key = 0;
+  for(int spin = 0; spin < 2; ++spin)
+    for(int f = 0; f < 2; ++f) {
+      const int off = spin * int(N / 2);
+      key = 4 * key + int(det.test(f + off)) + int(det.test(f + 2 + off));
+    }
+  return key;
+}
+
+// The determinants of the ground state's flavor sector, i.e. what an ASCI
+// solve grown through H-connected determinants can reach, and psi0 on them.
+std::vector<macis::wfn_t<N>> ground_sector_dets(
+    const std::vector<macis::wfn_t<N>>& dets, const Eigen::VectorXd& psi0,
+    Eigen::VectorXd& psi_sector) {
+  Eigen::Index kmax;
+  psi0.cwiseAbs().maxCoeff(&kmax);
+  const int key = flavor_sector(dets[kmax]);
+  std::vector<macis::wfn_t<N>> sector;
+  std::vector<double> coeffs;
+  for(size_t k = 0; k < dets.size(); ++k)
+    if(flavor_sector(dets[k]) == key) {
+      sector.push_back(dets[k]);
+      coeffs.push_back(psi0(k));
+    }
+  psi_sector = Eigen::Map<Eigen::VectorXd>(coeffs.data(), coeffs.size());
+  return sector;
+}
+
+// Full-FCI flavor-diagonal model: dense eigensystem plus the ground state
+// restricted to its sector.
+struct FlavorModel {
+  std::vector<double> T, V;
+  std::vector<macis::wfn_t<N>> fci, sector;
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es;
+  double E0 = 0.0;
+  Eigen::VectorXd psi0, psi_sector;
+};
+
+template <class Gen>
+void solve_flavor_model(FlavorModel& m, Gen& ham_gen) {
+  m.fci = half_filled_fci_dets();
+  m.es.compute(dense_hamiltonian(m.fci, ham_gen));
+  // A single ground state: at J = 0 a degeneracy across flavor sectors would
+  // make psi0 a mixture of sectors.
+  REQUIRE(m.es.eigenvalues()(1) - m.es.eigenvalues()(0) > 1e-3);
+  m.E0 = m.es.eigenvalues()(0);
+  m.psi0 = m.es.eigenvectors().col(0);
+  m.sector = ground_sector_dets(m.fci, m.psi0, m.psi_sector);
+  REQUIRE(m.psi_sector.norm() == Approx(1.0).epsilon(1e-12));
+  REQUIRE(m.sector.size() < m.fci.size());
+}
+
+}  // namespace
+
+TEST_CASE("Dynamical properties - orbital bilinear image reports leaks") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Same state as the sign test above: S_{20} leaks only
+  // X = |alpha{1,2}, beta{1,2}>, with accumulated amplitude 0.5 + 0.7 = 1.2.
+  const auto D = make_det({0, 1}, {0, 1});
+  const auto Da = make_det({1, 2}, {0, 1});
+  const auto Db = make_det({0, 1}, {1, 2});
+  const std::vector<macis::wfn_t<N>> dets = {D, Da, Db};
+  const Eigen::VectorXd coeffs =
+      (Eigen::Vector3d() << 0.3, 0.5, -0.7).finished();
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
+  for(size_t k = 0; k < dets.size(); ++k) index.emplace(dets[k], k);
+
+  const auto image = macis::orbital_bilinear_image<N>(coeffs, dets, index, 2, 0,
+                                                      macis::DiagChannel::Spin);
+  REQUIRE(image.capture == Approx(1.0 / 9.0).epsilon(1e-12));
+  REQUIRE(image.leaked.size() == 1);
+  REQUIRE(image.leaked[0] == make_det({1, 2}, {1, 2}));
+  REQUIRE(image.leaked_amplitude[0] == Approx(1.2).epsilon(1e-12));
+
+  // A diagonal seed never leaks.
+  const auto diag = macis::orbital_bilinear_image<N>(coeffs, dets, index, 1, 1,
+                                                     macis::DiagChannel::Spin);
+  REQUIRE(diag.capture == 1.0);
+  REQUIRE(diag.leaked.empty());
+}
+
+TEST_CASE("Dynamical properties - basis growth gating and merge") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  SECTION("leaked images of different seeds do not interfere") {
+    // Two pairs leak into the same determinant with opposite amplitudes. A
+    // sum would cancel them to 0, below any growth threshold.
+    const auto X = make_det({1}, {2});
+    macis::OrbitalBilinearImage<N> a, b;
+    a.leaked = {X};
+    a.leaked_amplitude = {0.3};
+    b.leaked = {X};
+    b.leaked_amplitude = {-0.3};
+    std::map<macis::wfn_t<N>, double, macis::bitset_less_comparator<N>> merged;
+    macis::merge_leaked_images(merged, a);
+    macis::merge_leaked_images(merged, b);
+    REQUIRE(merged.size() == 1);
+    REQUIRE(merged.at(X) == Approx(0.3).epsilon(1e-15));
+  }
+
+  SECTION("only seeds above GFseedThres are grown, all seeds are kept") {
+    const auto big = make_det({0}, {0});
+    const auto small = make_det({3}, {3});
+    const auto base = make_det({1}, {1});
+    std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> exclude;
+    exclude.emplace(base, 0);
+    macis::GFSettings settings;
+    settings.tot_SD = 1;
+    settings.GFseedThres = 0.1;
+    const std::vector<uint32_t> as_orbs = {0, 1, 2, 3};
+    const auto found = macis::grow_basis_by_singles<N>(
+        {big, small}, {0.5, 0.05}, exclude, as_orbs, 4, settings);
+    std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> pos;
+    for(size_t k = 0; k < found.size(); ++k) pos.emplace(found[k], k);
+    REQUIRE(pos.size() == found.size());  // no duplicates
+    REQUIRE(found[0] == big);
+    REQUIRE(found[1] == small);
+    // big = |a{0}, b{0}> has 3 alpha and 3 beta singles, none of them the
+    // base determinant (that one moves both spins).
+    REQUIRE(found.size() == 2 + 6);
+    REQUIRE(pos.count(make_det({2}, {3})) == 0);  // single of small only
+    REQUIRE(pos.count(make_det({0}, {2})) == 1);
+    REQUIRE(pos.count(base) == 0);
+
+    // The excluded determinant is never added, even when reached.
+    const auto from_base_neighbour = macis::grow_basis_by_singles<N>(
+        {make_det({1}, {0})}, {1.0}, exclude, as_orbs, 4, settings);
+    for(const auto& d : from_base_neighbour) REQUIRE(d != base);
+  }
+
+  SECTION("trunc_size caps the growth but never drops a seed") {
+    macis::GFSettings settings;
+    settings.tot_SD = 3;
+    settings.GFseedThres = 0.0;
+    settings.trunc_size = 1;
+    const std::vector<uint32_t> as_orbs = {0, 1, 2, 3};
+    const std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>>
+        none;
+    const auto seeds = std::vector<macis::wfn_t<N>>{
+        make_det({0}, {0}), make_det({1}, {1}), make_det({2}, {2})};
+    const auto found = macis::grow_basis_by_singles<N>(
+        seeds, {1.0, 1.0, 1.0}, none, as_orbs, 4, settings);
+    REQUIRE(found.size() == 3);
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - off-diagonal capture is exactly zero in a flavor "
+    "sector") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // The diagnosis of PLAN_capture_basis_expansion.md: with a flavor-diagonal
+  // bath at J = 0, a basis confined to the ground state's flavor sector
+  // captures none of S_{mu nu}|psi0> / N_{mu nu}|psi0> for mu != nu, and all of
+  // it for mu = nu. Without expansion the off-diagonal elements are zero.
+  const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen);
+
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+  for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge}) {
+    const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings);
+    REQUIRE(result.base_size == m.sector.size());
+    REQUIRE(result.expanded_size == m.sector.size());
+    for(size_t mu = 0; mu < n_imp; ++mu)
+      for(size_t nu = 0; nu < n_imp; ++nu) {
+        const size_t pair = mu * n_imp + nu;
+        REQUIRE(result.capture(pair) == (mu == nu ? 1.0 : 0.0));
+        REQUIRE(result.capture_expanded(pair) == result.capture(pair));
+        REQUIRE_FALSE(result.expanded[pair]);
+        if(mu == nu) continue;
+        for(size_t iw = 0; iw < ws.size(); ++iw)
+          for(size_t l = 0; l < M; ++l)
+            REQUIRE(std::abs(result.resolvent[iw][pair * M + l]) == 0.0);
+      }
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - basis expansion recovers the exact orbital matrix "
+    "resolvent") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Same flavor-sector basis, gate on: the leaked sectors are grown until
+  // complete (tot_SD = 4 on 4 orbitals), so every element, off-diagonal ones
+  // included, must match the dense Lehmann sum on the full FCI space.
+  const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen);
+
+  const std::vector<std::complex<double>> ws = {
+      {0.5, 0.2}, {2.0, 0.2}, {-1.0, 0.1}};
+  macis::GFSettings settings;
+  settings.nLanIts = 200;
+  settings.orb_expand_basis = true;
+  settings.tot_SD = 4;
+  settings.GFseedThres = 0.0;
+  settings.norbs = n;
+
+  for(auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge})
+    for(bool subtract_mean : {false, true}) {
+      const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+          m.psi_sector, ham_gen, m.sector, n_imp, ch, m.E0, ws, settings,
+          subtract_mean);
+      REQUIRE(result.base_size == m.sector.size());
+      REQUIRE(result.expanded_size > result.base_size);
+      for(size_t mu = 0; mu < n_imp; ++mu)
+        for(size_t nu = 0; nu < n_imp; ++nu) {
+          const size_t pair = mu * n_imp + nu;
+          REQUIRE(result.expanded[pair] == (mu != nu));
+          REQUIRE(result.capture_expanded(pair) == 1.0);
+        }
+
+      const Eigen::MatrixXd seeds = bilinear_seeds(m.psi0, m.fci, n_imp, ch);
+      Eigen::MatrixXd ref_seeds = seeds;
+      if(subtract_mean) ref_seeds -= m.psi0 * (m.psi0.transpose() * seeds);
+      const Eigen::MatrixXd overlaps =
+          m.es.eigenvectors().transpose() * ref_seeds;
+      REQUIRE((result.gram - ref_seeds.transpose() * ref_seeds)
+                  .cwiseAbs()
+                  .maxCoeff() == Approx(0.0).margin(1e-12));
+      for(size_t iw = 0; iw < ws.size(); ++iw) {
+        std::vector<std::complex<double>> ref(M * M);
+        for(size_t k = 0; k < M; ++k)
+          for(size_t l = 0; l < M; ++l)
+            ref[k * M + l] =
+                lehmann_element(m.es, overlaps, k, l, m.E0, ws[iw]);
+        // The off-diagonal elements must be the nonzero exact ones.
+        REQUIRE(std::abs(ref[1 * M + 1]) > 1e-3);
+        require_resolvents_close(result.resolvent[iw], ref);
+      }
+    }
+}
+
+TEST_CASE(
+    "Dynamical properties - expanded resolvent satisfies the SU(4) identity") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // Degenerate flavors, U' = U, J = 0: SU(4). With the off-diagonal element
+  // recovered by the expansion,
+  //   R_{01;01} = (R_{00;00} + R_{11;11} - 2 R_{00;11}) / 2.
+  const size_t n_imp = 2, n = 4, M = n_imp * n_imp;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/true);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen);
+
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 200;
+  settings.orb_expand_basis = true;
+  settings.tot_SD = 4;
+  settings.GFseedThres = 0.0;
+  settings.norbs = n;
+  const auto result = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
+      ws, settings);
+  REQUIRE(result.capture(1) == 0.0);
+  REQUIRE(result.capture_expanded(1) == 1.0);
+  const size_t p00 = 0, p01 = 1, p10 = 2, p11 = 3;
+  for(size_t iw = 0; iw < ws.size(); ++iw) {
+    const auto& R = result.resolvent[iw];
+    REQUIRE(std::abs(R[p01 * M + p01]) > 1e-3);
+    const auto rhs =
+        0.5 * (R[p00 * M + p00] + R[p11 * M + p11] - 2.0 * R[p00 * M + p11]);
+    require_resolvents_close({R[p01 * M + p01], R[p10 * M + p10]}, {rhs, rhs});
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - basis expansion off or not needed is "
+    "bit-identical") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // On the full FCI space every capture is 1, so the gate marks nothing and
+  // the result must be bit-for-bit the unexpanded one.
+  const size_t n_imp = 2, n_active = 4;
+  std::vector<double> T, V;
+  orbital_matrix_integrals(T, V);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), n_active, n_active),
+      macis::rank4_span<double>(V.data(), n_active, n_active, n_active,
+                                n_active));
+  auto dets = half_filled_fci_dets();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(
+      dense_hamiltonian(dets, ham_gen));
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings off;
+  off.nLanIts = 100;
+  macis::GFSettings on = off;
+  on.orb_expand_basis = true;
+  on.orb_min_capture = 0.999;
+
+  for(bool subtract_mean : {false, true}) {
+    const auto a = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, off,
+        subtract_mean);
+    const auto b = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        psi0, ham_gen, dets, n_imp, macis::DiagChannel::Spin, E0, ws, on,
+        subtract_mean);
+    REQUIRE(b.expanded_size == b.base_size);
+    REQUIRE(a.rank == b.rank);
+    REQUIRE(a.gram == b.gram);
+    REQUIRE(a.capture == b.capture);
+    REQUIRE(a.resolvent == b.resolvent);
+  }
+}
+
+TEST_CASE("Dynamical properties - basis expansion norbs fallback") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // settings.norbs = 0 uses occs.size(): same basis and result as norbs = 4.
+  // Without either the expansion cannot generate singles and refuses.
+  const size_t n_imp = 2, n = 4;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen);
+
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}};
+  macis::GFSettings explicit_norbs;
+  explicit_norbs.nLanIts = 200;
+  explicit_norbs.orb_expand_basis = true;
+  explicit_norbs.tot_SD = 2;
+  explicit_norbs.norbs = n;
+  macis::GFSettings fallback = explicit_norbs;
+  fallback.norbs = 0;
+  const std::vector<double> occs(n, 0.5);  // every orbital active
+
+  const auto a = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
+      ws, explicit_norbs);
+  const auto b = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
+      ws, fallback, false, occs);
+  REQUIRE(a.expanded_size > a.base_size);
+  REQUIRE(a.expanded_size == b.expanded_size);
+  REQUIRE(a.resolvent == b.resolvent);
+  REQUIRE_THROWS(macis::RunResolventOrbitalMatrix<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
+      ws, fallback));
+}
