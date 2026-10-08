@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
   // active integrals are built: it zeroes parity-breaking integrals up to
   // PARITY_TOL in T, Td and V, and the active copies must see that.
   {
-    bool parity_solve = false;
+    bool parity_solve = true;
     double parity_tol = 1e-10;
     OPT_KEYWORD("ASCI.PARITY_SOLVE", parity_solve, bool);
     OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
@@ -441,7 +441,7 @@ int main(int argc, char** argv) {
 
     std::cout << "\nOrbital Occupations (per spin) in the original basis: "
               << std::endl;
-    std::cout << "Occs: ";
+    std::cout << std::scientific << std::setprecision(12) << "Occs: ";
     for(const auto oc : params.occs) std::cout << oc << ", ";
     std::cout << std::endl;
 
@@ -499,7 +499,7 @@ int main(int argc, char** argv) {
 
   std::cout << "\nOrbital Occupations (per spin) in the original basis: "
             << std::endl;
-  std::cout << "Occs: ";
+  std::cout << std::scientific << std::setprecision(12) << "Occs: ";
   for(const auto oc : params.occs) std::cout << oc << ", ";
   std::cout << std::endl;
 

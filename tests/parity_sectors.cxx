@@ -195,6 +195,31 @@ void write_wfn_root(const std::string& fname, Args&&... args) {
 }  // namespace
 
 TEST_CASE("Parity labels") {
+  SECTION("report preserves stream formatting and occupation precision") {
+    auto p = make_model({});
+    std::ostringstream report;
+    report << std::scientific << std::setprecision(12);
+    const auto flags = report.flags();
+    const auto precision = report.precision();
+    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr,
+                              p.V, 1e-10, report);
+    CHECK(report.flags() == flags);
+    CHECK(report.precision() == precision);
+    report << "Occs: " << 0.2499153714469 << ", "
+           << "EASCI = " << -65.732007760058;
+    CHECK(report.str().find("Occs: 2.499153714469e-01,") != std::string::npos);
+    CHECK(report.str().find("EASCI = -6.573200776006e+01") != std::string::npos);
+
+    std::ostringstream fixed_report;
+    fixed_report << std::fixed << std::setprecision(8);
+    const auto fixed_flags = fixed_report.flags();
+    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr,
+                              p.V, 1e-10, fixed_report);
+    CHECK(fixed_report.flags() == fixed_flags);
+    CHECK(fixed_report.precision() == 8);
+    CHECK(fixed_report.str().find("max_discarded = 0.0e+00") != std::string::npos);
+  }
+
   SECTION("band-diagonal bath: two groups, nothing discarded") {
     auto p = make_parity_model({});
     const auto& L = *p.parity_labels;

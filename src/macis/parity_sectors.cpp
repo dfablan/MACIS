@@ -191,9 +191,10 @@ ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
   log << "PARITY_LABELS groups = [";
   for(size_t b = 0; b < nbands; ++b)
     log << (b ? "," : "") << orb_list(L.group_orbs[b]);
+  std::ostringstream discarded;
+  discarded << std::scientific << std::setprecision(1) << L.max_discarded;
   log << "] decoupled = " << orb_list(decoupled)
-      << " max_discarded = " << std::scientific << std::setprecision(1)
-      << L.max_discarded << std::defaultfloat
+      << " max_discarded = " << discarded.str()
       << " counts_conserved = " << (counts ? "T" : "F") << std::endl;
   if(!decoupled.empty())
     log << "WARNING: PARITY_SOLVE: orbital(s) " << orb_list(decoupled)

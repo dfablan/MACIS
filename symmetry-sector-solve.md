@@ -22,6 +22,12 @@
 > rotation and a finer `group_of` (one group per (band, K) channel) in the per-band natural
 > orbitals that already exist. A read-only check of archived rotation matrices decides how urgent
 > that is (§3.4).
+>
+> **Revised 2026-10-03 (2×2 priorities).** No 2×2 evidence shows a K trap. §1.3 is a
+> channel-allocation error *inside* the correct (parity, K) sector, and §1.2 is about N. On the
+> Irrep bath, K can be a hard wall only at NROTS ≥ 1, and only once the natural orbitals come out
+> momentum-pure. For 2×2 Irrep runs, channel-allocation starts (§3.5) therefore come before K
+> labels (§3.3, §3.4). See "Priority for 2×2 Irrep" in §0.
 
 ---
 
@@ -38,11 +44,11 @@ Code on branch `claude/happy-franklin-1lfi3g`. Details, deviations and tests:
 | §3.1 cold-seed closure bug (F3) | open | |
 | §3.2 bath modes A/B (SDP projection) | open | a bath that is not band-diagonal is refused, with the offending coupling named |
 | §3.3 labels: band parity | **done** (band-diagonal bath, band-major layout) | detected from T, verified and cleaned against every integral, `ASCI.PARITY_TOL` |
-| §3.3 labels: K, point group, orbit representatives | open | 2×2 out of scope. On the Irrep bath, the bath orbitals already carry K (F12); what is missing is the `fullM` impurity rotation, (band, K) groups in `group_of`, and the sector table |
+| §3.3 labels: K, point group, orbit representatives | open, **deferred** | 2×2 out of scope. On the Irrep bath, the bath orbitals already carry K (F12); what is missing is the `fullM` impurity rotation, (band, K) groups in `group_of`, and the sector table. Deferred until a run shows a K trap (§0, "Priority for 2×2 Irrep") |
 | §3.4 per-band natural orbitals, sector-preserving restarts | **done** | `PARITY_SOLVE` now runs with NROTS > 0: natural orbitals per (impurity\|bath) × band block, restarts moved into the sector, inherited charge-sector bases checked; `parity-sector-solve-simple.md` §12 |
 | §3.4 covariant natural orbitals, `LABEL_LEAK` | **partly done** | `LABEL_LEAK` is printed before every rotation; the covariant choice (and with it `SYMMETRIZE_DETS` with NROTS > 0) is open |
 | §3.5 seeds | **partly done** | one seed per sector: the energy-ordered reference if it lies in the sector, otherwise repaired and descended on ⟨D\|H\|D⟩. The energy-ordered seed is now the default for every run (`ASCI.HF_BY_ENERGY`, F3's "energy-sorted only with `SYMMETRIZE_DETS`" no longer holds) |
-| §3.5 several starts per sector, level-allocation candidates | open | |
+| §3.5 several starts per sector, level-allocation candidates | open, **next for 2×2** | the only failure shown on 2×2 (§1.3) is a channel allocation inside the correct sector |
 | §3.6 ⟨S²⟩, ⟨R⟩/⟨σ_d⟩, `SPIN_CHECK` | open | |
 | §3.7 sector wrapper, all solver paths (F6) | **done for ED, `SolveImpurityASCI`, `SolveImpurityASCI_rot`** | entered inside the solvers, so the driver, the µ search and the charge-sector search use it. Cheap mode is not wrapped: it re-diagonalizes the winner's space and so stays in the winner's sector |
 | §3.7 sector outputs and keys | **done** | `PARITY_SECTOR` lines, `parity_sectors.dat`, `PARITY_TIE`; keys `ASCI.PARITY_SOLVE/TOL/ETOL/ONLY` in all three impurity drivers |
@@ -84,6 +90,26 @@ So a better single seed will not fix this. **The search has to cover the competi
 6. validation on frozen Hamiltonians (1×2 U = 70, 2×2 U = 0, 2×2 U = 4);
 7. screening and the µ search;
 8. DMFT.
+
+**Priority for 2×2 Irrep.** On this bath, steps 3 and 4 swap places: (band, K, spin)
+channel-allocation starts (§3.5) come before K labels and (band, K) natural orbitals.
+- **No K trap has been observed.** §1.3 fails inside the correct (parity, K) sector: one pair sits
+  in the wrong channel. At U = 0 the Irrep bath splits into eight independent 1-impurity +
+  2-bath chains per spin, and their counts are walls finer than K. A K loop cannot repair this.
+  §1.2 is about N, not K.
+- **At NROTS = 0, K is not a label on determinants.** The impurity is in the site basis, where
+  translations are signed permutations (§2.1, §3.3). They trap only if the seed is invariant,
+  which needs every (band, spin) impurity block empty or full. Even then, ASCI truncation can
+  break the orbit, so the trap is soft.
+- **At NROTS ≥ 1, K becomes a hard wall only once the natural orbitals are momentum-pure.** A
+  K-definite state has a momentum-diagonal 1-RDM, so non-degenerate natural orbitals carry K.
+  After that, every restart from `hf_det` (F2) keeps the K its fill implies. Inside the degenerate
+  blocks (E_1/E_2, `band_sym`), `gesvd` can mix K, and then there is no wall. The (band, K) natural
+  orbitals of §3.4 make the wall exact, so they must land together with the K sector loop, not
+  before it.
+- **What reopens K:** a frozen 2×2 Hamiltonian whose ground state lies in a K sector the
+  production solve does not reach, or archived NROTS ≥ 1 rotations whose columns sit on a
+  single K channel (§3.4 check), which would mean today's runs already have the hard wall.
 
 ---
 

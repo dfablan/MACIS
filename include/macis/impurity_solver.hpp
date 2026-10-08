@@ -371,7 +371,8 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   for(const auto oc : occs) std::cout << oc << ", ";
   std::cout << std::endl;
 
-  std::cout << "EASCI = " << EASCI << std::endl;
+  std::cout << std::scientific << std::setprecision(12)
+            << "EASCI = " << EASCI << std::endl;
 
   // Frequency grid
   std::vector<std::complex<double>> ws(gf_settings.nws,
@@ -617,7 +618,8 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
 
-  std::cout << "EASCI = " << EASCI << std::endl;
+  std::cout << std::scientific << std::setprecision(12)
+            << "EASCI = " << EASCI << std::endl;
 
   // Frequency grid: real axis as in evaluate_GF, but on the imaginary axis
   // use a BOSONIC Matsubara grid (even multiples of pi/beta): the Sz-Sz
