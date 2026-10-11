@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <macis/asci/covariant_orbitals.hpp>
 #include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
 #include <macis/impurity_solver.hpp>
@@ -791,4 +792,172 @@ TEST_CASE("Parity sectors inside the charge-sector search at NROTS = 2") {
   CHECK(p.nalpha + p.nbeta == N_true);
   CHECK(mu == Approx(-3.0).margin(1e-4));
   CHECK(p.E == Approx(Emin).margin(1e-6));
+}
+
+// ---- SYMMETRIZE_DETS with NROTS > 0 (PLAN_symmetric_asci_search.md, §12) ---
+
+TEST_CASE("Covariant natural orbitals") {
+  // Band 0 = orbitals 0, 2, 4; band 1 = 1, 3, 5; band swap 0<->1, 2<->3, 4<->5
+  const size_t n = 6, n_imp = 2;
+  const std::vector<int> band_of = {0, 1, 0, 1, 0, 1};
+  const auto blocks = macis::natural_orbital_blocks(n, n_imp, &band_of);
+  REQUIRE(blocks.size() == 4);  // {0} {1} {2,4} {3,5}
+  const std::vector<std::vector<uint32_t>> G = {{0, 1, 2, 3, 4, 5},
+                                                {1, 0, 3, 2, 5, 4}};
+
+  // A band-symmetric 1-RDM whose bath blocks are degenerate (0.5 * 1), plus
+  // a 1e-9 band-1-only mixing: independent per-block diagonalizations then
+  // pick unrelated bases for the two bath blocks
+  std::vector<double> rho(n * n, 0.);
+  auto R = [&](size_t a, size_t b) -> double& { return rho[a + b * n]; };
+  R(0, 0) = R(1, 1) = 0.7;
+  R(2, 2) = R(4, 4) = R(3, 3) = R(5, 5) = 0.5;
+  R(0, 2) = R(2, 0) = R(1, 3) = R(3, 1) = 0.05;  // impurity-bath: ignored
+  R(3, 5) = R(5, 3) = 1e-9;
+
+  std::vector<double> U(n * n), occ(n);
+  const double asym =
+      macis::covariant_natural_orbitals(rho.data(), n, blocks, G, U.data(),
+                                        occ.data());
+  CHECK(asym == Approx(0.5e-9).margin(1e-15));
+  // (★) and covariant occupations, bit for bit
+  CHECK(macis::max_covariance_violation(U.data(), n, G) == 0.0);
+  for(size_t p = 0; p < n; ++p) CHECK(occ[G[1][p]] == occ[p]);
+  // Block diagonal, orthogonal, and diagonalizes each block of the averaged
+  // 1-RDM
+  std::vector<double> rbar = rho;
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b)
+      rbar[a + b * n] = 0.5 * (rho[a + b * n] + rho[G[1][a] + G[1][b] * n]);
+  auto block_of = [&](size_t a) {
+    for(size_t k = 0; k < blocks.size(); ++k)
+      for(auto q : blocks[k])
+        if(q == a) return k;
+    return blocks.size();
+  };
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b) {
+      if(block_of(a) != block_of(b)) CHECK(U[a + b * n] == 0.0);
+      double uu = 0., unu = 0.;
+      for(size_t i = 0; i < n; ++i) {
+        uu += U[i + a * n] * U[i + b * n];
+        for(size_t j = 0; j < n; ++j)
+          unu += U[i + a * n] * rbar[i + j * n] * U[j + b * n];
+      }
+      CHECK(uu == Approx(a == b ? 1.0 : 0.0).margin(1e-14));
+      if(block_of(a) == block_of(b))
+        CHECK(unu == Approx(a == b ? occ[a] : 0.0).margin(1e-14));
+    }
+
+  SECTION("without a group: the per-block diagonalization of the 1-RDM") {
+    std::vector<double> U1(n * n), occ1(n);
+    CHECK(macis::covariant_natural_orbitals(rho.data(), n, blocks, {},
+                                            U1.data(), occ1.data()) == 0.0);
+    CHECK(occ1[3] - occ1[5] == Approx(2e-9).margin(1e-13));
+  }
+
+  SECTION("a permutation that splits a block throws") {
+    const std::vector<std::vector<uint32_t>> bad = {{0, 1, 3, 2, 4, 5}};
+    CHECK_THROWS_WITH(
+        macis::covariant_natural_orbitals(rho.data(), n, blocks, bad, U.data(),
+                                          occ.data()),
+        Catch::Contains("splits"));
+  }
+
+  SECTION("a permutation inside a block throws") {
+    const std::vector<std::vector<uint32_t>> bad = {{0, 1, 4, 3, 2, 5}};
+    CHECK_THROWS_WITH(
+        macis::covariant_natural_orbitals(rho.data(), n, blocks, bad, U.data(),
+                                          occ.data()),
+        Catch::Contains("inside a block"));
+  }
+}
+
+TEST_CASE("SYMMETRIZE_DETS with NROTS > 0, degenerate bands") {
+  ScratchDir scratch("sym_nrots");
+  const std::vector<uint32_t> swap = {1, 0, 3, 2, 5, 4};
+  auto with_swap = [&](params_t& p) {
+    p.asci_settings.symmetrize_dets = true;
+    p.asci_settings.sym_group =
+        std::make_shared<std::vector<std::vector<uint32_t>>>(
+            std::vector<std::vector<uint32_t>>{swap});
+  };
+  auto count = [](const std::string& out, const std::string& what) {
+    size_t c = 0;
+    for(auto pos = out.find(what); pos != std::string::npos;
+        pos = out.find(what, pos + 1))
+      ++c;
+    return c;
+  };
+  const std::vector<std::vector<uint32_t>> G = {{0, 1, 2, 3, 4, 5}, swap};
+
+  SECTION("parity solve: same energy as NROTS = 0, covariant rotation") {
+    for(size_t nb : {size_t(3), size_t(2)}) {
+      ModelOpts o;
+      o.nb = nb;
+      o.degenerate = true;
+      auto p = make_parity_model(o);
+      with_swap(p);
+      p.asci_settings.nrots = 2;
+      CoutCapture cap;
+      const double E = macis::SolveImpurityASCI_rot<NB>(p);
+      const auto out = cap.str();
+      // Two rotations per sector (two sectors), each re-validated
+      CHECK(count(out, "group-covariant natural orbitals") == 4);
+      CHECK(out.find("PARITY_COVERAGE COMPLETE") != std::string::npos);
+      CHECK(macis::max_off_group(p.orb_rot.data(), *p.parity_labels) == 0.0);
+      // Each sector rotates covariantly under its stabilizer: the whole group
+      // at even N; only the identity at odd N, where band swap exchanges the
+      // winner's sector with its partner
+      if(nb == 3)
+        CHECK(macis::max_covariance_violation(p.orb_rot.data(), p.n_active,
+                                              G) < 1e-12);
+
+      auto q = make_parity_model(o);
+      with_swap(q);
+      CHECK(E == Approx(macis::SolveImpurityASCI_rot<NB>(q)).margin(1e-8));
+      // Even N: the winner's sector is band-swap invariant, and so are the
+      // occupations (original basis)
+      if(nb == 3)
+        for(size_t a = 0; a < p.n_active; ++a)
+          CHECK(p.occs[swap[a]] == Approx(p.occs[a]).margin(1e-8));
+    }
+  }
+
+  SECTION("no parity solve: band partition from the integrals") {
+    ModelOpts o;
+    o.degenerate = true;
+    auto p = make_model(o);
+    build_active(p);
+    with_swap(p);
+    p.asci_settings.nrots = 2;
+    CoutCapture cap;
+    const double E = macis::SolveImpurityASCI_rot<NB>(p);
+    const auto out = cap.str();
+    CHECK(count(out, "group-covariant natural orbitals") == 2);
+    CHECK(macis::max_covariance_violation(p.orb_rot.data(), p.n_active, G) <
+          1e-12);
+    for(size_t a = 0; a < p.n_active; ++a)
+      CHECK(p.occs[swap[a]] == Approx(p.occs[a]).margin(1e-8));
+    // The seed and every closed-shell restart in band-pure orbitals lie in
+    // (e,e), which the budget covers whole: the (e,e) sector's ground state.
+    // (Not the unsymmetrized NROTS = 2 run: its imp/bath blocks may mix the
+    // degenerate bands and leave the sector.)
+    auto q = make_parity_model(o);
+    with_swap(q);
+    q.parity_only = {0, 0};
+    CHECK(E == Approx(macis::SolveImpurityASCI_rot<NB>(q)).margin(1e-8));
+  }
+
+  SECTION("GROW_WITH_ROT is still refused") {
+    ModelOpts o;
+    o.degenerate = true;
+    auto p = make_model(o);
+    build_active(p);
+    with_swap(p);
+    p.asci_settings.nrots = 2;
+    p.asci_settings.grow_with_rot = true;
+    CHECK_THROWS_WITH(macis::SolveImpurityASCI_rot<NB>(p),
+                      Catch::Contains("GROW_WITH_ROT = FALSE"));
+  }
 }

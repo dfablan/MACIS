@@ -15,9 +15,29 @@
 #include <macis/hamiltonian_generator.hpp>
 #include <ostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace macis {
+
+/**
+ *  @brief The band of every orbital, read off the one-body integrals: the
+ *  read-only grouping step of build_parity_labels.
+ *
+ *  Impurity orbital i < n_imp belongs to band i / (n_imp / nbands) (band-major
+ *  layout). A bath orbital belongs to the band it is connected to through
+ *  one-body couplings |T_pq| > tol (|Td_pq| too if Td is given); one connected
+ *  to two bands means the bath is not band-diagonal, and this throws. An
+ *  orbital connected to no impurity orbital gets -1. Nothing is modified.
+ *
+ *  @param[in] who      prefix of the error messages (the calling feature)
+ *  @param[in] tol_name name of the tolerance in the error messages
+ */
+std::vector<int> band_partition(size_t norb, size_t n_imp, size_t nbands,
+                                const std::vector<double>& T,
+                                const std::vector<double>* Td, double tol,
+                                const std::string& who,
+                                const std::string& tol_name);
 
 /**
  *  @brief Detect, verify and clean the band-parity labels of an impurity

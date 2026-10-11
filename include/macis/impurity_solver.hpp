@@ -183,8 +183,8 @@ void report_sector_check(double dE_add, double dE_rem,
  * checks T, Td and V), so the partners are degenerate.
  *
  * Never silent when the returned GF may break a degeneracy:
- *  - PARITY_SOLVE on but no group (SYMMETRIZE_DETS off, e.g. any NROTS > 0
- *    run): warns if the parity solve reported a PARITY_TIE with the winner;
+ *  - PARITY_SOLVE on but no group (SYMMETRIZE_DETS off): warns if the
+ *    parity solve reported a PARITY_TIE with the winner;
  *  - a tied sector outside the orbit of the winner's key: warned;
  *  - SYMMETRIZE_DETS on without PARITY_SOLVE (no labels): the state is
  *    checked against each group element through the sign-free overlap
@@ -250,7 +250,7 @@ void band_orbit_average_gf(std::vector<std::vector<std::complex<double>>> &GF,
       std::cout << "WARNING: GF_BAND_AVERAGE none: parity sector " << keystr
                 << " tied with" << keys_string(tied)
                 << " (PARITY_TIE), but no symmetry group is available "
-                   "(ASCI.SYMMETRIZE_DETS off; it requires NROTS = 0) to "
+                   "(ASCI.SYMMETRIZE_DETS off) to "
                    "relate them. The GF is that of one of the tied states and "
                    "may be band-polarized; symmetrize it on the DMFT side"
                 << std::endl;

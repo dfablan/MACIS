@@ -1,10 +1,12 @@
 #define IMPURITY_SOLVER_CPP
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <limits>
 #include <map>
 #include <sstream>
 
+#include "macis/asci/covariant_orbitals.hpp"
 #include "macis/asci/determinant_symmetry.hpp"
 #include "macis/impurity_solver.hpp"
 #include "macis/parity_sectors.hpp"
@@ -142,6 +144,55 @@ macis::wfn_t<N> asci_reference_determinant(const impurity_params<N>& p) {
          macis::canonical_hf_determinant<N>(0, p.nbeta, ens_beta);
 }
 
+/// Largest deviation of the active integrals from invariance under one
+/// orbital permutation g: |X[g(p),g(q),...] - X[p,q,...]| for T, Td, V.
+struct IntegralSymmetryDeviation {
+  double T = 0., Td = 0., V = 0.;
+  double max() const { return std::max({T, Td, V}); }
+};
+
+template <size_t N>
+IntegralSymmetryDeviation integral_symmetry_deviation(
+    const impurity_params<N>& p, const std::vector<uint32_t>& g) {
+  const size_t n = p.n_active;
+  const size_t n2 = n * n;
+  const size_t n3 = n2 * n;
+  IntegralSymmetryDeviation d;
+  auto dev_1body = [&](const std::vector<double>& T) {
+    double m = 0.0;
+    for(size_t q = 0; q < n; ++q)
+      for(size_t r = 0; r < n; ++r)
+        m = std::max(m, std::abs(T[g[r] + g[q] * n] - T[r + q * n]));
+    return m;
+  };
+  d.T = dev_1body(p.T_active);
+  if(p.spin_dep) d.Td = dev_1body(p.Td_active);
+
+  // Two-body invariance (full n^4 sweep). The linearization convention is
+  // immaterial: the permutation is applied to all four indices, so
+  // invariance in one per-index linearization is invariance in any.
+  const auto& V = p.V_active;
+  for(size_t l = 0; l < n; ++l)
+    for(size_t k = 0; k < n; ++k)
+      for(size_t q = 0; q < n; ++q)
+        for(size_t r = 0; r < n; ++r)
+          d.V = std::max(d.V, std::abs(V[g[r] + g[q] * n + g[k] * n2 +
+                                         g[l] * n3] -
+                                       V[r + q * n + k * n2 + l * n3]));
+  return d;
+}
+
+/// Largest integral_symmetry_deviation over a list of permutations
+template <size_t N>
+double max_integral_symmetry_deviation(
+    const impurity_params<N>& p,
+    const std::vector<std::vector<uint32_t>>& group) {
+  double m = 0.;
+  for(const auto& g : group)
+    m = std::max(m, integral_symmetry_deviation(p, g).max());
+  return m;
+}
+
 /**
  *  @brief Validate and finalize orbital-permutation symmetry enforcement
  *  (ASCI.SYMMETRIZE_DETS) at solver entry.
@@ -153,6 +204,12 @@ macis::wfn_t<N> asci_reference_determinant(const impurity_params<N>& p) {
  *  themselves, never inferred from any assumption about the bath structure:
  *  any bath that is not permutation-symmetric fails here, whatever produced
  *  it.
+ *
+ *  NROTS > 0 is allowed: solve_asci_rot_one then takes group-covariant
+ *  natural orbitals (covariant_natural_orbitals), in which the group is
+ *  still a pure orbital relabeling, and re-validates the integrals after
+ *  every rotation. GROW_WITH_ROT is not: it rotates over the whole active
+ *  space inside the selection loop (PLAN_symmetric_asci_search.md §12.6).
  *
  *  An asymmetric HF reference is reported but not refused. The invariant the
  *  ASCI machinery actually needs is that the *selected* determinant space be
@@ -169,11 +226,12 @@ void prepare_det_symmetry(impurity_params<N>& p) {
   auto& stg = p.asci_settings;
   if(!stg.symmetrize_dets) return;
 
-  if(stg.nrots > 0 or stg.grow_with_rot)
+  if(stg.grow_with_rot)
     throw std::runtime_error(
-        "ASCI.SYMMETRIZE_DETS requires ASCI.NROTS = 0 and ASCI.GROW_WITH_ROT "
-        "= FALSE: natural-orbital rotations destroy the flavor labels the "
-        "permutation group acts on.");
+        "ASCI.SYMMETRIZE_DETS requires ASCI.GROW_WITH_ROT = FALSE: that "
+        "rotation is taken over the whole active space inside the selection "
+        "loop and destroys the flavor labels the permutation group acts on. "
+        "ASCI.NROTS > 0 is supported (group-covariant natural orbitals).");
 
   if(!stg.sym_group or stg.sym_group->empty())
     throw std::runtime_error(
@@ -181,8 +239,6 @@ void prepare_det_symmetry(impurity_params<N>& p) {
         "(ASCI.SYM_NPERM / ASCI.SYM_PERM_i).");
 
   const size_t n = p.n_active;
-  const size_t n2 = n * n;
-  const size_t n3 = n2 * n;
   const auto& gens = *stg.sym_group;
 
   const auto hf_det = asci_reference_determinant<N>(p);
@@ -196,13 +252,9 @@ void prepare_det_symmetry(impurity_params<N>& p) {
                                " is not a bijection on the " +
                                std::to_string(n) + " active orbitals.");
 
-    // One-body invariance: T (and Td if spin-dependent)
-    auto check_1body = [&](const std::vector<double>& T, const char* name) {
-      double max_dev = 0.0;
-      for(size_t q = 0; q < n; ++q)
-        for(size_t r = 0; r < n; ++r)
-          max_dev =
-              std::max(max_dev, std::abs(T[g[r] + g[q] * n] - T[r + q * n]));
+    // One-body (T, and Td if spin-dependent) and two-body invariance
+    const auto dev = integral_symmetry_deviation(p, g);
+    auto check = [&](double max_dev, const char* name) {
       if(max_dev > stg.sym_tol) {
         std::ostringstream oss;
         oss << "ASCI.SYMMETRIZE_DETS: " << gname << " is not a symmetry of "
@@ -211,33 +263,9 @@ void prepare_det_symmetry(impurity_params<N>& p) {
         throw std::runtime_error(oss.str());
       }
     };
-    check_1body(p.T_active, "T_active");
-    if(p.spin_dep) check_1body(p.Td_active, "Td_active");
-
-    // Two-body invariance (full n^4 sweep). The linearization convention is
-    // immaterial: the permutation is applied to all four indices, so
-    // invariance in one per-index linearization is invariance in any.
-    {
-      const auto& V = p.V_active;
-      double max_dev = 0.0;
-      for(size_t l = 0; l < n; ++l)
-        for(size_t k = 0; k < n; ++k)
-          for(size_t q = 0; q < n; ++q)
-            for(size_t r = 0; r < n; ++r) {
-              const double dev =
-                  std::abs(V[g[r] + g[q] * n + g[k] * n2 + g[l] * n3] -
-                           V[r + q * n + k * n2 + l * n3]);
-              if(dev > max_dev) max_dev = dev;
-            }
-      if(max_dev > stg.sym_tol) {
-        std::ostringstream oss;
-        oss << "ASCI.SYMMETRIZE_DETS: " << gname
-            << " is not a symmetry of V_active: max deviation "
-            << std::scientific << max_dev
-            << " exceeds SYM_TOL = " << stg.sym_tol;
-        throw std::runtime_error(oss.str());
-      }
-    }
+    check(dev.T, "T_active");
+    if(p.spin_dep) check(dev.Td, "Td_active");
+    check(dev.V, "V_active");
 
     // The HF reference need not be individually invariant: the seed is closed
     // under the group at the call sites below, which costs nothing when it
@@ -761,9 +789,24 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
     asci_settings.just_singles = p.just_singles;
 
     // Validate and expand the orbital-permutation symmetry group, if enabled.
-    // Rejects NROTS > 0, so with symmetrization on the macro loop below runs
-    // exactly once and the post-rotation reseed path is unreachable.
     prepare_det_symmetry(p);
+
+    // SYMMETRIZE_DETS with NROTS > 0: every rotation below takes
+    // group-covariant natural orbitals (PLAN_symmetric_asci_search.md §12),
+    // so the group still acts by relabeling orbitals in the rotated basis.
+    // Their blocks are the per-band imp/bath blocks: the parity labels' bands
+    // in a parity sector, otherwise the same band partition read off the
+    // one-body integrals here (it throws for a bath that is not
+    // band-diagonal).
+    const bool covariant_rot = asci_settings.symmetrize_dets and
+                               asci_settings.sym_group and
+                               asci_settings.nrots > 0;
+    std::vector<int> sym_band_of;
+    if(covariant_rot and !asci_settings.parity_target)
+      sym_band_of = macis::band_partition(
+          n_active, n_imp, p.nbands, T_active,
+          p.spin_dep ? &Td_active : nullptr, asci_settings.sym_tol,
+          "ASCI.SYMMETRIZE_DETS with ASCI.NROTS > 0", "SYM_TOL");
 
     // hf_det is needed whether or not a guess is loaded: it is the reference the
     // macro-iteration loop restarts from in each rotated basis, refreshed via
@@ -821,6 +864,18 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
             dets = {hf_det};
             C_local = {1.0};
             E0 = ham_gen.matrix_element(dets[0], dets[0]);
+            // A restart in a rotated basis is closed under the group like
+            // the first seed (only reachable with NROTS > 0). The restart
+            // fills by occupation with an index tie-break, and partner
+            // orbitals have bitwise-equal occupations, so an orbit across
+            // the Fermi level is split. E0 is that of hf_det; the partners
+            // carry C = 0. In a parity sector the group is the sector's
+            // stabilizer, so the partners stay in the sector.
+            if(iorb > 0 and asci_settings.symmetrize_dets and
+               asci_settings.sym_group) {
+              close_guess_under_group(dets, C_local, *asci_settings.sym_group);
+              require_in_sector(p, dets, "closed restart");
+            }
           }
           std::cout<<"ASCI E0 = "<< E0 << std::endl;
           std::cout<<"ASCI E_core = "<< E_core << std::endl;
@@ -882,8 +937,49 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                         << macis::max_off_group(active_ordm.data(),
                                                 *parity_target->labels)
                         << std::endl;
-            ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data(),
-                parity_target ? &parity_target->labels->group_of : nullptr );
+            if(covariant_rot) {
+              //Group-covariant natural orbitals: one block per block orbit is
+              //diagonalized and copied onto its partners, so U[g(p),g(q)] =
+              //U[p,q] exactly and the partners' occupations are bitwise
+              //equal. The 1-RDM is group-averaged first (basis choice only).
+              const auto& group = *asci_settings.sym_group;
+              const auto blocks = macis::natural_orbital_blocks(
+                  n_active, n_imp,
+                  parity_target ? &parity_target->labels->group_of
+                                : &sym_band_of);
+              const double dev_before =
+                  max_integral_symmetry_deviation(p, group);
+              const double rho_asym = macis::covariant_natural_orbitals(
+                  active_ordm.data(), n_active, blocks, group, tmp_rot.data(),
+                  orb_occs.data());
+              ham_gen.rotate_hamiltonian_rotmat_imp_bath(tmp_rot.data(),
+                                                         p.spin_dep);
+              //Re-validate: the generator's spans alias T_active, Td_active
+              //and V_active, so these are the rotated integrals. A covariant
+              //U keeps the Frobenius norm of every deviation, so the largest
+              //element can grow by at most n^2 (two-body); anything beyond
+              //that is a bug in the covariant rotation, not physics.
+              const double dev_after =
+                  max_integral_symmetry_deviation(p, group);
+              const double dev_tol =
+                  std::max(asci_settings.sym_tol,
+                           double(n_active) * double(n_active) * dev_before);
+              std::cout << "* SYMMETRIZE_DETS: group-covariant natural "
+                           "orbitals; max |rho - rho_sym| = "
+                        << rho_asym << ", integral symmetry deviation "
+                        << dev_before << " -> " << dev_after << std::endl;
+              if(dev_after > dev_tol) {
+                std::ostringstream oss;
+                oss << "SYMMETRIZE_DETS: the rotated integrals break the "
+                       "permutation group (max deviation "
+                    << std::scientific << dev_after << " > " << dev_tol
+                    << ") after macro iteration " << iorb + 1
+                    << ": the natural-orbital rotation is not covariant";
+                throw std::logic_error(oss.str());
+              }
+            } else
+              ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data(),
+                  parity_target ? &parity_target->labels->group_of : nullptr );
             asci_settings.just_singles = ham_gen.just_singles;
             //Update rotation matrix orb_rot = orb_rot * tmp_rot
             blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans,
@@ -930,6 +1026,23 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
 
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
 
+    // A product of covariant rotations is covariant; the gemm accumulation
+    // only adds round-off
+    if(covariant_rot) {
+      const double viol = macis::max_covariance_violation(
+          orb_rot.data(), n_active, *asci_settings.sym_group);
+      std::cout << "* SYMMETRIZE_DETS: covariance of the accumulated rotation, "
+                   "max |U[g(p),g(q)] - U[p,q]| = "
+                << viol << std::endl;
+      if(viol > 1e-10) {
+        std::ostringstream oss;
+        oss << "SYMMETRIZE_DETS: the accumulated orbital rotation is not "
+               "covariant under the permutation group (max deviation "
+            << std::scientific << viol << ")";
+        throw std::logic_error(oss.str());
+      }
+    }
+
     if (asci_settings.nrots == 0)
       ham_gen.form_rdms(dets.begin(),dets.end(),dets.begin(),dets.end(), C_local.data(),
       macis::matrix_span<double>(active_ordm.data(),n_active,n_active),
@@ -937,8 +1050,9 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
     else
       active_ordm = evaluate_ordm( dets, C_local, ham_gen, orb_rot );
 
-    // Health metric: how well the 1-RDM respects the enforced symmetry
-    // (symmetrization forces nrots == 0, so this is the unrotated 1-RDM)
+    // Health metric: how well the 1-RDM respects the enforced symmetry. With
+    // NROTS > 0 evaluate_ordm has rotated it back to the original basis,
+    // where the group acts by the same labels.
     check_rdm_symmetry(p, active_ordm);
 
     // Occupation numbers

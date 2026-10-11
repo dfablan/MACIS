@@ -121,7 +121,7 @@ records ties in `params.parity_tied_keys`.
 |---|---|---|
 | `SolveImpurityED` | `solve_ed_one` `:448` | Full Hilbert space (`generate_hilbert_space`), filtered to the parity sector if one is set, then `selected_ci_diag` |
 | `SolveImpurityASCI` | `solve_asci_one` `:571` | ASCI grow + refine, no orbital rotation. Called only by `Mu_vs_n` |
-| `SolveImpurityASCI_rot` | `solve_asci_rot_one` `:696` | **Production ASCI path.** Runs `NROTS+1` macro iterations. In each: seed → `asci_grow` → `asci_refine`. If more remain: 1-RDM → `rotate_hamiltonian_ordm_imp_bath` (natural orbitals, impurity and bath kept separate; per band group under parity) → new HF det `hf_determinant_byocc` / `parity_restart`. Afterwards writes `active_ordm.dat` and `rot_matrix.dat` (`write_rot_outputs`). `rot_matrix_<i>.dat` is written per macro iteration |
+| `SolveImpurityASCI_rot` | `solve_asci_rot_one` `:696` | **Production ASCI path.** Runs `NROTS+1` macro iterations. In each: seed → `asci_grow` → `asci_refine`. If more remain: 1-RDM → `rotate_hamiltonian_ordm_imp_bath` (natural orbitals, impurity and bath kept separate; per band group under parity), or under `SYMMETRIZE_DETS` `covariant_natural_orbitals` + `rotate_hamiltonian_rotmat_imp_bath` and a re-check of the integral symmetry → new HF det `hf_determinant_byocc` / `parity_restart`. Afterwards writes `active_ordm.dat` and `rot_matrix.dat` (`write_rot_outputs`). `rot_matrix_<i>.dat` is written per macro iteration |
 | `SolveImpurityCheapASCI` | inline `:1370` | Re-diagonalizes the existing `params.dets` without a search. Used by `DOP.CHEAP_MODE` after the first µ step |
 
 Helpers, all in the anonymous namespace of `impurity_solver.cpp`:
@@ -173,6 +173,7 @@ asci_refine (refine.hpp)    fixed size, repeat asci_iter until |ΔE| < REFINE_ET
 | Determinant ↔ string (`to_canonical_string`, `from_canonical_string`) | `sd_operations.hpp:687,706` |
 | Bitset helpers (lo/hi word, ffs, clz, masks) | `bitset_operations.hpp` |
 | Orbital permutation of a det, group expansion, orbit representatives | `asci/determinant_symmetry.hpp` |
+| Group-covariant natural orbitals (SYMMETRIZE_DETS with NROTS > 0), natural-orbital blocks | `asci/covariant_orbitals.hpp` |
 
 ### 4.3 Hamiltonian, matrix elements, RDMs, rotations
 | Feature | Location |
@@ -270,7 +271,9 @@ addresses each key as `SECTION.KEY`.
 Option interactions enforced in code. Search the error string to find each check:
 
 - `WFN_FILE` requires `E0_WFN`, `NROTS = 0` and `MAX_REFINE_ITER > 0`.
-- `SYMMETRIZE_DETS` requires `SYM_NPERM ≥ 1`, and it rejects `NROTS > 0`.
+- `SYMMETRIZE_DETS` requires `SYM_NPERM ≥ 1`, and it rejects `GROW_WITH_ROT`. With `NROTS > 0`
+  the rotations are group-covariant (`covariant_orbitals.hpp`); a group that permutes orbitals
+  inside an (imp|bath) × band block throws.
 - `PARITY_SOLVE` requires `GROW_WITH_ROT = FALSE`, `NINACTIVE = 0` and `NACTIVE = NORB`.
 - The µ search requires `NINACTIVE = 0`.
 - A nonzero `DELTA_CFS` is supported only for `NBANDS` = 2 or 3. For any other value it is reset to 0.
@@ -322,7 +325,7 @@ Option interactions enforced in code. Search the error string to find each check
 | File | Covers | Status |
 |---|---|---|
 | `FORK_REVIEW.md` | Severity-ranked review of the fork against upstream, with FIXED/open markers | living reference |
-| `PLAN_symmetric_asci_search.md` | SYMMETRIZE_DETS design | Steps 1–10 done, Step 11 open |
+| `PLAN_symmetric_asci_search.md` | SYMMETRIZE_DETS design; §12 G-covariant rotations for `NROTS > 0` | Steps 1–10 done, Step 11 open; §12 **implemented** 2026-10-11 (as built: §12.9), toy tests pass, no production run |
 | `parity-sector-solve-simple.md` | Band-parity sector solve as built (§11–12 list what was built and where) | Phases 1–2 implemented |
 | `symmetry-sector-solve.md` | Consolidated plan for symmetry sectors beyond parity | Partly implemented |
 | `PLAN_explore_charge_sectors.md` | `explore_charge_sectors` and the charge-sector search | implemented |

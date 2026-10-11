@@ -6,8 +6,10 @@
 > anchors verified against the current working trees on 2026-08-26 (MACIS fork branch
 > `feature/spin_dep` HEAD `f07c825`; PolClassy_DMFT branch `extra-local-features`).
 >
-> **2026-10-11:** §12 proposes lifting the `NROTS > 0` incompatibility with group-covariant
-> natural-orbital rotations, built on the existing per-band block rotation. Not implemented.
+> **2026-10-11:** §12 lifts the `NROTS > 0` incompatibility with group-covariant
+> natural-orbital rotations, built on the existing per-band block rotation. **Implemented** on
+> `experimental` (uncommitted at the time of writing); built and tested on the toy model, not yet
+> run on a production Hamiltonian. As-built notes and deviations in §12.9.
 >
 > **2026-10-03:** two later changes touch this plan.
 > - The ASCI seed `asci_reference_determinant` is now filled by one-body energy for **every** run,
@@ -104,6 +106,9 @@ expressible as a bitstring relabeling. The P3 band-diagonality assertion therefo
 independently, and neither presupposes the bath structure.
 
 ### Hard incompatibilities (validated, with clear errors)
+
+> **2026-10-11:** `NROTS > 0` is no longer refused: §12 (group-covariant natural orbitals).
+> `GROW_WITH_ROT = TRUE` still is.
 
 `ASCI.NROTS > 0` and `ASCI.GROW_WITH_ROT = TRUE`: natural-orbital rotations (`grow.hpp:69-167` and
 the macro loop in `SolveImpurityASCI_rot`, `src/macis/impurity_solver.cpp:299-394`) destroy the
@@ -772,9 +777,12 @@ multiplets: bath prefix 6 = 2×3):
 
 ## 12. Proposal: group-covariant natural-orbital rotations (`NROTS > 0` with `SYMMETRIZE_DETS`)
 
-> **STATUS: PROPOSAL, NOT IMPLEMENTED** — written 2026-10-11. Line anchors verified against branch
-> `claude/happy-franklin-1lfi3g` HEAD `50136d6` on that date. Lifts the `NROTS > 0` half of the §2
-> hard incompatibility; `GROW_WITH_ROT` stays refused (§12.6).
+> **STATUS: IMPLEMENTED 2026-10-11; toy-model tests pass, no production run yet** — proposal
+> written 2026-10-11. Line
+> anchors below are those of the proposal (branch `claude/happy-franklin-1lfi3g` HEAD `50136d6`)
+> and have since moved. Lifts the `NROTS > 0` half of the §2 hard incompatibility;
+> `GROW_WITH_ROT` stays refused (§12.6). What was built, and where it departs from the proposal:
+> §12.9.
 
 ### 12.1 What already exists, and why it is not enough
 
@@ -937,6 +945,58 @@ Extend the two-band synthetic model already used by `tests/gf_band_average.cxx` 
 | cumulative `orb_rot` violates (★) | end of macro loop | throw |
 | no band partition available (option (a) only) | `prepare_det_symmetry` | throw: requires `PARITY_SOLVE` |
 | `GROW_WITH_ROT` with symmetrize | `prepare_det_symmetry` | throw (unchanged) |
+
+### 12.9 As built (2026-10-11)
+
+Built on `experimental` after `aaf471b`. Option (b) of §12.4 was taken.
+
+| Piece | Where |
+|---|---|
+| `natural_orbital_blocks` (the block helper factored out of `rotate_hamiltonian_ordm_imp_bath`), `covariant_natural_orbitals`, `max_covariance_violation` | `include/macis/asci/covariant_orbitals.hpp` (new; not in `determinant_symmetry.hpp`, which would otherwise need LAPACK) |
+| `band_partition` (the read-only grouping step of `build_parity_labels`, which now calls it) | `parity_sectors.hpp/.cpp` |
+| `integral_symmetry_deviation`, `max_integral_symmetry_deviation` (the sweep of `prepare_det_symmetry`, factored out); `prepare_det_symmetry` refuses only `GROW_WITH_ROT` | `impurity_solver.cpp` |
+| macro loop: covariant rotation, post-rotation check, restart closure, final (★) check | `solve_asci_rot_one` |
+| inherited-basis covariance check | `charge_sectors::rotate_active` |
+| tests: unit test of `covariant_natural_orbitals` (degenerate block, 1×1 blocks, the two throws); NROTS = 2 + `SYMMETRIZE_DETS` with and without `PARITY_SOLVE`; `GROW_WITH_ROT` still refused | `tests/parity_sectors.cxx` (`Covariant natural orbitals`, `SYMMETRIZE_DETS with NROTS > 0, degenerate bands`) |
+
+Deviations from §12.2–12.8:
+
+- **Blocks without `PARITY_SOLVE`.** `band_partition` runs once per solve on `T_active` (and
+  `Td_active`), with `SYM_TOL` as the coupling threshold. It throws for a bath that is not
+  band-diagonal, as `build_parity_labels` does. Inside a parity sector the labels' `group_of` is
+  used, and the group is the sector's stabilizer: at odd N with a band swap that is only the
+  identity, and the rotation reduces to the plain per-band one.
+- **Post-rotation tolerance.** Not `SYM_TOL` alone. With a covariant `U` the Frobenius norm of
+  each deviation `X − P_g X P_gᵀ` is unchanged, but its largest element can grow by up to n
+  (one-body) or n² (two-body). The check throws (`logic_error`) above
+  `max(SYM_TOL, n² · deviation before the rotation)`. A non-covariant `U` gives an O(1) deviation,
+  far above either. Both numbers are printed on the `* SYMMETRIZE_DETS: group-covariant natural
+  orbitals; max |rho - rho_sym| = …, integral symmetry deviation … -> …` line.
+- **Final (★) check.** It uses tolerance 1e-10, not bitwise equality: `orb_rot ← orb_rot · tmp_rot`
+  sums the same terms in a different order for partner entries. The value is printed.
+- **Restart closure.** It is applied for `iorb > 0` only. *Observation:* at `iorb = 0` on a cold
+  start, the macro loop resets `dets = {hf_det}` and so discards the pre-loop closure of the
+  seed. This predates this change and affects `NROTS = 0` symmetrized runs. It is harmless,
+  because `symmetric_orbit_select` closes the first selection anyway, and it was left alone so
+  that existing `NROTS = 0` results do not change.
+- **`parity_restart`.** Its result is closed under the sector's stabilizer by the same restart
+  closure. A `require_in_sector` check follows the closure.
+- **Charge-sector warm starts (new).** A seeded sector is solved at `NROTS = 0` in its parent's
+  basis. Under `SYMMETRIZE_DETS`, `rotate_active` now refuses a parent basis that is not covariant
+  under the group, e.g. that of an odd-N parity sector. `solve_sector` then retries the sector
+  cold. Without this check, the refusal would have surfaced as an unexplained "not a symmetry of
+  T_active" from `prepare_det_symmetry`.
+- **Tested (2026-10-11).** Built in `MACIS_experimental_cov_build/` (`send_compile_experimental_cov.job`).
+  Single rank: `Covariant natural orbitals` (247 assertions) and `SYMMETRIZE_DETS with NROTS > 0,
+  degenerate bands` (25) pass. Full `macis_test`: 63/64 test cases pass. The one failure, `ASCI
+  Symmetric Search` (`determinant_symmetry.cxx:318`, |E_sym − E_unsym| = 0.2857 > 0.1, the
+  unsymmetrized negative control), predates this change: the pre-change binary in
+  `MACIS_experimental_build/` fails with the same value.
+- **Not done.** Validation on a production Hamiltonian (the 2×2 band-swap case,
+  `…/Nimp2x2/Doping/Irrep/Nb16/Tests_frozenH/J0.2_U4.01_It4/B_symdets` with `NROTS = 2`), the GF
+  comparison against `NROTS = 0` of §12.7.2, and MPI. The PolClassy_DMFT guard
+  (`constANDparams.py` ~:611, "asci_symmetrize_dets = .true. requires nrots = 0") still refuses
+  the combination on the DMFT side.
 
 ---
 

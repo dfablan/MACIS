@@ -455,7 +455,8 @@ block-diagonal by group and the labels hold in that basis.
 - **`GROW_WITH_ROT`:** `rotate_hamiltonian_ordm` rotates the full active space. Allowing it would
   need the same per-group blocking inside `asci_grow`; that's possible but not needed now.
 - **`SYMMETRIZE_DETS` with NROTS > 0:** already refused by `prepare_det_symmetry`. Allowing it is
-  plan §3.4 (covariant natural orbitals).
+  plan §3.4 (covariant natural orbitals). **2026-10-11:** now allowed; in a sector the rotation is
+  covariant under the sector's stabilizer (`PLAN_symmetric_asci_search.md` §12.9).
 
 ### 9.5 Regression anchor and tests
 

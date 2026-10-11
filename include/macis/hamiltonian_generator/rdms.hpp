@@ -7,6 +7,7 @@
  */
 
 #pragma once
+#include <macis/asci/covariant_orbitals.hpp>
 #include <macis/hamiltonian_generator.hpp>
 #include <map>
 #include <string>
@@ -126,34 +127,12 @@ void HamiltonianGenerator<N>::rotate_hamiltonian_ordm_imp_bath(
   if(nimps == 0)
     throw std::runtime_error(
         "Invalid number of impurities for rotate_hamiltonian_ordm_imp_bath");
-  if(group_of != nullptr and group_of->size() != size_t(norb_))
-    throw std::runtime_error("rotate_hamiltonian_ordm_imp_bath: group_of has " +
-                             std::to_string(group_of->size()) +
-                             " entries, expected " + std::to_string(norb_));
-
   // Blocks of orbitals diagonalized separately: the impurity and the bath,
   // and with group_of also split by group (a group of -1 -- an orbital in no
   // group -- is a block of its own). Each block's natural orbitals are
   // written back into the block's own index set, so with group_of the group
   // of every index is the same before and after the rotation.
-  std::vector<std::vector<size_t>> blocks;
-  for(int side = 0; side < 2; ++side) {
-    const size_t lo = side ? nimps : 0, hi = side ? norb_ : nimps;
-    if(group_of == nullptr) {
-      blocks.emplace_back();
-      for(size_t i = lo; i < hi; ++i) blocks.back().push_back(i);
-      continue;
-    }
-    std::map<int, std::vector<size_t>> by_group;
-    for(size_t i = lo; i < hi; ++i) {
-      const int g = (*group_of)[i];
-      if(g < 0)
-        blocks.push_back({i});
-      else
-        by_group[g].push_back(i);
-    }
-    for(auto& [g, idx] : by_group) blocks.push_back(std::move(idx));
-  }
+  const auto blocks = natural_orbital_blocks(norb_, nimps, group_of);
 
   // SVD on each ordm block to get natural orbitals. gesvd returns singular
   // values in descending order within each block; since ordm's diagonal

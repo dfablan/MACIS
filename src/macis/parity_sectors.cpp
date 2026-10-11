@@ -38,27 +38,24 @@ std::string orb_list(const std::vector<uint32_t>& v) {
 
 }  // namespace
 
-ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
-                                 std::vector<double>& T,
-                                 std::vector<double>* Td,
-                                 std::vector<double>& V, double tol,
-                                 std::ostream& log) {
-  const size_t n = norb, n2 = n * n, n3 = n2 * n;
+std::vector<int> band_partition(size_t norb, size_t n_imp, size_t nbands,
+                                const std::vector<double>& T,
+                                const std::vector<double>* Td, double tol,
+                                const std::string& who,
+                                const std::string& tol_name) {
+  const size_t n = norb, n2 = n * n;
   if(nbands == 0 or n_imp == 0 or n_imp % nbands != 0 or n_imp > n)
     throw std::runtime_error(
-        "ASCI.PARITY_SOLVE: CI.NIMP = " + std::to_string(n_imp) +
+        who + ": CI.NIMP = " + std::to_string(n_imp) +
         " must be a nonzero multiple of CI.NBANDS = " + std::to_string(nbands) +
         " and at most the number of orbitals");
-  if(nbands > 31)
-    throw std::runtime_error("ASCI.PARITY_SOLVE: at most 31 bands");
-  if(T.size() != n2 or V.size() != n2 * n2 or (Td and Td->size() != n2))
+  if(T.size() != n2 or (Td and Td->size() != n2))
     throw std::runtime_error(
-        "build_parity_labels: integral sizes do not match "
-        "norb = " +
+        "band_partition: one-body integral sizes do not match norb = " +
         std::to_string(n));
   const size_t nsites = n_imp / nbands;
 
-  // ---- Groups: connected components of the one-body graph ----------------
+  // Connected components of the one-body graph
   UnionFind uf(n);
   for(size_t q = 0; q < n; ++q)
     for(size_t p = 0; p < n; ++p)
@@ -67,11 +64,6 @@ ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
         uf.unite(p, q);
   for(size_t i = 0; i < n_imp; ++i) uf.unite(i, (i / nsites) * nsites);
 
-  ParityLabels L;
-  L.tol = tol;
-  L.ngroups = nbands;
-  L.group_orbs.resize(nbands);
-  L.group_of.assign(n, -1);
   std::vector<int> band_of_root(n, -1);
   for(size_t b = 0; b < nbands; ++b) {
     const size_t r = uf.find(b * nsites);
@@ -79,11 +71,10 @@ ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
       // Two bands in one component: find a bath orbital hybridized with both,
       // or else report the component, to make the message actionable
       std::ostringstream os;
-      os << "ASCI.PARITY_SOLVE: bands " << band_of_root[r] << " and " << b
-         << " are connected by one-body couplings larger than PARITY_TOL = "
-         << std::scientific << std::setprecision(2) << tol
-         << ", so the bath is not band-diagonal and band parity is not "
-            "conserved.";
+      os << who << ": bands " << band_of_root[r] << " and " << b
+         << " are connected by one-body couplings larger than " << tol_name
+         << " = " << std::scientific << std::setprecision(2) << tol
+         << ", so the bath is not band-diagonal.";
       for(size_t j = n_imp; j < n; ++j) {
         double c0 = 0., c1 = 0.;
         for(size_t i = 0; i < n_imp; ++i) {
@@ -102,10 +93,36 @@ ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
     }
     band_of_root[r] = int(b);
   }
+  std::vector<int> group_of(n);
+  for(size_t q = 0; q < n; ++q) group_of[q] = band_of_root[uf.find(q)];
+  return group_of;
+}
+
+ParityLabels build_parity_labels(size_t norb, size_t n_imp, size_t nbands,
+                                 std::vector<double>& T,
+                                 std::vector<double>* Td,
+                                 std::vector<double>& V, double tol,
+                                 std::ostream& log) {
+  const size_t n = norb, n2 = n * n, n3 = n2 * n;
+  if(nbands > 31)
+    throw std::runtime_error("ASCI.PARITY_SOLVE: at most 31 bands");
+  if(V.size() != n2 * n2)
+    throw std::runtime_error(
+        "build_parity_labels: integral sizes do not match "
+        "norb = " +
+        std::to_string(n));
+
+  // ---- Groups: connected components of the one-body graph ----------------
+  // (throws if the bath is not band-diagonal, which breaks band parity)
+  ParityLabels L;
+  L.tol = tol;
+  L.ngroups = nbands;
+  L.group_orbs.resize(nbands);
+  L.group_of = band_partition(n, n_imp, nbands, T, Td, tol,
+                              "ASCI.PARITY_SOLVE", "PARITY_TOL");
   std::vector<uint32_t> decoupled;
   for(size_t q = 0; q < n; ++q) {
-    const int b = band_of_root[uf.find(q)];
-    L.group_of[q] = b;
+    const int b = L.group_of[q];
     if(b >= 0)
       L.group_orbs[b].push_back(uint32_t(q));
     else

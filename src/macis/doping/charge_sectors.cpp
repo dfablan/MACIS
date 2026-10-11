@@ -12,6 +12,7 @@
 #include <set>
 #include <sstream>
 
+#include "macis/asci/covariant_orbitals.hpp"
 #include "macis/doping/fix_mu.hpp"
 
 namespace fs = std::filesystem;
@@ -356,6 +357,28 @@ void rotate_active(impurity_params<N>& p, const basis_t& U) {
          << off << " > PARITY_TOL = " << p.parity_labels->tol
          << "), so its determinants have no band parity. It was not written "
             "by a parity solve.";
+      throw std::runtime_error(os.str());
+    }
+  }
+  // Under SYMMETRIZE_DETS the group must still relabel orbitals in the
+  // inherited basis, i.e. U must be covariant. A cold NROTS > 0 solve gives
+  // that under its own group; but in a parity sector the group is only the
+  // sector's stabilizer, which at odd N with a band swap is the identity, so
+  // such a basis breaks the band swap. Refuse it here with a clear reason
+  // (solve_sector then retries the sector cold).
+  const auto& stg = p.asci_settings;
+  if(stg.symmetrize_dets and stg.sym_group) {
+    const double viol =
+        macis::max_covariance_violation(U.data(), p.n_active, *stg.sym_group);
+    if(viol > 1e-10) {
+      std::ostringstream os;
+      os << std::scientific << std::setprecision(2)
+         << "SYMMETRIZE_DETS: the inherited orbital basis is not covariant "
+            "under the permutation group (max |U[g(p),g(q)] - U[p,q]| = "
+         << viol
+         << "), so the group would not act on its determinants. It was "
+            "written by a solve that broke the symmetry (e.g. a parity sector "
+            "at odd N).";
       throw std::runtime_error(os.str());
     }
   }
