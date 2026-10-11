@@ -6,6 +6,9 @@
 > anchors verified against the current working trees on 2026-08-26 (MACIS fork branch
 > `feature/spin_dep` HEAD `f07c825`; PolClassy_DMFT branch `extra-local-features`).
 >
+> **2026-10-11:** §12 proposes lifting the `NROTS > 0` incompatibility with group-covariant
+> natural-orbital rotations, built on the existing per-band block rotation. Not implemented.
+>
 > **2026-10-03:** two later changes touch this plan.
 > - The ASCI seed `asci_reference_determinant` is now filled by one-body energy for **every** run,
 >   not only under `SYMMETRIZE_DETS` (`ASCI.HF_BY_ENERGY`, default `TRUE`; `FORK_REVIEW.md` §2.8).
@@ -764,6 +767,176 @@ multiplets: bath prefix 6 = 2×3):
 - The refine-stall guards of `asci-stall-guards.md` (R2/R3/R4) — independent failure mode, still
   needed; this feature does not replace them and partially blinds the polarization-based alarms they
   rely on (§1 caveat).
+
+---
+
+## 12. Proposal: group-covariant natural-orbital rotations (`NROTS > 0` with `SYMMETRIZE_DETS`)
+
+> **STATUS: PROPOSAL, NOT IMPLEMENTED** — written 2026-10-11. Line anchors verified against branch
+> `claude/happy-franklin-1lfi3g` HEAD `50136d6` on that date. Lifts the `NROTS > 0` half of the §2
+> hard incompatibility; `GROW_WITH_ROT` stays refused (§12.6).
+
+### 12.1 What already exists, and why it is not enough
+
+`prepare_det_symmetry` refuses `NROTS > 0` unconditionally (`src/macis/impurity_solver.cpp:172`).
+The reason given in §2 — rotations destroy the flavor labels — is true of the *unconstrained*
+rotation, but the fork already has a constrained one: `rotate_hamiltonian_ordm_imp_bath`
+(`include/macis/hamiltonian_generator/rdms.hpp:122`) takes an optional `group_of` and diagonalizes
+the 1-RDM **per band block** (impurity and bath separately, each split by band), writing every
+block's natural orbitals back into its own index set. Every orbital keeps its band. The macro loop
+passes `group_of` only under `PARITY_SOLVE` (`impurity_solver.cpp:884`), where it was added to keep
+the parity labels valid in the rotated basis.
+
+Keeping bands intact is necessary but not sufficient. The permutation group stays a pure orbital
+relabeling in the rotated basis only if the rotation `U` is **G-covariant**:
+
+    U[g(p), g(q)] = U[p, q]     for all g in G, all p, q            (★)
+
+Equivalently `P_g U P_gᵀ = U`; then `T' = Uᵀ T U` and `V'` inherit the invariance of `T` and `V`, and
+every piece of §5 (closure, seed closure, Step 10 check, GF band average) works unchanged in the
+rotated basis. Independent per-block `gesvd` calls do not give (★):
+
+1. **Degenerate occupations inside a block.** Partner blocks see 1-RDMs that agree only to Davidson
+   tolerance (or worse: without Step 11, a degenerate ground state is polarized, §5 Step 11). Within
+   a (near-)degenerate occupation subspace `gesvd` returns an arbitrary basis, so the two blocks get
+   different rotations.
+2. **Sign gauge.** Each singular vector is defined up to sign, including the 1×1 impurity blocks of
+   the single-site case. A flip in one block and not its partner preserves the determinant *set* but
+   turns `g` into a *signed* permutation; the exact `T`/`V` invariance check would then fail.
+3. **Index alignment.** Nothing makes `g` map block A's `k`-th natural orbital onto block B's `k`-th.
+4. **No re-validation.** The integral check runs once, on the pre-rotation integrals.
+
+### 12.2 Design: diagonalize once per block orbit, transport the rest
+
+Replace the independent per-block diagonalization, *when `symmetrize_dets` is on*, by:
+
+1. **Symmetrize the 1-RDM.** `ρ̄ = (1/|G|) Σ_g P_g ρ P_gᵀ`, i.e. `ρ̄[p,q] = (1/|G|) Σ_g ρ[g(p), g(q)]`.
+   This only chooses the orbital *basis*. The state is not changed, and its observables are still
+   reported from its own RDM. For a symmetric state `ρ̄ = ρ` to `ci_res_tol`. For a polarized
+   degenerate state, `ρ̄` is the right object to take natural orbitals from anyway. Log
+   `max |ρ − ρ̄|` (the Step 10 metric, taken before the rotation).
+2. **Blocks.** The same imp/bath × band blocks `rotate_hamiltonian_ordm_imp_bath` already builds from
+   `group_of` (§12.4 says where `group_of` comes from without `PARITY_SOLVE`).
+3. **Block orbits.** G permutes blocks: for each block A and `g`, `g(A)` must be exactly another block
+   (assert — a `g` that splits a block means the band partition and the group disagree; throw). Group
+   blocks into orbits and take the lowest-indexed block of each orbit as its representative.
+4. **Stabilizer check.** For every `h` in `Stab(A) = {h : h(A) = A}`, require `h|_A = id`. Band
+   permutations satisfy this trivially (a band is fixed only by permutations that fix all of its
+   orbitals). A group where it fails would also need `U_A` to commute with `h|_A`, which is not
+   handled. Throw with a clear message instead of silently producing a non-covariant `U`.
+5. **Diagonalize the representative.** `gesvd` on `ρ̄[A, A]` gives `U_A` (columns = natural orbitals)
+   and the occupations `S_A`, exactly as now.
+6. **Transport.** For each block `B` in the orbit, pick any `g` with `g(A) = B` and set
+   `U[g(p), g(j)] = U_A[p, j]` and `occs[g(j)] = S_A[j]` for `p, j ∈ A`. By step 4 the choice of `g` is
+   immaterial. (★) holds **exactly**: the entries are copies, not recomputations, so mixing, sign
+   and alignment (§12.1 points 1–3) are all fixed by construction.
+
+The result is a full `n_active × n_active` rotation, applied with the existing
+`rotate_hamiltonian_rotmat_imp_bath` (`rdms.hpp:260`). That is also the delegation `FORK_REVIEW.md`
+§5 recommends for the three duplicated quarter-transforms. Concretely:
+
+```cpp
+// include/macis/asci/determinant_symmetry.hpp (beside the permutation utilities)
+// Group-covariant natural orbitals of a 1-RDM: U satisfies U[g(p),g(q)] == U[p,q]
+// for every g in group, exactly. Throws if a group element splits a block or a
+// block's stabilizer acts non-trivially on it.
+void covariant_natural_orbitals(const double* ordm, size_t norb,
+                                const std::vector<std::vector<size_t>>& blocks,
+                                const std::vector<std::vector<uint32_t>>& group,
+                                double* U, double* occs_out);
+```
+
+`blocks` should come from the same helper `rotate_hamiltonian_ordm_imp_bath` uses today (factor out
+its lines 139–156 into a free function), so the two paths cannot disagree about what a block is.
+
+### 12.3 Changes in the macro loop (`SolveImpurityASCI_rot`)
+
+| Where | Change |
+|---|---|
+| `impurity_solver.cpp:172` | Refuse only `GROW_WITH_ROT`; allow `NROTS > 0` when symmetrize is on. |
+| `impurity_solver.cpp:884` | When `symmetrize_dets`: `covariant_natural_orbitals(...)` → `tmp_rot`, `orb_occs`; then `ham_gen.rotate_hamiltonian_rotmat_imp_bath(tmp_rot.data(), p.spin_dep)` and `asci_settings.just_singles = ham_gen.just_singles` as now. Otherwise unchanged. |
+| after the rotation | **Re-validate**: rerun the `T`/`Td`/`V` invariance sweep of `prepare_det_symmetry` (factor it out as `check_integral_symmetry(p, group)`). The generator's spans alias `p.T_active` / `p.Td_active` / `p.V_active` (`hamiltonian_generator/impl.hpp:20`), so the rotation writes into them in place and the check reads the rotated integrals directly. A failure here is a bug in §12.2, not physics. Throw. |
+| `impurity_solver.cpp:908` | `hf_determinant_byocc` fills by occupation with a `stable_sort` index tie-break. Partner orbitals now have **bitwise-equal** occupations, so an orbit straddling the Fermi level is split by index, which gives an asymmetric seed. Keep the call. |
+| `impurity_solver.cpp:820` | After `dets = {hf_det}`, call `close_guess_under_group(dets, C_local, group)` exactly as the pre-loop seed does (`:795`). `E0` is still taken from `hf_det` before the closure, and the partners carry `C = 0` (same reasoning as the existing comment at `:790-794`). Today this path is unreachable under symmetrize, so the closure was never needed there. |
+| `impurity_solver.cpp:901` | `parity_restart` (PARITY_SOLVE + symmetrize): it already restricts to the sector. Verify that its result is closed under the sector's stabilizer group, and close it the same way otherwise. |
+| `impurity_solver.cpp:940` | Comment is stale ("symmetrization forces nrots == 0"). The RDM checked there comes from `evaluate_ordm(..., orb_rot)` (`:937`), already back-rotated to the original basis, where G acts by the same labels, so `check_rdm_symmetry` stays valid. Update the comment. |
+
+`orb_rot` accumulates `orb_rot ← orb_rot · tmp_rot`. A product of covariant rotations is covariant,
+so the cumulative matrix written to `rot_matrix_*.dat` and `rotMat` satisfies (★) too. Assert it once
+at the end (cheap, `|G| n²`).
+
+### 12.4 Where `group_of` comes from without `PARITY_SOLVE`
+
+Today `group_of` exists only as `parity_target->labels->group_of`. Two options:
+
+- **(a) v1: reuse it when present, otherwise require `PARITY_SOLVE`.** Zero new code paths for the
+  partition. The cost: `NROTS > 0` with symmetrize would be available only inside parity solves.
+  Throw with that message otherwise.
+- **(b) Factor out the read-only grouping step of `build_parity_labels`**
+  (`include/macis/parity_sectors.hpp:45`). The function takes `T`/`V` by non-const reference
+  because it also *cleans* parity-breaking integrals, so it cannot be called just for the
+  partition. Split it into a pure `band_partition(norb, n_imp, nbands, T, Td)` plus the cleaning,
+  and call the pure part when symmetrize is on and no parity target exists.
+
+**Recommendation: (b).** The partition is a property of the Hamiltonian, not of the parity solve,
+and §12.2 step 3 checks it against the group anyway. If the two disagree, it throws.
+
+### 12.5 Interaction with the rest of the plan
+
+- **Step 11 (projector, not implemented).** Independent and still needed. §12 makes the *basis*
+  symmetric, not the *CI vector*. Until Step 11 lands, a degenerate ground state can still come back
+  polarized in the rotated basis. `ρ̄` (§12.2 step 1) keeps such a state from corrupting the next
+  basis, but does not repair the state.
+- **GF band average (`band_orbit_average_gf`, `impurity_solver.hpp:189`).** It acts on original
+  orbital labels, and the GF is back-rotated by `orb_rot` before use (`FORK_REVIEW.md` §1.6).
+  With (★) the back-rotation commutes with the group, so the average is unaffected. **Verify** in
+  the test (§12.7) that the GF averaged after back-rotation equals the one with `NROTS = 0` to
+  tolerance, rather than assuming it.
+- **μ root-find wrappers** re-enter the solver. Because the rotation writes `p.T_active` /
+  `p.V_active` in place (above), a re-entry validates rotated integrals. These are G-invariant by
+  construction, so `prepare_det_symmetry` stays idempotent. Whether re-entering with rotated
+  integrals is correct *in general* is a pre-existing question about the `NROTS > 0` path, not
+  introduced here. Check it before relying on `NROTS > 0` inside `Fix_Mu_*`.
+- **`WFN_FILE`.** Still refused with `NROTS > 0` (`main/run_asci_impsolv_dop.cxx:243`), for the
+  unrelated basis-mismatch reason.
+
+### 12.6 Out of scope for v1
+
+- **`GROW_WITH_ROT`** (`include/macis/asci/grow.hpp:71`). Rotates mid-grow on the root rank, inside
+  the selection loop, with its own RDM and reseed logic. The same `covariant_natural_orbitals`
+  would apply, but the closed-space invariants of Steps 4–7 then have to survive a basis change
+  *between* selections. Separate change, keep it refused.
+- **Groups whose block stabilizers act non-trivially** (§12.2 step 4). These need `U_A` to commute
+  with `Stab(A)`, i.e. a symmetry-adapted diagonalization within the block. They throw.
+
+### 12.7 Tests
+
+Extend the two-band synthetic model already used by `tests/gf_band_average.cxx` /
+`tests/parity_sectors.cxx`:
+
+1. **Unit, `covariant_natural_orbitals`:** a hand-built G-symmetric `ρ` with a **degenerate**
+   occupation pair inside a block, plus a 1×1 block. Assert (★) bitwise, `Uᵀ U = 1` to 1e-14, and
+   that `occs` is covariant. Negative cases: a block split by `g` throws, and a non-trivial
+   stabilizer throws.
+2. **Integration, `NROTS = 2` + `SYMMETRIZE_DETS`:**
+   - the run completes;
+   - the post-rotation integral check passes at every macro iteration;
+   - the final `orb_rot` satisfies (★);
+   - the 1-RDM band blocks are degenerate to < 1e-8;
+   - the energy is within the truncation error of the same run without symmetrize;
+   - the GF agrees with the `NROTS = 0` symmetric run after back-rotation.
+3. **Guard:** `GROW_WITH_ROT = TRUE` with symmetrize still throws, with the updated message.
+
+### 12.8 Failure-mode guards added
+
+| Condition | Where | Action |
+|---|---|---|
+| a group element maps a block onto a non-block | `covariant_natural_orbitals` | throw |
+| a block's stabilizer acts non-trivially on it | `covariant_natural_orbitals` | throw |
+| rotated `T`/`Td`/`V` not invariant within `SYM_TOL` | post-rotation check (§12.3) | throw: a bug, not physics |
+| cumulative `orb_rot` violates (★) | end of macro loop | throw |
+| no band partition available (option (a) only) | `prepare_det_symmetry` | throw: requires `PARITY_SOLVE` |
+| `GROW_WITH_ROT` with symmetrize | `prepare_det_symmetry` | throw (unchanged) |
 
 ---
 
