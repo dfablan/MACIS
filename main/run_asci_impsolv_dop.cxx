@@ -520,7 +520,8 @@ int main(int argc, char** argv) {
             << params.n_imp << " impurity orbitals\n"
             << std::endl;
 
-  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz or compute_charge_charge or
+     compute_imp_rdm) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables<nwfn_bits> obs(params);
     if(compute_db_occs) {
