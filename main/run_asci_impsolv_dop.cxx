@@ -154,6 +154,16 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.COMP_CHARGE_CHARGE", compute_charge_charge, bool);
   OPT_KEYWORD("CI.COMP_IMP_RDM", compute_imp_rdm, bool);
   OPT_KEYWORD("CI.WRITE_RHO_BIN", write_rho_bin, bool);
+  // rho.bin.txt on the block-sparse path; up to ~1.7e8 lines (GBs) for 8
+  // impurity orbitals, so turn it off there and keep rho_blocks.bin instead.
+  bool write_rho_txt = true;
+  OPT_KEYWORD("CI.WRITE_RHO_TXT", write_rho_txt, bool);
+  bool write_rho_blocks = false;
+  OPT_KEYWORD("CI.WRITE_RHO_BLOCKS", write_rho_blocks, bool);
+  double rho_block_thresh = 0.0;
+  OPT_KEYWORD("CI.RHO_BLOCK_THRESH", rho_block_thresh, double);
+  bool rdm_dense_ref = false;
+  OPT_KEYWORD("CI.RDM_DENSE_REF", rdm_dense_ref, bool);
 
   if(params.n_active > nwfn_bits / 2)
     throw std::runtime_error("Not Enough Bits");
@@ -546,6 +556,7 @@ int main(int argc, char** argv) {
     }
     if(compute_imp_rdm) {
       std::cout << "  * Computing (full) impurity RDM = |Psi_imp><Psi_imp| = Tr_{bath}( |Psi><Psi| )" << std::endl;
+      if(rdm_dense_ref) {
       auto imp_rdm = obs.compute_impurity_rdm();
       
       const std::string output_file = "rho.bin";
@@ -577,13 +588,32 @@ int main(int argc, char** argv) {
       	for (size_t i = 0; i < basis_size; ++i) {
       	    for (size_t j = 0; j < basis_size; ++j) {
       	        const double v = imp_rdm[i * basis_size + j];
-      	        if (abs(v) > 1e-12) {
+      	        if (std::abs(v) > 1e-12) {
       	            out_txt << i << " " << j << " " << v << "\n";
       	        }
       	    }
       	}
       	out_txt.close();
       	std::cout << "Wrote text RDM to " << text_output << "\n";
+
+      } else {
+        auto rdm_blocks = obs.compute_impurity_rdm_blocks();
+        const std::string output_file = "rho.bin";
+        if (write_rho_bin) {
+          rdm_blocks.write_dense_bin(output_file);
+          std::cout << "Wrote binary RDM to " << output_file << "\n";
+        }
+        if (write_rho_txt) {
+          const std::string text_output = output_file + ".txt";
+          rdm_blocks.write_dense_txt(text_output);
+          std::cout << "Wrote text RDM to " << text_output << "\n";
+        }
+        if (write_rho_blocks) {
+          const std::string block_output = "rho_blocks.bin";
+          rdm_blocks.write_blocks_bin(block_output, rho_block_thresh);
+          std::cout << "Wrote block RDM to " << block_output << "\n";
+        }
+      }
 
     }
   }

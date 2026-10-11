@@ -409,6 +409,12 @@ CompObservables<N>::CompObservables(impurity_params<N>& p)
     return compute_impurity_rdm_from_state<N>(n_imp_, n_active_, dets_, C_, orb_rot_);
   }
 
+  template <size_t N>
+  ImpRdmBlocks CompObservables<N>::compute_impurity_rdm_blocks() const {
+    return compute_impurity_rdm_blocks_from_state<N>(n_imp_, n_active_, dets_,
+                                                     C_, orb_rot_);
+  }
+
   // Explicit template instantiations for commonly used template parameter
   template double Comp_db_occs<64>(impurity_params<64>& p);
   template class CompObservables<64>;
