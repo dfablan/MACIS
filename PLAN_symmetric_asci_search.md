@@ -992,8 +992,21 @@ Deviations from §12.2–12.8:
   Symmetric Search` (`determinant_symmetry.cxx:318`, |E_sym − E_unsym| = 0.2857 > 0.1, the
   unsymmetrized negative control), predates this change: the pre-change binary in
   `MACIS_experimental_build/` fails with the same value.
+- **Frozen-H smoke test (2026-10-11).** The 2×2 band-swap Hamiltonian
+  (`…/Tests_frozenH/J0.2_U4.01_It4/D_symrot_smoke`), 20k determinants, NROTS = 2, both parity
+  sectors. Every rotation left the integrals exactly symmetric (deviation 0 → 0), and the
+  accumulated rotation's covariance was exactly 0. In sector (e,e), after the second rotation,
+  `asci_refine` locked into a period-2 cycle: E alternated −16.034564 ↔ −16.034470 until
+  MAX_REFINE_ITER. Group closure added nothing (20000 → 20000), so this is a fixed-size selection
+  flip-flop, not a symmetry problem. The sector therefore "failed", and (o,o) won at −15.983
+  although (e,e) was lower. Fix: `asci_refine` now stops on the lower of the two states, with a
+  warning, once the sorted determinant set of iterate k equals that of iterate k−2
+  (`refine.hpp`). This applies to every ASCI run, not only symmetrized ones. A first version
+  compared energies instead (|E_k − E_{k−2}| < REFINE_ETOL). That fired on a damped oscillation
+  in the second macro iteration, which the old code converged out of one iteration later, so it
+  was replaced by the set test.
 - **Not done.** Validation on a production Hamiltonian (the 2×2 band-swap case,
-  `…/Nimp2x2/Doping/Irrep/Nb16/Tests_frozenH/J0.2_U4.01_It4/B_symdets` with `NROTS = 2`), the GF
+  `…/Nimp2x2/Doping/Irrep/Nb16/Tests_frozenH/J0.2_U4.01_It4/D_symrot_{oo,ee}` with `NROTS = 2`), the GF
   comparison against `NROTS = 0` of §12.7.2, and MPI. The PolClassy_DMFT guard
   (`constANDparams.py` ~:611, "asci_symmetrize_dets = .true. requires nrots = 0") still refuses
   the combination on the DMFT side.

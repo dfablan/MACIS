@@ -7,6 +7,7 @@
  */
 
 #pragma once
+#include <algorithm>
 #include <macis/asci/iteration.hpp>
 
 namespace macis {
@@ -41,10 +42,30 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
 
   // Refinement Loop
   const size_t ndets = wfn.size();
-  bool converged = false;
+  bool converged = false, cycled = false;
+  // Period-2 cycle detection. The fixed-size selection can alternate between
+  // two determinant sets A -> B -> A, each the best truncation of the other's
+  // wavefunction, so |dE| never drops below the tolerance (frozen-H test
+  // 2026-10-11: after an orbital rotation E alternated with |dE| = 9.4e-5 for
+  // 200 iterations). The test is on the determinant sets, not the energies:
+  // a damped oscillation that will still converge also has E_k ~ E_{k-2}.
+  // Once the set of iterate k equals that of k-2, refinement stops on the
+  // lower of the two states. sorted_prev[0] / [1] = sorted determinant sets
+  // of iterates k-1 / k-2; wfn_prev, X_prev = iterate k-1 itself.
+  auto sorted_set = [](std::vector<wfn_t<N>> w) {
+    std::sort(w.begin(), w.end(), bitset_less_comparator<N>{});
+    return w;
+  };
+  std::vector<std::vector<wfn_t<N>>> sorted_prev = {sorted_set(wfn), {}};
+  std::vector<wfn_t<N>> wfn_prev;
+  std::vector<double> X_prev;
+  double E_prev = E0;
   for(size_t iter = 0; iter < asci_settings.max_refine_iter; ++iter) {
     auto start_time = std::chrono::high_resolution_clock::now();
 
+    wfn_prev = wfn;
+    X_prev = X;
+    E_prev = E0;
     double E;
     std::tie(E, wfn, X) = asci_iter<N, index_t>(
         asci_settings, mcscf_settings, ndets, E0, std::move(wfn), std::move(X),
@@ -72,9 +93,30 @@ auto asci_refine(ASCISettings asci_settings, MCSCFSettings mcscf_settings,
       converged = true;
       break;
     }
+
+    // The determinant list is replicated on every rank, so every rank takes
+    // the same decision here.
+    auto sorted_cur = sorted_set(wfn);
+    if(sorted_cur == sorted_prev[1]) {
+      logger->warn(
+          "ASCI Refine is cycling between two determinant sets, E = {:.12e} "
+          "and {:.12e} (|dE| = {:.6e} >= REFINE_TOL); keeping the lower",
+          E, E_prev, std::abs(E - E_prev));
+      if(E_prev < E) {
+        wfn = std::move(wfn_prev);
+        X = std::move(X_prev);
+        E0 = E_prev;
+      }
+      converged = cycled = true;
+      break;
+    }
+    sorted_prev[1] = std::move(sorted_prev[0]);
+    sorted_prev[0] = std::move(sorted_cur);
   }  // Refinement loop
 
-  if(converged)
+  if(cycled)
+    logger->info("ASCI Refine stopped on a 2-cycle at E = {:.12e}", E0);
+  else if(converged)
     logger->info("ASCI Refine Converged!");
   else
     throw std::runtime_error("ACCI Refine did not converge");

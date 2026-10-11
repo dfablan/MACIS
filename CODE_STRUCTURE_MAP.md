@@ -146,6 +146,7 @@ asci_grow (grow.hpp)        while ndets < NTDETS_MAX: ndets ← min(max(NTDETS_M
         │     → drop off-sector candidates if parity_target (logged count must be 0)
         └─ selected_ci_diag (solvers/selected_ci_diag.hpp:171) → CSR H → Davidson
 asci_refine (refine.hpp)    fixed size, repeat asci_iter until |ΔE| < REFINE_ETOL or MAX_REFINE_ITER
+                            (throws); a period-2 cycle (det set of iterate k == that of k-2) stops on the lower state
    (optional) GROW_WITH_ROT: grow.hpp rotates over the FULL active space; incompatible with PARITY_SOLVE
 ```
 
