@@ -428,7 +428,7 @@ uses; duplicate CBLAS symbols across gslcblas and MKL/OpenBLAS are a well-known 
 of silent mis-linking. Gate this behind an option (`MACIS_ENABLE_DOPING`) and drop
 `gslcblas` unless a GSL routine actually needs it.
 
-### 2.8 ASCI seed fills by raw orbital index, not by orbital energy — `src/macis/impurity_solver.cpp:448,577` - FIXED (gated)
+### 2.8 ASCI seed fills by raw orbital index, not by orbital energy — `src/macis/impurity_solver.cpp:448,577` - FIXED (ungated 2026-10-03)
 
 The legacy impurity driver seeded ASCI from the **energy-ordered** reference, at every
 site — five in `~/Code/CI_Solver/Legacy/ASCI-CI/inc/dbwy/asci_body.hpp`, three in this
@@ -458,26 +458,28 @@ at eps = −5.561 empty — a "HF reference" that is not the lowest determinant 
 one-body Hamiltonian.
 
 Fixed via `asci_reference_determinant<N>(p)`, which fills by the `T_active` diagonal —
-but **gated on `ASCI.SYMMETRIZE_DETS`**. Only that path currently gets the energy-ordered
-seed; every other impurity run keeps the raw-index reference. The gate exists solely to
+but **gated on `ASCI.SYMMETRIZE_DETS`** *(ungated 2026-10-03, see below)*. Only that path got the
+energy-ordered seed; every other impurity run kept the raw-index reference. The gate existed solely to
 avoid perturbing calculations in flight, not for any principled reason: which determinant
 seeds ASCI and whether band-permutation symmetry is enforced are unrelated concerns, and
 a reader six months from now will not guess why one implies the other.
 
-**Open decision — remove the gate.** Recommended. Ungating is a bit-for-bit no-op wherever
-the numbering was already energy-ordered (`stable_sort` on an ascending diagonal is the
-identity), so it can only change runs whose seed was already wrong. Before flipping it,
-A/B one converged calculation at fixed `tdets_max`: ASCI truncation is greedy, so a
-different seed selects a different space and shifts converged energies and GF slightly.
+**Resolved 2026-10-03 — gate removed.** The energy-ordered fill is now the default for every
+impurity run (`ASCISettings::hf_by_energy = true`); `ASCI.HF_BY_ENERGY = FALSE` restores the
+raw-index fill, without a rebuild. Spin-dependent runs order the beta electrons by `Td_active`.
+Unchanged wherever the numbering was already energy-ordered (`stable_sort` on an ascending
+diagonal is the identity), so it can only change runs whose seed was wrong. One more reason
+than the original one: H conserves per-band parity for a band-diagonal Kanamori bath, so the
+expansion inherits the seed's parity sector; at `NALPHA != NBETA` the raw fill puts the
+unpaired electron in whichever band the file lists next (`tests/impurity_seed.cxx`: 0.165 Ha
+too high on a toy). **Still to do on production:** A/B one converged calculation whose bath is not
+energy-ordered, at fixed `tdets_max` (`ASCI.HF_BY_ENERGY` TRUE vs FALSE). ASCI truncation is
+greedy, so a different seed selects a different space and can shift converged energies and
+the GF slightly:
 
-- agreement within `dmft_conv_tol` → ungate and don't look back;
+- agreement within `dmft_conv_tol` → nothing more to do;
 - disagreement → `tdets_max` is too small and the results are truncation-limited. That is
   the more important finding of the two.
-
-This fork is not a git repository, so "revert to the old seed" means keeping the old
-binary; back up `run_asci_impsolv_dop` before rebuilding. If both behaviours must stay
-reachable without a rebuild, make it an input key (`ASCI.HF_BY_ENERGY`) rather than a
-compile-time choice.
 
 ---
 
@@ -1119,7 +1121,7 @@ see their entries above for what changed.
 | 3.6 | `impurity_params` members uninitialised; `CompObservables` divides by an unset `nbands`, `evaluate_GF` reads `orb_rot` that only some drivers/solvers populate |
 | 3.5 | No file-open error checking in any new I/O; hard-coded filenames written by every MPI rank concurrently |
 | 2.6 | Hamiltonian rotation silently disables the user's `CI.JUST_SINGLES` setting |
-| 2.8 | ASCI seed fills by raw orbital index rather than orbital energy — fixed only under `SYMMETRIZE_DETS`; every other impurity run still seeds from a non-HF reference (gate removal pending an A/B at fixed `tdets_max`) |
+| 2.8 | ASCI seed fills by raw orbital index rather than orbital energy — **fixed for every run** (2026-10-03, `ASCI.HF_BY_ENERGY`, default `TRUE`); still to do: the production A/B at fixed `tdets_max` |
 | 5.2 | `impurity_rdm.hpp` indexes `rot_mat` row-major where the rest of the codebase is column-major — transposed rotation of the impurity RDM (flagged for double-check; still unverified either way, and §6.1's identity-rotation test cannot catch it) |
 | 5.3 | `compute_fermionic_sign` carries a term that cannot affect the parity — either the coefficient is wrong or the term is dead (flagged for double-check; untested, see §6.1) |
 

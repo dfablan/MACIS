@@ -34,6 +34,7 @@ class DoubleLoopHamiltonianGenerator : public HamiltonianGenerator<N> {
     const size_t nbra_dets = std::distance(bra_begin, bra_end);
     const size_t nket_dets = std::distance(ket_begin, ket_end);
 
+    check_csr_dims<index_t>(nbra_dets, nket_dets);
     std::vector<index_t> colind, rowptr(nbra_dets + 1);
     std::vector<double> nzval;
 
@@ -86,7 +87,8 @@ class DoubleLoopHamiltonianGenerator : public HamiltonianGenerator<N> {
 
       }  // Non-zero bra determinant
 
-      rowptr[i + 1] = rowptr[i] + nrow;  // Update rowptr
+      rowptr[i + 1] =
+          checked_rowptr_next(rowptr[i], nrow, i, nbra_dets);  // Update rowptr
 
     }  // Loop over bra determinants
 

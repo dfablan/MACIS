@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <macis/comp_observables.hpp>
+#include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
 #include <map>
 #include <sparsexx/io/write_dist_mm.hpp>
@@ -153,6 +154,16 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("CI.COMP_CHARGE_CHARGE", compute_charge_charge, bool);
   OPT_KEYWORD("CI.COMP_IMP_RDM", compute_imp_rdm, bool);
   OPT_KEYWORD("CI.WRITE_RHO_BIN", write_rho_bin, bool);
+  // rho.bin.txt on the block-sparse path; up to ~1.7e8 lines (GBs) for 8
+  // impurity orbitals, so turn it off there and keep rho_blocks.bin instead.
+  bool write_rho_txt = true;
+  OPT_KEYWORD("CI.WRITE_RHO_TXT", write_rho_txt, bool);
+  bool write_rho_blocks = false;
+  OPT_KEYWORD("CI.WRITE_RHO_BLOCKS", write_rho_blocks, bool);
+  double rho_block_thresh = 0.0;
+  OPT_KEYWORD("CI.RHO_BLOCK_THRESH", rho_block_thresh, double);
+  bool rdm_dense_ref = false;
+  OPT_KEYWORD("CI.RDM_DENSE_REF", rdm_dense_ref, bool);
 
   if(params.n_active > nwfn_bits / 2)
     throw std::runtime_error("Not Enough Bits");
@@ -199,6 +210,7 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", params.asci_settings.symmetrize_dets,
               bool);
   OPT_KEYWORD("ASCI.SYM_TOL", params.asci_settings.sym_tol, double);
+  OPT_KEYWORD("ASCI.HF_BY_ENERGY", params.asci_settings.hf_by_energy, bool);
   if(params.asci_settings.symmetrize_dets) {
     size_t nperm = 0;
     OPT_KEYWORD("ASCI.SYM_NPERM", nperm, size_t);
@@ -294,6 +306,19 @@ int main(int argc, char** argv) {
     params.orb_rot[i * params.n_active + i] = 1.0;
   params.E = 0.0;
 
+  // Band-parity sector solve (parity-sector-solve-simple.md). Set up before the
+  // active integrals are built: it zeroes parity-breaking integrals up to
+  // PARITY_TOL in T, Td and V, and the active copies must see that.
+  {
+    bool parity_solve = true;
+    double parity_tol = 1e-10;
+    OPT_KEYWORD("ASCI.PARITY_SOLVE", parity_solve, bool);
+    OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
+    OPT_KEYWORD("ASCI.PARITY_ETOL", params.parity_etol, double);
+    OPT_KEYWORD("ASCI.PARITY_ONLY", params.parity_only, std::vector<int>);
+    if(parity_solve) macis::setup_parity_sectors(params, parity_tol);
+  }
+
   // Copy integrals into active subsets
   params.T_active.resize(params.n_active * params.n_active);
   params.Td_active.resize(params.n_active * params.n_active);
@@ -334,6 +359,9 @@ int main(int argc, char** argv) {
   bool doping = false;
   OPT_KEYWORD("CI.DOPING", doping, bool);
 
+  bool testGF = false;
+  OPT_KEYWORD("CI.GF", testGF, bool);
+
   OPT_KEYWORD("DOP.NELECTRONS", params.nel_target, double);
 
   if(doping && params.nel_target / params.n_imp == 1)
@@ -373,15 +401,41 @@ int main(int argc, char** argv) {
               << " electrons in " << std::setprecision(1) << params.n_imp
               << " orbitals \n";
 
+    // Charge-sector search: after the mu search, the neighbouring sectors are
+    // solved at the same mu and the run moves to the lowest one if it lies more
+    // than SECTOR_ETOL below. Writes GS_charge_sector.dat.
+    macis::ChargeSectorSettings sector_settings;
+    OPT_KEYWORD("DOP.SECTOR_SEARCH", sector_settings.enabled, bool);
+    OPT_KEYWORD("DOP.SECTOR_MARGIN", sector_settings.margin, size_t);
+    OPT_KEYWORD("DOP.SECTOR_ETOL", sector_settings.etol, double);
+    OPT_KEYWORD("DOP.SECTOR_WARM", sector_settings.warm, bool);
+    OPT_KEYWORD("DOP.SECTOR_MAX_SWITCH", sector_settings.max_switch, size_t);
+    OPT_KEYWORD("DOP.SECTOR_DIR", sector_settings.workdir, std::string);
+    if(sector_settings.margin < 1)
+      throw std::runtime_error("DOP.SECTOR_MARGIN must be >= 1");
+
     double mu_fixed;
 
-    if(deriv){
-      std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
-      mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
+    if(sector_settings.enabled) {
+      std::cout << "Find mu and the ground-state charge sector. Method: "
+                << (deriv ? "WITH" : "WITHOUT") << " derivatives, " << method_name
+                << std::endl;
+      mu_fixed = macis::Fix_Mu_sectors<nwfn_bits>(method_name, deriv, init_mu,
+                                                  &params, sector_settings);
     }
-    else{
-      std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
-      mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+    else {
+      if(deriv){
+        std::cout << "Find mu using method WITH derivatives. Method:  " << method_name << std::endl;
+        mu_fixed = macis::Fix_Mu_der<nwfn_bits>(method_name, init_mu, &params);
+      }
+      else{
+        std::cout << "Find mu using method WITHOUT derivatives. Method:" << method_name << std::endl;  
+        mu_fixed = macis::Fix_Mu_noder<nwfn_bits>(method_name, init_mu, &params);
+      }
+      macis::write_ground_sector_file<nwfn_bits>(
+          "GS_charge_sector.dat", params, mu_fixed,
+          "# sector search: off (DOP.SECTOR_SEARCH = false); the sector is the "
+          "one of input.in, not verified\n");
     }
 
     std::cout << "Mu has been fixed to " << std::setprecision(10) << mu_fixed
@@ -397,7 +451,7 @@ int main(int argc, char** argv) {
 
     std::cout << "\nOrbital Occupations (per spin) in the original basis: "
               << std::endl;
-    std::cout << "Occs: ";
+    std::cout << std::scientific << std::setprecision(12) << "Occs: ";
     for(const auto oc : params.occs) std::cout << oc << ", ";
     std::cout << std::endl;
 
@@ -455,7 +509,7 @@ int main(int argc, char** argv) {
 
   std::cout << "\nOrbital Occupations (per spin) in the original basis: "
             << std::endl;
-  std::cout << "Occs: ";
+  std::cout << std::scientific << std::setprecision(12) << "Occs: ";
   for(const auto oc : params.occs) std::cout << oc << ", ";
   std::cout << std::endl;
 
@@ -466,7 +520,8 @@ int main(int argc, char** argv) {
             << params.n_imp << " impurity orbitals\n"
             << std::endl;
 
-  if(compute_db_occs or compute_sz_sz or compute_tz_tz) {
+  if(compute_db_occs or compute_sz_sz or compute_tz_tz or compute_charge_charge or
+     compute_imp_rdm) {
     using dbl = std::numeric_limits<double>;
     macis::CompObservables<nwfn_bits> obs(params);
     if(compute_db_occs) {
@@ -502,6 +557,7 @@ int main(int argc, char** argv) {
     }
     if(compute_imp_rdm) {
       std::cout << "  * Computing (full) impurity RDM = |Psi_imp><Psi_imp| = Tr_{bath}( |Psi><Psi| )" << std::endl;
+      if(rdm_dense_ref) {
       auto imp_rdm = obs.compute_impurity_rdm();
       
       const std::string output_file = "rho.bin";
@@ -533,7 +589,7 @@ int main(int argc, char** argv) {
       	for (size_t i = 0; i < basis_size; ++i) {
       	    for (size_t j = 0; j < basis_size; ++j) {
       	        const double v = imp_rdm[i * basis_size + j];
-      	        if (abs(v) > 1e-12) {
+      	        if (std::abs(v) > 1e-12) {
       	            out_txt << i << " " << j << " " << v << "\n";
       	        }
       	    }
@@ -541,11 +597,27 @@ int main(int argc, char** argv) {
       	out_txt.close();
       	std::cout << "Wrote text RDM to " << text_output << "\n";
 
+      } else {
+        auto rdm_blocks = obs.compute_impurity_rdm_blocks();
+        const std::string output_file = "rho.bin";
+        if (write_rho_bin) {
+          rdm_blocks.write_dense_bin(output_file);
+          std::cout << "Wrote binary RDM to " << output_file << "\n";
+        }
+        if (write_rho_txt) {
+          const std::string text_output = output_file + ".txt";
+          rdm_blocks.write_dense_txt(text_output);
+          std::cout << "Wrote text RDM to " << text_output << "\n";
+        }
+        if (write_rho_blocks) {
+          const std::string block_output = "rho_blocks.bin";
+          rdm_blocks.write_blocks_bin(block_output, rho_block_thresh);
+          std::cout << "Wrote block RDM to " << block_output << "\n";
+        }
+      }
+
     }
   }
-
-  bool testGF = false;
-  OPT_KEYWORD("CI.GF", testGF, bool);
 
   // Optionally compute the dynamical impurity Sz-Sz response instead in addition to the Green's function.
   bool sz_resolvent = false;
@@ -649,6 +721,11 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ETA", gf_settings.eta, double);
     OPT_KEYWORD("GF.BETA", gf_settings.beta, double);
     OPT_KEYWORD("GF.IMAG_FREQ", gf_settings.imag_freq, bool);
+    // NALPHA != NBETA (e.g. odd N): average over the state and its spin flip
+    OPT_KEYWORD("GF.SPIN_AVERAGE", gf_settings.spin_average, bool);
+    // Parity sector not invariant under the SYMMETRIZE_DETS group: average
+    // over the orbit of the solved state
+    OPT_KEYWORD("GF.BAND_AVERAGE", gf_settings.band_average, bool);
 
     std::vector<std::vector<std::complex<double>>> GF( gf_settings.nws,
         std::vector<std::complex<double>>(params.n_active * params.n_active,

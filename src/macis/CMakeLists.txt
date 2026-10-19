@@ -22,6 +22,8 @@ add_library( macis
   impurity_solver.cpp
   comp_observables.cpp
   doping/fix_mu.cpp
+  doping/charge_sectors.cpp
+  parity_sectors.cpp
 )
 
 target_include_directories( macis PUBLIC 

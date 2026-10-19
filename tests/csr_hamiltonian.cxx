@@ -6,12 +6,14 @@
  * See LICENSE.txt for details
  */
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <macis/csr_hamiltonian.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
 #include <macis/util/fcidump.hpp>
+#include <stdexcept>
 
 #include "ut_common.hpp"
 
@@ -135,3 +137,59 @@ TEST_CASE("Distributed CSR Hamiltonian") {
   MPI_Barrier(MPI_COMM_WORLD);
 }
 #endif
+
+TEST_CASE("CSR index overflow guard") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // int16_t max is 32767: the running nonzero count may reach it, not pass it.
+  REQUIRE(macis::checked_rowptr_next<int16_t>(32000, 767, 0, 1) == 32767);
+  REQUIRE_THROWS_AS(macis::checked_rowptr_next<int16_t>(32000, 768, 5, 10),
+                    std::overflow_error);
+  REQUIRE(macis::checked_rowptr_next<int32_t>(0, 0, 0, 1) == 0);
+
+  // 2^31 nonzeros do not fit in int32_t but do in int64_t.
+  const size_t big = size_t(1) << 31;
+  REQUIRE_THROWS_AS(macis::checked_rowptr_next<int32_t>(0, big, 0, 1),
+                    std::overflow_error);
+  REQUIRE(macis::checked_rowptr_next<int64_t>(0, big, 0, 1) == int64_t(big));
+
+  REQUIRE_NOTHROW(macis::check_csr_dims<int16_t>(32767, 32767));
+  REQUIRE_THROWS_AS(macis::check_csr_dims<int16_t>(32768, 1),
+                    std::overflow_error);
+  REQUIRE_THROWS_AS(macis::check_csr_dims<int16_t>(1, 32768),
+                    std::overflow_error);
+}
+
+TEST_CASE("CSR Hamiltonian 64-bit indices") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  size_t norb = macis::read_fcidump_norb(water_ccpvdz_fcidump);
+  size_t nocc = 5;
+
+  std::vector<double> T(norb * norb);
+  std::vector<double> V(norb * norb * norb * norb);
+  macis::read_fcidump_1body(water_ccpvdz_fcidump, T.data(), norb);
+  macis::read_fcidump_2body(water_ccpvdz_fcidump, V.data(), norb);
+
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<64>;
+  generator_type ham_gen(
+      macis::matrix_span<double>(T.data(), norb, norb),
+      macis::rank4_span<double>(V.data(), norb, norb, norb, norb));
+
+  const auto hf_det = macis::canonical_hf_determinant<64>(nocc, nocc);
+  auto dets = macis::generate_cisd_hilbert_space(norb, hf_det);
+
+  auto H32 = macis::make_csr_hamiltonian_block<int32_t>(
+      dets.begin(), dets.end(), dets.begin(), dets.end(), ham_gen, 1e-16);
+  auto H64 = macis::make_csr_hamiltonian_block<int64_t>(
+      dets.begin(), dets.end(), dets.begin(), dets.end(), ham_gen, 1e-16);
+
+  REQUIRE(H64.m() == H32.m());
+  REQUIRE(H64.n() == H32.n());
+  REQUIRE(H64.nnz() == H32.nnz());
+  REQUIRE(std::equal(H64.rowptr().begin(), H64.rowptr().end(),
+                     H32.rowptr().begin(), H32.rowptr().end()));
+  REQUIRE(std::equal(H64.colind().begin(), H64.colind().end(),
+                     H32.colind().begin(), H32.colind().end()));
+  REQUIRE(H64.nzval() == H32.nzval());
+}

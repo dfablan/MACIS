@@ -1,0 +1,248 @@
+{
+  "baths": [
+    {
+      "path": "RUN_U4_Irrep_N18/It_2",
+      "poles": [
+        {
+          "eps": -0.29610164314,
+          "multiplicity": 2,
+          "rank": 2,
+          "projected_rank": 2,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.45605258300767965,
+          "projection_max_abs": 0.0
+        },
+        {
+          "eps": -0.18057672083,
+          "multiplicity": 4,
+          "rank": 4,
+          "projected_rank": 4,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 2.7755575615628914e-17,
+          "c4_weight_difference": 7.825755543588997e-08,
+          "band_k_scale": 0.2508812250319208,
+          "projection_max_abs": 2.353146862978602e-18
+        },
+        {
+          "eps": -0.049344734551,
+          "multiplicity": 2,
+          "rank": 2,
+          "projected_rank": 2,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.092209211776474,
+          "projection_max_abs": 0.0
+        },
+        {
+          "eps": 0.39529184953,
+          "multiplicity": 2,
+          "rank": 2,
+          "projected_rank": 2,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.5613919647212879,
+          "projection_max_abs": 0.0
+        },
+        {
+          "eps": 0.74909033999,
+          "multiplicity": 4,
+          "rank": 4,
+          "projected_rank": 4,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 8.466828844190679e-18,
+          "c4_weight_difference": 4.3106064939735234e-07,
+          "band_k_scale": 0.7745319141676086,
+          "projection_max_abs": 1.6933657688381358e-17
+        },
+        {
+          "eps": 1.5937823331,
+          "multiplicity": 2,
+          "rank": 2,
+          "projected_rank": 2,
+          "band_cross_abs": 0.0,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 1.279173540196814,
+          "projection_max_abs": 0.0
+        }
+      ],
+      "delta_max_abs": 3.563649881770886e-17,
+      "delta_max_relative_frobenius": 8.508120801811383e-17
+    },
+    {
+      "path": "RUN_U0.5_SDP_GFall/It_1",
+      "poles": [
+        {
+          "eps": -0.91411965776,
+          "multiplicity": 8,
+          "rank": 8,
+          "projected_rank": 8,
+          "band_cross_abs": 0.00038850036493614376,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.8355906845357012,
+          "projection_max_abs": 0.00038850036493614376
+        },
+        {
+          "eps": 0.91411965776,
+          "multiplicity": 8,
+          "rank": 8,
+          "projected_rank": 8,
+          "band_cross_abs": 0.00038850036493614376,
+          "momentum_cross_abs": 0.0,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.8355906845357012,
+          "projection_max_abs": 0.00038850036493614376
+        }
+      ],
+      "delta_max_abs": 0.0004249830151339865,
+      "delta_max_relative_frobenius": 0.000678868375222359
+    },
+    {
+      "path": "TEST_D_SDP_b157/It_3",
+      "poles": [
+        {
+          "eps": -0.35742163761,
+          "multiplicity": 8,
+          "rank": 8,
+          "projected_rank": 8,
+          "band_cross_abs": 0.010454135103940656,
+          "momentum_cross_abs": 1.3877787807814457e-17,
+          "c4_weight_difference": 0.0,
+          "band_k_scale": 0.37403108625846226,
+          "projection_max_abs": 0.010454135103940656
+        },
+        {
+          "eps": 1.662326061,
+          "multiplicity": 8,
+          "rank": 8,
+          "projected_rank": 8,
+          "band_cross_abs": 0.011652682125687982,
+          "momentum_cross_abs": 5.10702591327572e-15,
+          "c4_weight_difference": 2.4424906541753444e-15,
+          "band_k_scale": 1.4520026482100339,
+          "projection_max_abs": 0.011652682125687982
+        }
+      ],
+      "delta_max_abs": 0.03625846424549498,
+      "delta_max_relative_frobenius": 0.11685915842356716
+    }
+  ],
+  "u0": {
+    "path": "SOLVER_TESTS/U_ladder/U_0.0",
+    "nalpha": 14,
+    "nbeta": 14,
+    "exact": -16.791309684621226,
+    "archived_rdm_energy": -15.368084807868286,
+    "error": 1.4232248767529398,
+    "channel_offdiag_h": 9.540979117872439e-18,
+    "channel_counts_spin_summed": [
+      3.9999999999652527,
+      3.999999999961314,
+      3.9999999999595186,
+      3.9999999999544062,
+      3.999999999885391,
+      3.9999999999493383,
+      2.0000000000978018,
+      1.999999999959172
+    ],
+    "idempotency_error": 2.7962226978317517e-09,
+    "symmetry_expectations": {
+      "band_parity": 0.9999999999999998,
+      "Tx": 0.9999999998279401,
+      "Ty": 0.9999999999102522
+    },
+    "exact_by_parity_momentum": {
+      "p0_K0": -16.791309684621226,
+      "p0_K1": -16.11431031717577,
+      "p0_K2": -16.11431033068197,
+      "p0_K3": -15.9737093729057,
+      "p1_K0": -15.946267069599134,
+      "p1_K1": -16.114310317175775,
+      "p1_K2": -16.114310330681974,
+      "p1_K3": -15.973709372905702
+    },
+    "one_body_eigenvalues": [
+      -2.402869703317759,
+      -2.4028697033177564,
+      -0.8328356432895411,
+      -0.8328356432895409,
+      -0.832835575345381,
+      -0.8328355753453798,
+      -0.12320382779216915,
+      -0.1232038277921679,
+      -0.09576152448560082,
+      -0.09576152448560017,
+      0.0448394197844719,
+      0.044839419784471986,
+      0.04483943329066937,
+      0.04483943329066976,
+      0.7218387872299239,
+      0.7218387872299251,
+      0.7564518601438258,
+      0.7564518601438259,
+      1.4581829206047106,
+      1.4581829206047112,
+      1.458183002055067,
+      1.4581830020550697,
+      3.051225748021774,
+      3.0512257480217757
+    ],
+    "spin_summed_occupations": [
+      1.9999999985871748,
+      1.999999998587374,
+      1.99999999904304,
+      1.999999999047098,
+      1.9999999991492325,
+      1.9999999990476174,
+      1.9999999998301061,
+      1.9999999999100175,
+      1.9999999986084789,
+      1.9999999998905758,
+      1.9999999997578086,
+      1.9999999997617672,
+      0.006833870799052693,
+      1.9931661293110325,
+      1.4684206220099702e-09,
+      1.4675514757969304e-09,
+      1.9999941822199507,
+      5.8174911035975794e-06,
+      6.58334886244498e-10,
+      1.092028003856145e-09,
+      1.1492848804988997e-09,
+      1.1516761594342051e-09,
+      9.222194425487698e-10,
+      7.812472444227563e-10
+    ]
+  },
+  "toy": {
+    "disconnected_min_diag_energy": 0.0,
+    "disconnected_residual": 0.0,
+    "disconnected_true_energy": -1.0,
+    "pole_rank_before": 1,
+    "pole_rank_after_band_projection": 2,
+    "two_level_closed_shell_energy": 0.0,
+    "two_level_forced_open_shell_energy": 1.0
+  },
+  "spin": {
+    "triplet_energies": [
+      -2.25,
+      -2.25,
+      -2.25
+    ],
+    "m0_up_vs_multiplet_up_max_error": 5.551115123125783e-17,
+    "spin_average_max_variation": 6.206335383118183e-17,
+    "sz1sz2_m_plus1_0_minus1": [
+      0.25,
+      -0.24999999999999994,
+      0.25
+    ],
+    "sz1sz2_ensemble": 0.08333333333333336,
+    "h_s2_commutator": 2.3551386880256624e-16,
+    "diagonal_s2_commutator": 1.019803902718557
+  }
+}

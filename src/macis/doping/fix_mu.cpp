@@ -425,6 +425,7 @@ namespace {
         {
           done = true;
 	  x_hi = x_curr;
+	  f_hi = f_curr;
           break;
         }
 	else
@@ -449,6 +450,7 @@ namespace {
         {
           done = true;
 	  x_lo = x_curr;
+	  f_lo = f_curr;
           break;
         }
 	else
@@ -620,12 +622,36 @@ namespace {
     int status; // Status label for optimization steps
     size_t iter = 0; // Iteration counter
 
-    // GSL root function
-    gsl_function f;
-    f.function = &Mu_Cost_f<N>;
-    f.params   = params;
+    // GSL root function. gsl_root_fsolver_set evaluates f at both bracket
+    // endpoints, which we have already computed below. Each impurity solve is
+    // expensive, so the wrapper replays the stored endpoint values (once each)
+    // instead of re-solving.
+    struct BracketCache
+    {
+      impurity_params<N>* params;
+      double x[2];
+      double f[2];
+      bool   valid[2] = { false, false };
+    } cache;
+    cache.params = params;
 
-    // Initial bracket for mu, to be 
+    auto cached_cost = []( double x, void* vp ) -> double
+    {
+      auto* c = static_cast<BracketCache*>( vp );
+      for( int k = 0; k < 2; k++ )
+        if( c->valid[k] && c->x[k] == x )
+        {
+          c->valid[k] = false;
+          return c->f[k];
+        }
+      return Mu_Cost_f<N>( x, c->params );
+    };
+
+    gsl_function f;
+    f.function = cached_cost;
+    f.params   = &cache;
+
+    // Initial bracket for mu, to be
     double mu0 = init_mu;
     double x_lo = mu0-std::abs(init_shift), x_hi = mu0+std::abs(init_shift);
     params->mu_cost_counter = 0;
@@ -659,7 +685,10 @@ namespace {
     T = SelectMuSolver_Type_noder( method_name );
     s = gsl_root_fsolver_alloc (T);
 
+    cache.x[0] = x_lo; cache.f[0] = f_lo; cache.valid[0] = true;
+    cache.x[1] = x_hi; cache.f[1] = f_hi; cache.valid[1] = true;
     int set_status = gsl_root_fsolver_set (s, &f, x_lo, x_hi);
+    cache.valid[0] = cache.valid[1] = false;
     if( set_status != GSL_SUCCESS )
     {
       std::cout << "Error in Fix_Mu_noder! gsl_root_fsolver_set failed on the bracket ["

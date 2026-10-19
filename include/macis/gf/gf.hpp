@@ -74,6 +74,13 @@ struct GFSettings {
   bool real_g = true;
   double beta = 1.;
   bool imag_freq = true;
+  // evaluate_GF: when NALPHA != NBETA, return the average over the solved
+  // state and its spin-flipped partner (GF.SPIN_AVERAGE), see evaluate_GF
+  bool spin_average = true;
+  // evaluate_GF: when the solved state's band-parity sector is not mapped onto
+  // itself by the SYMMETRIZE_DETS group (e.g. (e,o) at odd N with a band swap),
+  // average over the orbit of the state under that group (GF.BAND_AVERAGE)
+  bool band_average = true;
 };
 
 /**
@@ -553,6 +560,12 @@ void write_GF(const std::vector<std::vector<std::complex<double>>> &GF,
  * rows/cols (a dropped orbital contributes nothing from this sector), so
  * callers can add the particle and hole sectors elementwise and index rows by
  * GF_orbs_comp position directly. todelete is still reported for diagnostics.
+ * @param [out] double *E_lowest: If not null, set to the lowest energy of the
+ * N+1 (particle) or N-1 (hole) sector reached by the band Lanczos -- a
+ * variational upper bound on that sector's lowest energy, on the same scale as
+ * energ. NaN when it is not available: no orbital could add/remove an electron
+ * (nothing is reachable), or regular Lanczos was used (settings.use_bandLan
+ * off).
  *
  * @author Carlos Mejuto Zaera
  * @date 01/02/2022
@@ -564,7 +577,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
                const double energ, const bool is_part,
                const std::vector<std::complex<double>> &ws,
                const std::vector<double> &occs, const GFSettings &settings,
-               std::vector<int> &todelete) {
+               std::vector<int> &todelete, double *E_lowest = nullptr) {
   using Clock = std::chrono::high_resolution_clock;
   // READ INPUT
   const size_t trunc_size = settings.trunc_size;
@@ -653,6 +666,7 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
   // contributes exactly zero: return an all-zero GF padded to the full
   // GF_orbs_comp index space so the caller can still sum it with the other
   // sector elementwise.
+  if(E_lowest) *E_lowest = std::numeric_limits<double>::quiet_NaN();
   if(nvecs == 0) {
     const int norbs = (int)GF_orbs_comp.size();
     GF.assign(ws.size(),
@@ -668,10 +682,10 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
 
   if(use_bandLan) {
     BandResolvent(hamil, wfns, ws, GF, nLanIts, energ, is_part, nvecs, nterms,
-                  print, saveGFmats);
+                  print, saveGFmats, E_lowest);
   } else {
     // DO SIMPLE LANCZOS FOR ALL GF ELEMENTS
-    SparsexDistSpMatOp hamil_wrap(hamil);
+    SparsexDistSpMatOp<index_t> hamil_wrap(hamil);
     GF.clear();
     GF.resize(ws.size(), std::vector<std::complex<double>>(
                              nvecs * nvecs, std::complex<double>(0., 0.)));
@@ -684,8 +698,8 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
       std::string fpref_basis = is_part ? "particle" : "hole";
       std::string fpref =
           fpref_basis + "_" + std::to_string(i) + "_" + std::to_string(i);
-      GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                  nLanIts, saveGFmats, fpref);
+      GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                           is_part, nLanIts, saveGFmats, fpref);
       for(int iw = 0; iw < ws.size(); iw++) GF[iw][i * nvecs + i] = tGF[iw];
       for(int j = i + 1; j < nvecs; j++) {
         // OFF DIAGONAL ELEMENTS
@@ -695,16 +709,17 @@ void RunGFCalc(std::vector<std::vector<std::complex<double>>> &GF,
           twfn(iii) = wfns[i * nterms + iii] + wfns[j * nterms + iii];
         fpref = fpref_basis + "_" + std::to_string(i) + "_" +
                 std::to_string(j) + "_a";
-        GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                    nLanIts, saveGFmats, fpref);
+        GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                             is_part, nLanIts, saveGFmats,
+                                             fpref);
         for(int iw = 0; iw < ws.size(); iw++)
           GF[iw][i * nvecs + j] += 0.25 * tGF[iw];
         for(size_t iii = 0; iii < nterms; iii++)
           twfn(iii) = wfns[i * nterms + iii] - wfns[j * nterms + iii];
         fpref = fpref_basis + "_" + std::to_string(i) + "_" +
                 std::to_string(j) + "_b";
-        GF_Diag<SparsexDistSpMatOp>(twfn, hamil_wrap, ws, tGF, energ, is_part,
-                                    nLanIts);
+        GF_Diag<SparsexDistSpMatOp<index_t>>(twfn, hamil_wrap, ws, tGF, energ,
+                                             is_part, nLanIts);
         for(int iw = 0; iw < ws.size(); iw++) {
           GF[iw][i * nvecs + j] -= 0.25 * tGF[iw];
           GF[iw][j * nvecs + i] = GF[iw][i * nvecs + j];

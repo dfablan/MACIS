@@ -490,13 +490,15 @@ int main(int argc, char** argv) {
         params.C.data(), params.C.size());
 
     // Evaluate particle GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, true,
-                                ws, params.occs, gf_settings, todelete_p);
+    macis::RunGFCalc<nwfn_bits, int64_t>(GF_tmp, psi0, ham_gen, params.dets, E0,
+                                         true, ws, params.occs, gf_settings,
+                                         todelete_p);
     GF = GF_tmp;
 
     // Evaluate hole GF
-    macis::RunGFCalc<nwfn_bits>(GF_tmp, psi0, ham_gen, params.dets, E0, false,
-                                ws, params.occs, gf_settings, todelete_h);
+    macis::RunGFCalc<nwfn_bits, int64_t>(GF_tmp, psi0, ham_gen, params.dets, E0,
+                                         false, ws, params.occs, gf_settings,
+                                         todelete_h);
 
     // RunGFCalc pads both sectors to the full GF_orbs_comp^2 index space, so
     // they can be summed elementwise even when they dropped different orbitals.

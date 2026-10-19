@@ -126,18 +126,19 @@ class SpMatDOp {
 
 /**
  * @brief Wrapper class for
- * sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, int32_t>, to be
+ * sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, index_t>, to be
  * used in the Lanczos code. Just needs to implement a matrix- vector product
  * dot, and a function rows() to return the nr. of rows in the matrix.
  *
  * @author Carlos Mejuto Zaera
  * @date 13/06/2021
  */
+template <typename index_t = int32_t>
 class SparsexDistSpMatOp {
  private:
-  const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, int32_t> >
+  const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, index_t> >
       *mat;
-  sparsexx::spblas::spmv_info<int32_t> spmv_info;
+  sparsexx::spblas::spmv_info<index_t> spmv_info;
 
  public:
   /**
@@ -151,7 +152,7 @@ class SparsexDistSpMatOp {
    * @date 05/04/2021
    */
   SparsexDistSpMatOp(
-      const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, int32_t> >
+      const sparsexx::dist_sparse_matrix<sparsexx::csr_matrix<double, index_t> >
           &A) {
     mat = &A;
     spmv_info = sparsexx::spblas::generate_spmv_comm_info(A);
