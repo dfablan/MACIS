@@ -90,8 +90,6 @@ int main(int argc, char** argv) {
     auto nalpha = input.getData<size_t>("CI.NALPHA");
     auto nbeta = input.getData<size_t>("CI.NBETA");
 
-    if(nalpha != nbeta) throw std::runtime_error("NALPHA != NBETA");
-
     // Read FCIDUMP File
     size_t norb = macis::read_fcidump_norb(fcidump_fname);
     size_t norb2 = norb * norb;
@@ -459,7 +457,7 @@ int main(int argc, char** argv) {
         } else {
           // HF Guess
           console->info("Generating HF Guess for ASCI");
-          dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nalpha)};
+          dets = {macis::canonical_hf_determinant<nwfn_bits>(nalpha, nbeta)};
           // std::cout << dets[0].to_ullong() << std::endl;
           E0 = ham_gen.matrix_element(dets[0], dets[0]);
           C = {1.0};

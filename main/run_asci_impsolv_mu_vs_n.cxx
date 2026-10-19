@@ -61,8 +61,6 @@ int main(int argc, char** argv) {
   params.nalpha = input.getData<size_t>("CI.NALPHA");
   params.nbeta = input.getData<size_t>("CI.NBETA");
 
-  if(params.nalpha != params.nbeta) throw std::runtime_error("NALPHA != NBETA");
-
   // Read FCIDUMP File
   params.norb = macis::read_fcidump_norb(fcidump_fname);
   size_t norb2 = params.norb * params.norb;
