@@ -62,6 +62,18 @@ struct GFSettings {
               // missing for the seeds whose capture fraction is below
               // orb_min_capture (grown with norbs, trunc_size, tot_SD,
               // GFseedThres and asThres, as for the GF basis).
+  bool orb_expand_sector =
+      false;  // Before the resolvents, enlarge the ground-state basis inside
+              // psi0's own symmetry sector and re-solve psi0 there
+              // (enrich_ground_state_sector). Without it, the seeds that stay
+              // in psi0's sector are evaluated on the truncated ASCI basis
+              // alone, while orb_expand_basis grows a basis only for the seeds
+              // that leave it.
+  size_t orb_sector_trunc_size =
+      0;  // Cap on the determinants grown by orb_expand_sector (0: use
+          // trunc_size).
+  size_t orb_sector_max_sub = 50;     // Davidson subspace of the re-solve.
+  double orb_sector_res_tol = 1.E-8;  // Davidson residual of the re-solve.
   bool writeGF = false;
   bool writeGF_singlef = false;
   bool print = false;

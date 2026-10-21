@@ -973,6 +973,53 @@ auto evaluate_resolvent_orbital_matrix(
   return result;
 }
 
+/**
+ * @brief GF.ORB_EXPAND_SECTOR: enlarges the ground-state basis inside its own
+ *        sector and re-solves the ground state there
+ *        (macis::enrich_ground_state_sector), then replaces p.dets and p.C so
+ *        that every resolvent evaluated afterwards shares the enriched ground
+ *        state. Call it after evaluate_GF (the GF keeps the ASCI state) and
+ *        before the resolvents.
+ *
+ * @returns double: the energy to pass to the resolvents in place of EASCI
+ *          (re-solved energy plus p.E_core + p.E_inactive).
+ */
+template <size_t N>
+double enrich_resolvent_ground_state(
+    double EASCI, macis::impurity_params<N> &p,
+    macis::SDBuildHamiltonianGenerator<N> &ham_gen,
+    const macis::GFSettings &gf_settings) {
+  const Eigen::VectorXd psi0 =
+      Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
+  const double E0 = EASCI - (p.E_core + p.E_inactive);
+  auto e = macis::enrich_ground_state_sector<N>(psi0, ham_gen, p.dets, E0,
+                                                gf_settings, p.n_active);
+  std::cout << std::scientific << std::setprecision(12)
+            << "GF.ORB_EXPAND_SECTOR: " << e.seeds
+            << " seed determinants grown to " << e.grown << " new; " << e.kept
+            << " kept in the ground-state sector, " << e.other_sector
+            << " in other sectors dropped; basis " << p.dets.size() << " -> "
+            << e.dets.size() << " determinants" << std::endl;
+  std::cout << "GF.ORB_EXPAND_SECTOR: E0 " << e.E0_input << " -> " << e.E0
+            << " (dE = " << e.E0 - e.E0_input
+            << "), |<psi0_ASCI|psi0>| = " << e.overlap << std::endl;
+  if(e.growth_capped)
+    std::cerr << "WARNING: GF.ORB_EXPAND_SECTOR growth stopped at "
+              << (gf_settings.orb_sector_trunc_size
+                      ? gf_settings.orb_sector_trunc_size
+                      : gf_settings.trunc_size)
+              << " determinants: fewer than GF.TOT_SD layers were added"
+              << std::endl;
+  if(e.E0 > e.E0_input + 1.e-6 * std::max(1.0, std::abs(e.E0_input)))
+    std::cerr << "WARNING: GF.ORB_EXPAND_SECTOR raised E0 by "
+              << e.E0 - e.E0_input
+              << ": the re-solve did not reach the ASCI ground state"
+              << std::endl;
+  p.dets = std::move(e.dets);
+  p.C.assign(e.psi0.data(), e.psi0.data() + e.psi0.size());
+  return e.E0 + p.E_core + p.E_inactive;
+}
+
 template <size_t N>
 auto evaluate_ordm(std::vector<macis::wfn_t<N>> &dets,
                    std::vector<double> &X_local,

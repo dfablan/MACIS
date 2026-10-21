@@ -35,6 +35,7 @@
 #include "macis/hamiltonian_generator.hpp"
 #include "macis/observables/impurity_rdm.hpp"  // decompose_det
 #include "macis/sd_operations.hpp"
+#include "macis/solvers/selected_ci_diag.hpp"
 
 namespace macis {
 
@@ -747,6 +748,181 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
         "RunResolventOrbitalMatrix: Gram eigensolve failed");
   result.gram_eigenvalues = eig.eigenvalues();
   return result;
+}
+
+template <size_t nbits>
+struct SectorEnrichment {
+  // base_dets, followed by the kept grown determinants.
+  std::vector<std::bitset<nbits>> dets;
+  // Ground state re-solved on dets (unit norm) and its energy, in the frame
+  // of the input E0 (the Hamiltonian of Hgen, no core energy).
+  Eigen::VectorXd psi0;
+  double E0 = 0.0;
+  double E0_input = 0.0;
+  // |<wfn0|psi0>| with both normalized.
+  double overlap = 1.0;
+  // Growth seeds (determinants of wfn0 with |c| >= GFseedThres), new
+  // determinants grown from them, those kept (H-connected to base_dets: psi0's
+  // sector) and those dropped (other sectors).
+  size_t seeds = 0;
+  size_t grown = 0;
+  size_t kept = 0;
+  size_t other_sector = 0;
+  bool growth_capped = false;
+};
+
+/**
+ * @brief Enlarges the ground-state basis inside the ground state's own
+ *        symmetry sector and re-solves the ground state there
+ *        (settings.orb_expand_sector).
+ *
+ *        RunResolventOrbitalMatrix evaluates every seed that stays in wfn0's
+ *        sector on base_dets alone: grown determinants H-connected to
+ *        base_dets are dropped there, because they would make wfn0 a
+ *        non-eigenstate. base_dets is an ASCI space selected for the ground
+ *        state, so excitations unlike it (e.g. the site-odd excitations of a
+ *        cluster, P-odd while psi0 is P-even) are poorly represented, while
+ *        the seeds that leave the sector get a basis grown around their
+ *        images. This routine removes that asymmetry before the resolvents:
+ *
+ *        1. grow from the determinants of wfn0 with |c| >= GFseedThres by
+ *           tot_SD layers of active-space singles (grow_basis_by_singles,
+ *           asThres, norbs; cap orb_sector_trunc_size, or trunc_size if 0);
+ *        2. keep the new determinants H-connected to base_dets
+ *           (added_components == -1, same threshold as the Lanczos
+ *           Hamiltonian); determinants of other sectors are dropped;
+ *        3. re-solve the lowest eigenpair on base_dets + kept, with the
+ *           Hamiltonian thresholded at h_thresh as the resolvents build it
+ *           (dense up to dense_limit determinants, else Davidson with
+ *           subspace orb_sector_max_sub, restarted from its last Ritz vector
+ *           until the residual is below orb_sector_res_tol; first guess =
+ *           wfn0 zero-padded). psi0 is then an eigenvector of the Lanczos
+ *           Hamiltonian of its block, so no pole falls below E0.
+ *
+ *        If nothing is kept, wfn0, base_dets and E0 are returned unchanged.
+ *        The caller passes (dets, psi0, E0) to the resolvents in place of
+ *        (base_dets, wfn0, E0); every channel then shares one ground state.
+ *        Requires a single MPI rank (vectors are replicated).
+ */
+template <size_t nbits, typename index_t = int32_t>
+SectorEnrichment<nbits> enrich_ground_state_sector(
+    const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
+    const std::vector<std::bitset<nbits>> &base_dets, double E0,
+    const GFSettings &settings, size_t n_active = 0, double h_thresh = 1.E-6,
+    size_t dense_limit = 2000) {
+  if(comm_size(MPI_COMM_WORLD) > 1)
+    throw std::runtime_error(
+        "enrich_ground_state_sector: needs a single MPI rank");
+  if(wfn0.size() != Eigen::Index(base_dets.size()) || wfn0.norm() == 0.0)
+    throw std::runtime_error(
+        "enrich_ground_state_sector: wfn0 does not match base_dets");
+  const size_t norbs = settings.norbs ? settings.norbs : n_active;
+  if(norbs == 0 || norbs > nbits / 2)
+    throw std::runtime_error(
+        "enrich_ground_state_sector: needs settings.norbs or n_active, within "
+        "the spatial-orbital capacity");
+
+  SectorEnrichment<nbits> out;
+  out.E0_input = E0;
+  out.E0 = E0;
+  out.dets = base_dets;
+  out.psi0 = wfn0 / wfn0.norm();
+
+  std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>> det_index;
+  for(size_t k = 0; k < base_dets.size(); ++k)
+    det_index.emplace(base_dets[k], k);
+
+  // 1. Growth from the leading determinants of wfn0. grow_basis_by_singles
+  // never grows from excluded determinants, so nothing is excluded here and
+  // the base determinants are filtered out afterwards.
+  std::vector<std::bitset<nbits>> seeds;
+  std::vector<double> amplitudes;
+  for(size_t k = 0; k < base_dets.size(); ++k)
+    if(std::abs(out.psi0[k]) >= settings.GFseedThres) {
+      seeds.push_back(base_dets[k]);
+      amplitudes.push_back(out.psi0[k]);
+    }
+  out.seeds = seeds.size();
+  GFSettings grow = settings;
+  if(settings.orb_sector_trunc_size)
+    grow.trunc_size = settings.orb_sector_trunc_size;
+  const auto as_orbs = active_space_orbitals(
+      orbital_occupations(out.psi0, base_dets, norbs), settings.asThres);
+  const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+      none;
+  auto found =
+      grow_basis_by_singles(seeds, amplitudes, none, as_orbs, norbs, grow);
+  out.growth_capped =
+      grow.trunc_size > 0 && grow.tot_SD > 0 && found.size() > grow.trunc_size;
+  std::vector<std::bitset<nbits>> fresh;
+  for(const auto &det : found)
+    if(det_index.find(det) == det_index.end()) fresh.push_back(det);
+  found.clear();
+  found.shrink_to_fit();
+  out.grown = fresh.size();
+
+  // 2. Keep psi0's sector only.
+  const auto label =
+      added_components<nbits, index_t>(base_dets, fresh, Hgen, h_thresh);
+  for(size_t k = 0; k < fresh.size(); ++k) {
+    if(label[k] == -1)
+      out.dets.push_back(fresh[k]);
+    else
+      ++out.other_sector;
+  }
+  out.kept = out.dets.size() - base_dets.size();
+  if(out.kept == 0) return out;
+
+  // 3. Re-solve the ground state on the enlarged sector basis.
+  const size_t n = out.dets.size();
+  if(n <= dense_limit) {
+    const auto H = make_csr_hamiltonian_block<index_t>(
+        out.dets.begin(), out.dets.end(), out.dets.begin(), out.dets.end(),
+        Hgen, h_thresh);
+    Eigen::MatrixXd Hd = Eigen::MatrixXd::Zero(n, n);
+    const auto &rowptr = H.rowptr();
+    const auto &colind = H.colind();
+    const auto &nzval = H.nzval();
+    for(size_t i = 0; i < n; ++i)
+      for(auto p = rowptr[i]; p < rowptr[i + 1]; ++p)
+        Hd(i, colind[p]) = nzval[p];
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+    if(es.info() != Eigen::Success)
+      throw std::runtime_error(
+          "enrich_ground_state_sector: dense eigensolve failed");
+    out.E0 = es.eigenvalues()(0);
+    out.psi0 = es.eigenvectors().col(0);
+  } else {
+    // The Davidson solver has no restart: its subspace (orb_sector_max_sub)
+    // is also its iteration cap, and memory grows as 2 (max_sub + 1) n. It
+    // writes the current Ritz vector into C at every iteration, so a run that
+    // stops short is restarted from that vector, with H built once.
+    std::vector<double> C(n, 0.0);
+    for(size_t k = 0; k < base_dets.size(); ++k)
+      C[k] = wfn0[k] / wfn0.norm();
+    auto H = make_dist_csr_hamiltonian<index_t>(
+        MPI_COMM_WORLD, out.dets.begin(), out.dets.end(), Hgen, h_thresh);
+    constexpr int max_restarts = 200;
+    for(int restart = 0;; ++restart) {
+      try {
+        out.E0 = parallel_selected_ci_diag(H, settings.orb_sector_max_sub,
+                                           settings.orb_sector_res_tol, C,
+                                           MPI_COMM_WORLD);
+        break;
+      } catch(const std::runtime_error &err) {
+        const std::string what = err.what();
+        const bool stopped_short =
+            what.find("Did Not Converge") != std::string::npos ||
+            what.find("Linear Dependence") != std::string::npos;
+        if(!stopped_short || restart + 1 >= max_restarts) throw;
+      }
+    }
+    out.psi0 = Eigen::Map<Eigen::VectorXd>(C.data(), C.size());
+    out.psi0 /= out.psi0.norm();
+  }
+  out.overlap = std::abs(out.psi0.head(base_dets.size()).dot(wfn0)) /
+                wfn0.norm();
+  return out;
 }
 
 /**

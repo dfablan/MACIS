@@ -706,6 +706,15 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("GF.ORB_DEFLATE_TOL", gf_settings.orb_deflate_tol, double);
     OPT_KEYWORD("GF.ORB_MIN_CAPTURE", gf_settings.orb_min_capture, double);
     OPT_KEYWORD("GF.ORB_EXPAND_BASIS", gf_settings.orb_expand_basis, bool);
+    // Enrich the ground-state basis inside its own sector before the
+    // resolvents (see macis::enrich_ground_state_sector).
+    OPT_KEYWORD("GF.ORB_EXPAND_SECTOR", gf_settings.orb_expand_sector, bool);
+    OPT_KEYWORD("GF.ORB_SECTOR_TRUNC_SIZE", gf_settings.orb_sector_trunc_size,
+                size_t);
+    OPT_KEYWORD("GF.ORB_SECTOR_MAX_SUB", gf_settings.orb_sector_max_sub,
+                size_t);
+    OPT_KEYWORD("GF.ORB_SECTOR_RES_TOL", gf_settings.orb_sector_res_tol,
+                double);
     OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
     OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
     OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
@@ -734,28 +743,38 @@ int main(int argc, char** argv) {
     if(testGF)
       GF = macis::evaluate_GF<nwfn_bits>(E0, params, ham_gen, gf_settings);
 
+    // GF.ORB_EXPAND_SECTOR: from here on params.dets / params.C hold the
+    // enriched ground state and E_res its energy; the GF above keeps the ASCI
+    // state.
+    double E_res = E0;
+    if(gf_settings.orb_expand_sector &&
+       (sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
+        charge_orb_matrix_resolvent || stag_sz_resolvent))
+      E_res = macis::enrich_resolvent_ground_state<nwfn_bits>(
+          E0, params, ham_gen, gf_settings);
+
     if(sz_resolvent)
-      macis::evaluate_resolvent_sz<nwfn_bits>(E0, params, ham_gen, gf_settings,
-                                              delta_resolvent);
+      macis::evaluate_resolvent_sz<nwfn_bits>(E_res, params, ham_gen,
+                                              gf_settings, delta_resolvent);
 
     if(tz_resolvent) {
       const auto w3 =
           macis::make_orbital_cartan_weights(params.nbands, nsites, 3);
       macis::evaluate_resolvent_diagonal<nwfn_bits>(
-          E0, params, ham_gen, gf_settings, w3, macis::DiagChannel::Charge,
+          E_res, params, ham_gen, gf_settings, w3, macis::DiagChannel::Charge,
           "T3" + delta_suffix, delta_resolvent);
       if(params.nbands == 3) {
         const auto w8 =
             macis::make_orbital_cartan_weights(params.nbands, nsites, 8);
         macis::evaluate_resolvent_diagonal<nwfn_bits>(
-            E0, params, ham_gen, gf_settings, w8, macis::DiagChannel::Charge,
+            E_res, params, ham_gen, gf_settings, w8, macis::DiagChannel::Charge,
             "T8" + delta_suffix, delta_resolvent);
       }
     }
 
     if(spin_orb_matrix_resolvent)
       macis::evaluate_resolvent_orbital_matrix<nwfn_bits>(
-          E0, params, ham_gen, gf_settings, macis::DiagChannel::Spin,
+          E_res, params, ham_gen, gf_settings, macis::DiagChannel::Spin,
           "R_mu_nu_gamma_delta" + delta_suffix, delta_resolvent);
 
     if(charge_orb_matrix_resolvent) {
@@ -766,7 +785,7 @@ int main(int argc, char** argv) {
                      "block."
                   << std::endl;
       macis::evaluate_resolvent_orbital_matrix<nwfn_bits>(
-          E0, params, ham_gen, gf_settings, macis::DiagChannel::Charge,
+          E_res, params, ham_gen, gf_settings, macis::DiagChannel::Charge,
           "N_mu_nu_gamma_delta" + delta_suffix, delta_resolvent);
     }
 
@@ -774,7 +793,7 @@ int main(int argc, char** argv) {
       const auto w_stag =
           macis::make_staggered_spin_weights(params.nbands, nsites);
       macis::evaluate_resolvent_diagonal<nwfn_bits>(
-          E0, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
+          E_res, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
           "StagSz" + delta_suffix, delta_resolvent);
     }
   }

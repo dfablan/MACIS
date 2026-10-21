@@ -2006,3 +2006,129 @@ TEST_CASE("Dynamical properties - coupled_to_base selects the ground sector") {
     check(sd_gen);
   }
 }
+
+TEST_CASE(
+    "Dynamical properties - enrich_ground_state_sector recovers the sector "
+    "ground state and its resolvent") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  // J > 0: only the flavor parities are conserved, as in the two-band dimer
+  // (band parity). Base: the largest half of psi0's sector, with the ground
+  // state re-solved on it (a truncated ASCI solve). The diagonal seeds S_mumu
+  // stay in the sector, so without enrichment they are evaluated on the
+  // truncated base; growing the sector back and re-solving must reproduce the
+  // exact ground state and the exact diagonal block of the resolvent.
+  const size_t n = 4, n_imp = 2, M = n_imp * n_imp;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false, /*J=*/0.2);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen, flavor_parity);
+
+  std::vector<size_t> order(m.sector.size());
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    return std::abs(m.psi_sector(a)) > std::abs(m.psi_sector(b));
+  });
+  std::vector<macis::wfn_t<N>> base;
+  for(size_t k = 0; k < (order.size() + 1) / 2; ++k)
+    base.push_back(m.sector[order[k]]);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es_base(
+      dense_hamiltonian(base, ham_gen));
+  const double E_base = es_base.eigenvalues()(0);
+  const Eigen::VectorXd psi_base = es_base.eigenvectors().col(0);
+  REQUIRE(E_base > m.E0 + 1e-6);  // the truncation must matter
+
+  std::set<macis::wfn_t<N>, macis::bitset_less_comparator<N>> sector(
+      m.sector.begin(), m.sector.end());
+  const int gs_parity = flavor_parity(m.sector[0]);
+
+  macis::GFSettings settings;
+  settings.tot_SD = 4;  // two alpha and two beta moves reach the whole space
+  settings.GFseedThres = 0.0;
+  settings.asThres = 0.0;
+  settings.trunc_size = 0;
+  settings.nLanIts = 200;
+  const std::vector<std::complex<double>> ws = {{0.0, 0.3}, {0.7, 0.2}};
+  const auto exact = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, n_imp, macis::DiagChannel::Spin, m.E0,
+      ws, settings);
+  const auto truncated = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi_base, ham_gen, base, n_imp, macis::DiagChannel::Spin, E_base, ws,
+      settings);
+  const size_t diag[2] = {0 * n_imp + 0, 1 * n_imp + 1};
+
+  auto check = [&](macis::HamiltonianGenerator<N>& gen, size_t dense_limit) {
+    const auto e = macis::enrich_ground_state_sector<N, int32_t>(
+        psi_base, gen, base, E_base, settings, n, 1.E-6, dense_limit);
+    REQUIRE(e.kept > 0);
+    REQUIRE(e.other_sector > 0);  // growth leaves the sector, those are dropped
+    REQUIRE(e.dets.size() == base.size() + e.kept);
+    for(size_t k = 0; k < base.size(); ++k) REQUIRE(e.dets[k] == base[k]);
+    for(const auto& d : e.dets) {
+      REQUIRE(sector.count(d) == 1);
+      REQUIRE(flavor_parity(d) == gs_parity);
+    }
+    REQUIRE(e.E0_input == E_base);
+    REQUIRE(e.E0 == Approx(m.E0).epsilon(1e-10).margin(1e-8));
+    REQUIRE(e.E0 < E_base);
+    REQUIRE(e.psi0.norm() == Approx(1.0).epsilon(1e-10));
+
+    const auto enriched = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        e.psi0, gen, e.dets, n_imp, macis::DiagChannel::Spin, e.E0, ws,
+        settings);
+    bool truncation_visible = false;
+    for(size_t iw = 0; iw < ws.size(); ++iw)
+      for(size_t k : diag)
+        for(size_t l : diag) {
+          const auto x = exact.resolvent[iw][k * M + l];
+          const auto y = enriched.resolvent[iw][k * M + l];
+          REQUIRE(std::real(y) == Approx(std::real(x)).epsilon(1e-6).margin(1e-8));
+          REQUIRE(std::imag(y) == Approx(std::imag(x)).epsilon(1e-6).margin(1e-8));
+          truncation_visible |=
+              std::abs(truncated.resolvent[iw][k * M + l] - x) >
+              1e-4 * std::abs(x);
+        }
+    REQUIRE(truncation_visible);  // the check must not pass trivially
+  };
+  SECTION("double-loop generator, dense re-solve") { check(ham_gen, 2000); }
+  SECTION("double-loop generator, Davidson re-solve") {
+    settings.orb_sector_max_sub = 8;
+    settings.orb_sector_res_tol = 1e-10;
+    check(ham_gen, 0);
+  }
+  SECTION("SD-build generator (the driver's)") {
+    macis::SDBuildHamiltonianGenerator<N> sd_gen(
+        macis::matrix_span<double>(m.T.data(), n, n),
+        macis::rank4_span<double>(m.V.data(), n, n, n, n));
+    sd_gen.SetNimp(2);
+    check(sd_gen, 2000);
+  }
+}
+
+TEST_CASE(
+    "Dynamical properties - enrich_ground_state_sector leaves a complete "
+    "sector unchanged") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+
+  const size_t n = 4;
+  FlavorModel m;
+  flavor_diagonal_integrals(m.T, m.V, /*degenerate=*/false, /*J=*/0.2);
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type ham_gen(macis::matrix_span<double>(m.T.data(), n, n),
+                         macis::rank4_span<double>(m.V.data(), n, n, n, n));
+  solve_flavor_model(m, ham_gen, flavor_parity);
+
+  macis::GFSettings settings;
+  settings.tot_SD = 4;
+  settings.GFseedThres = 0.0;
+  settings.asThres = 0.0;
+  const auto e = macis::enrich_ground_state_sector<N, int32_t>(
+      m.psi_sector, ham_gen, m.sector, m.E0, settings, n);
+  REQUIRE(e.kept == 0);
+  REQUIRE(e.other_sector > 0);
+  REQUIRE(e.dets == m.sector);
+  REQUIRE(e.E0 == m.E0);
+  REQUIRE((e.psi0 - m.psi_sector / m.psi_sector.norm()).norm() < 1e-14);
+}

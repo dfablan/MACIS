@@ -328,6 +328,59 @@ problem, as with ASCI. Then, with the gate on, assert that:
 
 ---
 
+## Sector enrichment (`GF.ORB_EXPAND_SECTOR`, 2026-10-21)
+
+The connectivity filter keeps the diagonal block bit-identical to gate-off, so the seeds that stay
+in $\psi_0$'s sector are always evaluated on the ASCI basis alone, while the seeds that leave it
+get a basis grown around their images. The two halves are then converged to different levels.
+
+**Where it shows.** Two-band dimer (`Nimp1x2`, 4 impurity + 12 bath orbitals, sector (6,6),
+`NTDETS_MAX = 5e5`, `TOT_SD = 3`). Band-odd seeds ($\tau^y,\tau^x$) leave the band-parity sector
+and get about $1.5\times10^7$ determinants; band-even seeds ($\tau^0,\tau^z$) stay on the
+$5\times10^5$ ASCI basis. For site-even operators (q = 0, bond) the two agree to $10^{-3}$. For
+site-odd operators (q = $\pi$, current) they do not:
+- at $J=0$ (SU(4): all four orbital structures must coincide), U = 5, spin q = $\pi$:
+  $\chi_0 = 0.465$ for $\tau^0,\tau^z$ and $0.586$ for $\tau^y,\tau^x$, while the Gram weights
+  agree to $10^{-4}$, so the ground state is SU(4)-symmetric and only the excitations differ;
+- at $J>0$ the $E_2$ doublet ($\tau^z$ vs $\tau^x$) splits by 20–28 % in the odd site block over
+  the whole metallic range (O(2) requires 0). It disappears in the insulator.
+
+The ASCI basis is selected for the P-even ground state; the P-odd excitations reached by
+site-odd seeds within $\psi_0$'s sector are poorly represented in it.
+
+**Fix.** Enlarge $\psi_0$'s own sector before the resolvents and re-solve $\psi_0$ there
+(`enrich_ground_state_sector`, `dynamical_properties.hpp`), i.e. the "re-diagonalize $\psi_0$ on
+`expanded`" option above, applied to every channel:
+1. grow from the determinants of $\psi_0$ with $|c|\ge$ `GFSEEDTHRES` by `TOT_SD` layers of
+   active-space singles (`grow_basis_by_singles`, cap `GF.ORB_SECTOR_TRUNC_SIZE`, default
+   `GF.TRUNC_SIZE`);
+2. keep the new determinants H-connected to `base_dets` (`added_components == -1`); drop the rest;
+3. re-solve the lowest eigenpair on `base_dets` + kept with the Lanczos threshold ($10^{-6}$),
+   dense up to 2000 determinants, else Davidson from $\psi_0$ zero-padded, with subspace
+   `GF.ORB_SECTOR_MAX_SUB` and restarts from the last Ritz vector until `GF.ORB_SECTOR_RES_TOL`
+   (MACIS's Davidson has no restart of its own: its subspace is its iteration cap). $\psi_0$ is then an eigenvector of the
+   block-0 Lanczos Hamiltonian: no pole below $E_0$.
+
+The driver (`enrich_resolvent_ground_state`, `impurity_solver.hpp`) runs it after the GF and
+before every resolvent and replaces `p.dets`, `p.C` and the energy, so Sz, StagSz, T3 and both
+orbital matrices share one ground state and the analysis cross-checks (Sz vs $\tau^0$[q=0]) stay
+exact. The GF and the equal-time observables (`sz_sz.dat`, `tauz_tauz.dat`, computed earlier)
+keep the ASCI state. `asci.out` reports the growth, $E_0$ before/after and
+$|\langle\psi_0^{\rm ASCI}|\psi_0\rangle|$. Off by default: the expansion of the other sectors
+then proceeds unchanged on the enriched base.
+
+**Tests** (`tests/dynamical_properties.cxx`): on the J = 0.2 flavor model, a truncated base (the
+largest half of the parity sector, re-solved) enriched with `TOT_SD = 4` reproduces the exact
+$E_0$ and the exact diagonal block of the resolvent, with the dense and the Davidson re-solve and
+with both generators; growth into other parity sectors is dropped; a complete sector is returned
+unchanged.
+
+**Cost.** One more growth (capped like the others), one connectivity pass, one Davidson on the
+enlarged sector, and a block-0 Lanczos on it instead of on the ASCI basis. The other-sector
+growth then starts from a larger $\psi_0$.
+
+---
+
 ## Cost
 
 - **Sectors.** Each off-diagonal pair lands in its own sector $(N_\mu+1, N_\nu-1)$. At $J=0$
