@@ -77,6 +77,7 @@ params_t make_model(CIExpansion ci_exp, size_t na, size_t nb) {
   // doping
   p.dstep = 2e-2;
   p.abs_tol = 1e-7;
+  p.n_tol = 0.0;  // bracket test only: these tests pin mu to the bracket tolerance
   p.maxiter = 100;
   p.print_doping = false;
   p.init_shift = 2.0;
@@ -199,4 +200,30 @@ TEST_CASE("Charge sector search in the doping mu search") {
     CHECK(p.nalpha + p.nbeta == 6);
     cs.enabled = true;
   }
+}
+
+TEST_CASE("Mu search stops on the filling tolerance") {
+  // Fixed N = 5 sector, CAS. With the bracket test alone Brent keeps solving
+  // after the filling is on target; N_TOL stops it and the state at the
+  // returned mu must be the one reported (no stale or duplicate final solve).
+  const double target = exact_sector(-3.0, 5).first;
+  auto solve = [&](double n_tol) {
+    params_t p = make_model(CIExpansion::CAS, 3, 2);
+    p.nel_target = target;
+    p.abs_tol = 1e-7;
+    p.n_tol = n_tol;
+    double init_mu = -2.5;
+    const double mu = macis::Fix_Mu_noder<NB>("brent", init_mu, &p);
+    double s = 0;
+    for(size_t i = 0; i < p.n_imp; ++i) s += p.occs[i];
+    return std::make_tuple(mu, 2.0 * s / p.n_imp, p.mu_cost_counter, p.last_mu);
+  };
+  ScratchDir scratch("ntol");
+  auto [mu0, n0, calls0, last0] = solve(0.0);
+  auto [mu1, n1, calls1, last1] = solve(1e-5);
+  CHECK(std::abs(n1 - target) < 1e-5);
+  CHECK(last1 == mu1);   // occs belong to the returned mu
+  CHECK(last0 == mu0);
+  CHECK(mu1 == Approx(mu0).margin(1e-3));
+  CHECK(calls1 < calls0);
 }

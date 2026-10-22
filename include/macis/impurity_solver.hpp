@@ -58,6 +58,12 @@ struct impurity_params {
 
   double dstep;
   double abs_tol;
+  // Stop the mu search once |n - n_target| < n_tol (DOP.N_TOL; <= 0 disables).
+  double n_tol = 1.E-5;
+  // mu and filling error of the last Mu_Cost_f call: the solver state belongs
+  // to last_mu, so a search that returns it needs no further solve.
+  double last_mu = std::numeric_limits<double>::quiet_NaN();
+  double last_err = std::numeric_limits<double>::quiet_NaN();
   size_t maxiter;
   size_t mu_cost_counter;
   bool print_doping;

@@ -290,6 +290,7 @@ int main(int argc, char** argv) {
 
   OPT_KEYWORD("DOP.DERIV", deriv, bool);
   OPT_KEYWORD("DOP.ABS_TOL", params.abs_tol, double);
+  OPT_KEYWORD("DOP.N_TOL", params.n_tol, double);
   OPT_KEYWORD("DOP.MAXITER", params.maxiter, size_t);
   OPT_KEYWORD("DOP.PRINT_DOPING", params.print_doping, bool);
   OPT_KEYWORD("DOP.INIT_SHIFT", params.init_shift, double);

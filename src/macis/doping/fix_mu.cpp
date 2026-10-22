@@ -283,6 +283,8 @@ namespace {
     // std::cout << "x = " << x << std::endl;
    std::cout << "Entered Mu_Cost_f for the " << mu_cost_counter << "th time: n(" << mu << ") = " << 2*curr_nel_per_spin << " . (err = " << err << ")" << std::endl;
   (p->mu_cost_counter) = mu_cost_counter;
+    p->last_mu = x;
+    p->last_err = err;
 
     return err;
   }
@@ -671,6 +673,17 @@ namespace {
     else{
       std::cout << "Bracket found! | n(" << x_hi << ") < " << nel_target << " < n(" << x_lo << ")" << std::endl;
     }
+
+    // An endpoint already on target (e.g. a restart at the previous mu) is the
+    // answer: no root search needed.
+    if( params->n_tol > 0. && std::min( std::abs(f_lo), std::abs(f_hi) ) < params->n_tol )
+    {
+      double res_mu = std::abs(f_lo) <= std::abs(f_hi) ? x_lo : x_hi;
+      std::cout << "Filling within N_TOL = " << params->n_tol << " at bracket endpoint mu = "
+                << res_mu << "; skipping the root search." << std::endl;
+      if( res_mu != params->last_mu ) Mu_Cost_f<N>(res_mu, params);
+      return res_mu;
+    }
     // std::cout<< "f(" << x_lo << ") =" << f.function(x_lo,params) << std::endl;
     // std::cout<< "f(" << x_hi << ") =" << f.function(x_hi,params) << std::endl;
 
@@ -711,8 +724,11 @@ namespace {
     }
 
 
-    // Run optimization
+    // Run optimization. The bracket test alone keeps solving long after the
+    // filling is on target (Brent leaves one end of the bracket far away), and
+    // every step is a full impurity solve: stop on the filling as well.
     int iter_status = GSL_SUCCESS;
+    bool on_target = false;
     do
     {
       iter++;
@@ -731,6 +747,14 @@ namespace {
       x_lo   = gsl_root_fsolver_x_lower(s);
       x_hi   = gsl_root_fsolver_x_upper(s);
       status = gsl_root_test_interval( x_lo, x_hi, abs_tol, 1.E-4 );
+      if( params->n_tol > 0. && std::abs( params->last_err ) < params->n_tol )
+      {
+        on_target = true;
+        status = GSL_SUCCESS;
+        if( print )
+          std::cout << "Filling within N_TOL = " << params->n_tol << " at mu = "
+                    << params->last_mu << " (err = " << params->last_err << ")" << std::endl;
+      }
 
 
       if( print )
@@ -753,9 +777,11 @@ namespace {
       throw( std::runtime_error( "Error in Fix_Mu_noder! Root search did not converge" ) );
     }
 
-    // Finally, get and return the optimal chemical potential
-    double res_mu = gsl_root_fsolver_root( s );
-    Mu_Cost_f<N>(res_mu, params);
+    // Finally, get and return the optimal chemical potential. The solver state
+    // must belong to the returned mu; re-solve only if it is not the last one
+    // evaluated.
+    double res_mu = on_target ? params->last_mu : gsl_root_fsolver_root( s );
+    if( res_mu != params->last_mu ) Mu_Cost_f<N>(res_mu, params);
     gsl_root_fsolver_free (s);
     return res_mu;
     }
