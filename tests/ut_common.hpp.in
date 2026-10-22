@@ -43,3 +43,7 @@ const std::string layout_index_first_fcidump =
   REF_DATA_PREFIX "/layout.index_first.fci.dat";
 const std::string layout_integral_first_fcidump =
   REF_DATA_PREFIX "/layout.integral_first.fci.dat";
+const std::string dworin_narath3_fcidump =
+  REF_DATA_PREFIX "/dworin_narath3.fci.dat";
+const std::string kanamori3_fcidump =
+  REF_DATA_PREFIX "/kanamori3.fci.dat";

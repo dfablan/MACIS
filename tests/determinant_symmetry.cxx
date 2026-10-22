@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <macis/asci/determinant_symmetry.hpp>
 #include <macis/asci/grow.hpp>
@@ -313,6 +314,20 @@ TEST_CASE("ASCI Symmetric Search") {
   // unsymmetrized MPI path (the whole-orbit closure is immune to it).
   if(world_size == 1) {
     auto [E_unsym, dets_unsym, C_unsym] = run_asci(false);
+    // This bound fails recurrently (|E_sym - E_unsym| ~ 0.29). Always print
+    // both errors against FCI so the log says which search is off, and by
+    // how much, without rerunning.
+    std::cout << std::setprecision(10)
+              << "ASCI Symmetric Search: E_fci = " << E_fci
+              << ", E_sym - E_fci = " << E_sym - E_fci << " ("
+              << dets_sym.size() << " dets), E_unsym - E_fci = "
+              << E_unsym - E_fci << " (" << dets_unsym.size()
+              << " dets), |E_sym - E_unsym| = " << std::abs(E_sym - E_unsym)
+              << " (bound 0.1)" << std::endl;
+    INFO("E_fci = " << E_fci << ", E_sym - E_fci = " << E_sym - E_fci << " ("
+                    << dets_sym.size() << " dets), E_unsym - E_fci = "
+                    << E_unsym - E_fci << " (" << dets_unsym.size()
+                    << " dets); the larger error is the search that stalled");
     REQUIRE(dets_unsym.size() == asci_settings.ntdets_max);
     REQUIRE(E_unsym >= E_fci - 1e-8);
     REQUIRE(std::abs(E_sym - E_unsym) < 0.1);

@@ -17,6 +17,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <vector>
 
 // std::vector<std::string> split(const std::string str,
 //                                const std::string regex_str) {
@@ -260,6 +261,19 @@ void read_fcidump_2body_impl(const std::string& fname, SpanType V) {
   if(V.extent(0) != norb)
     throw std::runtime_error("V is of improper dimension");
 
+  // A line fills its 4-fold class {(pq|rs), (rs|pq), (qp|sr), (sr|qp)}, the
+  // symmetry of any real Hermitian two-body operator. The other half of the
+  // 8-fold class, {(pq|sr), (sr|pq), (qp|rs), (rs|qp)}, is filled from it only
+  // if no line of that half is present. Files listing one line per 8-fold
+  // class therefore read as before, while a file listing both halves keeps
+  // them distinct: e.g. exchange (ij|ji) = J with pair hopping (ij|ij) = 0
+  // (Dworin-Narath), which needs an explicit zero line.
+  const size_t n = norb;
+  auto flat = [n](size_t p, size_t q, size_t r, size_t s) {
+    return p + n * (q + n * (r + n * s));
+  };
+  std::vector<char> listed(n * n * n * n, 0);
+
   const auto layout = detect_layout(fname);
   std::ifstream file(fname);
   std::string line;
@@ -275,16 +289,33 @@ void read_fcidump_2body_impl(const std::string& fname, SpanType V) {
       r--;
       s--;
       V(p, q, r, s) = integral;  // (pq|rs)
-      V(p, q, s, r) = integral;  // (pq|sr)
-      V(q, p, r, s) = integral;  // (qp|rs)
-      V(q, p, s, r) = integral;  // (qp|sr)
-
       V(r, s, p, q) = integral;  // (rs|pq)
-      V(s, r, p, q) = integral;  // (sr|pq)
-      V(r, s, q, p) = integral;  // (rs|qp)
+      V(q, p, s, r) = integral;  // (qp|sr)
       V(s, r, q, p) = integral;  // (sr|qp)
+      listed[flat(p, q, r, s)] = listed[flat(r, s, p, q)] = 1;
+      listed[flat(q, p, s, r)] = listed[flat(s, r, q, p)] = 1;
     }
   }
+
+  size_t n_distinct = 0;
+  for(size_t s = 0; s < n; ++s)
+    for(size_t r = 0; r < n; ++r)
+      for(size_t q = 0; q < n; ++q)
+        for(size_t p = 0; p < n; ++p) {
+          if(not listed[flat(p, q, r, s)]) continue;
+          if(listed[flat(p, q, s, r)]) {
+            if(V(p, q, r, s) != V(p, q, s, r)) n_distinct++;
+            continue;
+          }
+          V(p, q, s, r) = V(p, q, r, s);  // (pq|sr)
+          V(s, r, p, q) = V(p, q, r, s);  // (sr|pq)
+          V(q, p, r, s) = V(p, q, r, s);  // (qp|rs)
+          V(r, s, q, p) = V(p, q, r, s);  // (rs|qp)
+        }
+  if(n_distinct)
+    std::cout << "read_fcidump_2body: " << fname << " lists " << n_distinct
+              << " integrals with (pq|rs) != (pq|sr); reading them with 4-fold"
+              << " symmetry (e.g. exchange without pair hopping)" << std::endl;
 }
 
 }  // namespace
@@ -338,14 +369,19 @@ void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
   logger->set_pattern("%v");
   const std::string fmt_string = "{:8} {:8} {:8} {:8} {:25.16e}";
 
-  // Write two body
+  // Write two body. A zero is written when (ij|lk) is not zero, so that
+  // read_fcidump_2body keeps the two halves of the 8-fold class distinct
+  // instead of filling the missing one from the other.
+  auto v = [=](size_t i, size_t j, size_t k, size_t l) {
+    return V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV];
+  };
   for(size_t i = 0; i < norb; ++i)
     for(size_t j = 0; j < norb; ++j)
       for(size_t k = 0; k < norb; ++k)
         for(size_t l = 0; l < norb; ++l) {
-          if(V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV] != 0.0)
+          if(v(i, j, k, l) != 0.0 or v(i, j, l, k) != 0.0)
             logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
-                         V[i + j * LDV + k * LDV * LDV + l * LDV * LDV * LDV]);
+                         v(i, j, k, l));
         }
 
   // Write one body
