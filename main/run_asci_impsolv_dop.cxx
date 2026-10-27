@@ -317,6 +317,9 @@ int main(int argc, char** argv) {
     OPT_KEYWORD("ASCI.PARITY_TOL", parity_tol, double);
     OPT_KEYWORD("ASCI.PARITY_ETOL", params.parity_etol, double);
     OPT_KEYWORD("ASCI.PARITY_ONLY", params.parity_only, std::vector<int>);
+    OPT_KEYWORD("ASCI.BAND_COUNTS", params.band_counts, std::vector<int>);
+    if(!params.band_counts.empty() and !parity_solve)
+      throw std::runtime_error("ASCI.BAND_COUNTS requires ASCI.PARITY_SOLVE");
     if(parity_solve) macis::setup_parity_sectors(params, parity_tol);
   }
 

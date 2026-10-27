@@ -361,14 +361,55 @@ struct SolveExtras {
 };
 
 /**
+ *  @brief ASCI.BAND_COUNTS filling: band group g gets band_counts[g]/2
+ *  electrons of each spin, in its orbitals ordered by `before` (stable, so
+ *  ties keep index order *within* a band; the count per band is fixed).
+ *
+ *  Without pair hopping the band counts are conserved, so the seed decides the
+ *  count sector of the whole expansion. Energy order alone breaks ties between
+ *  degenerate band-partner levels by orbital index, which can put both
+ *  partners of a half-filled shell into band 0 (J = 0: [12,8] seeds at N = 20).
+ */
+template <size_t N, typename LessA, typename LessB>
+macis::wfn_t<N> band_count_fill(const impurity_params<N>& p, LessA before_a,
+                                LessB before_b) {
+  const auto& L = *p.parity_labels;
+  macis::wfn_t<N> d(0);
+  for(size_t g = 0; g < L.ngroups; ++g) {
+    std::vector<size_t> orbs;
+    for(size_t q = 0; q < p.n_active; ++q)
+      if(L.group_of[q] == int(g)) orbs.push_back(q);
+    const size_t n = p.band_counts[g] / 2;
+    auto a = orbs, b = orbs;
+    std::stable_sort(a.begin(), a.end(), before_a);
+    std::stable_sort(b.begin(), b.end(), before_b);
+    for(size_t i = 0; i < n; ++i) d.set(a[i]), d.set(b[i] + N / 2);
+  }
+  return d;
+}
+
+/**
  *  @brief The cold seed: the energy-ordered reference, moved into the target
- *  band-parity sector by parity_seed when a sector is set.
+ *  band-parity sector by parity_seed when a sector is set. With
+ *  ASCI.BAND_COUNTS the reference is filled band by band instead.
  */
 template <size_t N>
 macis::wfn_t<N> sector_seed(const impurity_params<N>& p,
                             macis::HamiltonianGenerator<N>& ham_gen,
                             SolveExtras<N>& x) {
   auto d = asci_reference_determinant<N>(p);
+  if(!p.band_counts.empty() and p.asci_settings.parity_target) {
+    const size_t n = p.n_active;
+    const auto& Td = p.spin_dep ? p.Td_active : p.T_active;
+    d = band_count_fill(
+        p,
+        [&](size_t a, size_t b) {
+          return p.T_active[a + a * n] < p.T_active[b + b * n];
+        },
+        [&](size_t a, size_t b) { return Td[a + a * n] < Td[b + b * n]; });
+    std::cout << "* BAND_COUNTS: seed = " << macis::to_canonical_string(d)
+              << std::endl;
+  }
   if(const auto& t = p.asci_settings.parity_target) {
     d = macis::parity_seed(d, t->key, *t->labels, ham_gen, p.n_imp);
     std::cout << "* PARITY_SOLVE: seed for sector "
@@ -423,6 +464,12 @@ macis::wfn_t<N> parity_restart(const impurity_params<N>& p,
                                macis::HamiltonianGenerator<N>& ham_gen) {
   const auto& t = *p.asci_settings.parity_target;
   const auto& L = *t.labels;
+  if(!p.band_counts.empty()) {
+    // Same count per band as the seed; most occupied natural orbitals first
+    auto by_occ = [&](size_t a, size_t b) { return orb_occs[a] > orb_occs[b]; };
+    return macis::parity_seed(band_count_fill(p, by_occ, by_occ), t.key, L,
+                              ham_gen, p.n_imp);
+  }
   std::vector<size_t> idx;
   for(size_t q = 0; q < p.n_active; ++q)
     if(L.group_of[q] >= 0) idx.push_back(q);
@@ -1328,6 +1375,43 @@ double solve_parity_sectors(impurity_params<N>& p, one_solver_t<N> solve,
           " is impossible: the band parities must add up to the number of "
           "band electrons, " + std::to_string(nel_grouped) + ", mod 2");
     keys = {k};
+  }
+
+  if(!p.band_counts.empty()) {
+    if(p.band_counts.size() != L.ngroups)
+      throw std::runtime_error("ASCI.BAND_COUNTS needs one entry per band (" +
+                               std::to_string(L.ngroups) + ")");
+    if(p.nalpha != p.nbeta)
+      throw std::runtime_error("ASCI.BAND_COUNTS requires NALPHA = NBETA");
+    size_t total = 0;
+    for(size_t g = 0; g < L.ngroups; ++g) {
+      const int c = p.band_counts[g];
+      if(c < 0 or c % 2 != 0 or size_t(c / 2) > L.group_orbs[g].size())
+        throw std::runtime_error(
+            "ASCI.BAND_COUNTS entries must be even, nonnegative, and at most "
+            "twice the orbitals of their band");
+      total += c;
+    }
+    uint32_t k = 0;  // parity of each band's count (both spins)
+    for(size_t g = 0; g < L.ngroups; ++g)
+      k |= uint32_t(p.band_counts[g] & 1) << g;
+    for(size_t q = 0; q < p.n_active; ++q)
+      if(L.group_of[q] < 0)
+        throw std::runtime_error(
+            "ASCI.BAND_COUNTS: decoupled orbitals are not supported");
+    if(total != p.nalpha + p.nbeta)
+      throw std::runtime_error(
+          "ASCI.BAND_COUNTS adds up to " + std::to_string(total) +
+          " electrons, NALPHA + NBETA = " + std::to_string(p.nalpha + p.nbeta));
+    if(std::find(keys.begin(), keys.end(), k) == keys.end())
+      throw std::runtime_error("ASCI.BAND_COUNTS lies in sector " +
+                               macis::parity_key_string(k, L.ngroups) +
+                               ", excluded by ASCI.PARITY_ONLY");
+    keys = {k};
+    std::cout << "* BAND_COUNTS: seed and restarts fixed at";
+    for(int c : p.band_counts) std::cout << " " << c;
+    std::cout << " electrons per band, sector "
+              << macis::parity_key_string(k, L.ngroups) << std::endl;
   }
 
   std::cout << "\n* PARITY_SOLVE: " << keys.size() << " band-parity sector(s) for (NALPHA, NBETA) = ("

@@ -104,6 +104,10 @@ struct impurity_params {
   double parity_etol = 1e-6;  // ASCI.PARITY_ETOL: near-tie report threshold
   std::vector<int>
       parity_only;  // ASCI.PARITY_ONLY: one 0/1 per band; empty = all
+  // ASCI.BAND_COUNTS: electrons per band group (both spins, even), e.g. 10 10.
+  // The cold seed and every rotation restart then hold count/2 electrons of
+  // each spin in each band; it also fixes the sector. Empty = off.
+  std::vector<int> band_counts;
   // Outcome of the last parity solve, read by evaluate_GF's band average:
   // the winner's key and the sectors that tied with it within PARITY_ETOL
   // (PARITY_TIE)

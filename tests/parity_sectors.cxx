@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <set>
 #include <macis/asci/covariant_orbitals.hpp>
 #include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
@@ -1004,5 +1005,56 @@ TEST_CASE("SYMMETRIZE_DETS with NROTS > 0, degenerate bands") {
     p.asci_settings.grow_with_rot = true;
     CHECK_THROWS_WITH(macis::SolveImpurityASCI_rot<NB>(p),
                       Catch::Contains("GROW_WITH_ROT = FALSE"));
+  }
+}
+
+TEST_CASE("Parity sectors: BAND_COUNTS fixes the band count of seed and restarts") {
+  ScratchDir scratch("band_counts");
+  // J_P = 0: band counts conserved. Degenerate bands, (3,3): the energy fill
+  // takes the tied impurity pair 0, 1 and then bath level 2 (band 0) before
+  // its partner 3, so it seeds [4,2]. BAND_COUNTS = 2 4 must give [2,4].
+  ModelOpts o;
+  o.pair_hopping = 0.0;
+  o.degenerate = true;
+  auto band1_counts = [](const params_t& p) {
+    std::set<size_t> c;
+    for(const auto& d : p.dets) {
+      size_t k = 0;
+      for(size_t q : {1, 3, 5}) k += d[q] + d[q + NB / 2];
+      c.insert(k);
+    }
+    return c;
+  };
+
+  // Every sector fits in the determinant budget, so each solve is exact
+  // Reference: the (e,e) sector from the energy fill (the global winner is (o,o))
+  auto a = make_parity_model(o);
+  a.parity_only = {0, 0};
+  const double E_a = macis::SolveImpurityASCI_rot<NB>(a);
+  CHECK(band1_counts(a) == std::set<size_t>{2});
+
+  for(size_t nrots : {0, 2}) {
+    auto b = make_parity_model(o);
+    b.asci_settings.nrots = nrots;
+    b.band_counts = {2, 4};
+    CoutCapture cap;
+    const double E_b = macis::SolveImpurityASCI_rot<NB>(b);
+    CHECK(cap.str().find("* BAND_COUNTS: seed = ") != std::string::npos);
+    CHECK(band1_counts(b) == std::set<size_t>{4});
+    // Band swap maps [4,2] onto [2,4]
+    CHECK(E_b == Approx(E_a).margin(1e-8));
+  }
+
+  SECTION("inconsistent inputs are refused") {
+    for(std::vector<int> bad :
+        {std::vector<int>{3, 3}, {4, 4}, {6}, {8, -2}}) {
+      auto p = make_parity_model(o);
+      p.band_counts = bad;
+      CHECK_THROWS(macis::SolveImpurityASCI_rot<NB>(p));
+    }
+    auto p = make_parity_model(o);
+    p.band_counts = {2, 4};
+    p.parity_only = {1, 1};
+    CHECK_THROWS(macis::SolveImpurityASCI_rot<NB>(p));
   }
 }
