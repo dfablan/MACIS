@@ -801,6 +801,11 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
     const bool covariant_rot = asci_settings.symmetrize_dets and
                                asci_settings.sym_group and
                                asci_settings.nrots > 0;
+    if(asci_settings.rot_imp_fixed and asci_settings.nrots > 0 and
+       !covariant_rot)
+      throw std::runtime_error(
+          "ASCI.ROT_IMP_FIXED is implemented only for the group-covariant "
+          "rotation (ASCI.SYMMETRIZE_DETS = TRUE with ASCI.NROTS > 0)");
     std::vector<int> sym_band_of;
     if(covariant_rot and !asci_settings.parity_target)
       sym_band_of = macis::band_partition(
@@ -951,7 +956,7 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                   max_integral_symmetry_deviation(p, group);
               const double rho_asym = macis::covariant_natural_orbitals(
                   active_ordm.data(), n_active, blocks, group, tmp_rot.data(),
-                  orb_occs.data());
+                  orb_occs.data(), asci_settings.rot_imp_fixed ? n_imp : 0);
               ham_gen.rotate_hamiltonian_rotmat_imp_bath(tmp_rot.data(),
                                                          p.spin_dep);
               //Re-validate: the generator's spans alias T_active, Td_active
@@ -965,7 +970,11 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                   std::max(asci_settings.sym_tol,
                            double(n_active) * double(n_active) * dev_before);
               std::cout << "* SYMMETRIZE_DETS: group-covariant natural "
-                           "orbitals; max |rho - rho_sym| = "
+                           "orbitals"
+                        << (asci_settings.rot_imp_fixed
+                                ? " (ROT_IMP_FIXED: bath only)"
+                                : "")
+                        << "; max |rho - rho_sym| = "
                         << rho_asym << ", integral symmetry deviation "
                         << dev_before << " -> " << dev_after << std::endl;
               if(dev_after > dev_tol) {

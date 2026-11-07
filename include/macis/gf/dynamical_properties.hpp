@@ -1092,6 +1092,36 @@ inline std::vector<double> make_staggered_spin_weights(size_t nbands,
 }
 
 /**
+ * @brief Site-resolved spin weight vector: +1 on every band of each site in
+ *        @p sites, 0 elsewhere. Passed with DiagChannel::Spin it probes
+ *        sum_{i in sites} Sz(site i). One site gives the local response
+ *        R_ii(w); a pair {i, j} gives R_ii + R_jj + 2 R_ij (R_ij = R_ji for a
+ *        real wave function), so the full site matrix, and from it any
+ *        cluster momentum, follows from nsites (nsites + 1) / 2 resolvents
+ *        (GF.SITE_SZ_RESOLVENT). Valid only in the unrotated impurity basis
+ *        (NROTS = 0, CAS, or ASCI.ROT_IMP_FIXED).
+ *
+ * @param[in] size_t nbands: Number of impurity bands.
+ * @param[in] size_t nsites: Number of impurity sites.
+ * @param[in] const std::vector<size_t> &sites: Sites with weight 1.
+ *
+ * @returns std::vector<double>: Weight vector of length nbands * nsites,
+ *          layout i = site + nsites * band.
+ */
+inline std::vector<double> make_site_spin_weights(
+    size_t nbands, size_t nsites, const std::vector<size_t> &sites) {
+  std::vector<double> w(nbands * nsites, 0.0);
+  for(auto s : sites) {
+    if(s >= nsites)
+      throw std::runtime_error("make_site_spin_weights: site " +
+                               std::to_string(s) + " >= nsites = " +
+                               std::to_string(nsites));
+    for(size_t b = 0; b < nbands; ++b) w[s + nsites * b] = 1.0;
+  }
+  return w;
+}
+
+/**
  * @brief Orbital (band) isospin Cartan generator weight vector, i.e. the
  *        diagonal SU(3) generators T^3 / T^8 restricted to the CHARGE
  *        channel:

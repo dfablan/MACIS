@@ -796,6 +796,51 @@ TEST_CASE("Parity sectors inside the charge-sector search at NROTS = 2") {
 
 // ---- SYMMETRIZE_DETS with NROTS > 0 (PLAN_symmetric_asci_search.md, §12) ---
 
+TEST_CASE("Covariant natural orbitals with a fixed impurity block") {
+  // ASCI.ROT_IMP_FIXED: two impurity sites per band (0, 2 | 1, 3) and two
+  // bath orbitals per band (4, 6 | 5, 7); band swap. The impurity blocks have
+  // off-diagonal 1-RDM elements that a full rotation would diagonalize.
+  const size_t n = 8, n_imp = 4;
+  const std::vector<int> band_of = {0, 1, 0, 1, 0, 1, 0, 1};
+  const auto blocks = macis::natural_orbital_blocks(n, n_imp, &band_of);
+  REQUIRE(blocks.size() == 4);  // {0,2} {1,3} {4,6} {5,7}
+  const std::vector<std::vector<uint32_t>> G = {{0, 1, 2, 3, 4, 5, 6, 7},
+                                                {1, 0, 3, 2, 5, 4, 7, 6}};
+  std::vector<double> rho(n * n, 0.);
+  auto R = [&](size_t a, size_t b) -> double& { return rho[a + b * n]; };
+  for(size_t a = 0; a < 4; ++a) R(a, a) = 0.25;
+  R(4, 4) = R(5, 5) = 1.9;
+  R(6, 6) = R(7, 7) = 0.1;
+  R(0, 2) = R(2, 0) = R(1, 3) = R(3, 1) = 0.08;  // inter-site, same band
+  R(4, 6) = R(6, 4) = R(5, 7) = R(7, 5) = 0.2;   // bath mixing
+
+  std::vector<double> U(n * n), occ(n);
+  macis::covariant_natural_orbitals(rho.data(), n, blocks, G, U.data(),
+                                    occ.data(), n_imp);
+  CHECK(macis::max_covariance_violation(U.data(), n, G) == 0.0);
+  // Impurity block: exactly the identity, occupations = the diagonal
+  for(size_t a = 0; a < n_imp; ++a) {
+    for(size_t b = 0; b < n_imp; ++b)
+      CHECK(U[a + b * n] == (a == b ? 1.0 : 0.0));
+    CHECK(occ[a] == 0.25);
+  }
+  // Bath blocks: still natural orbitals (occupations 1 +- sqrt(0.81 + 0.04))
+  const double d = std::sqrt(0.9 * 0.9 + 0.2 * 0.2);
+  CHECK(occ[4] == Approx(1.0 + d).margin(1e-13));
+  CHECK(occ[6] == Approx(1.0 - d).margin(1e-13));
+  CHECK(occ[5] == occ[4]);
+  CHECK(occ[7] == occ[6]);
+  // Without the fixed range the impurity block is rotated (0.25 +- 0.08)
+  std::vector<double> U2(n * n), occ2(n);
+  macis::covariant_natural_orbitals(rho.data(), n, blocks, G, U2.data(),
+                                    occ2.data());
+  CHECK(occ2[0] == Approx(0.33).margin(1e-13));
+  CHECK(std::abs(U2[0 + 2 * n]) > 0.5);
+  // A fixed range that splits a block is refused
+  CHECK_THROWS(macis::covariant_natural_orbitals(rho.data(), n, blocks, G,
+                                                 U.data(), occ.data(), 3));
+}
+
 TEST_CASE("Covariant natural orbitals") {
   // Band 0 = orbitals 0, 2, 4; band 1 = 1, 3, 5; band swap 0<->1, 2<->3, 4<->5
   const size_t n = 6, n_imp = 2;

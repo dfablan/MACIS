@@ -275,6 +275,9 @@ Option interactions enforced in code. Search the error string to find each check
 - `SYMMETRIZE_DETS` requires `SYM_NPERM ≥ 1`, and it rejects `GROW_WITH_ROT`. With `NROTS > 0`
   the rotations are group-covariant (`covariant_orbitals.hpp`); a group that permutes orbitals
   inside an (imp|bath) × band block throws.
+- `ROT_IMP_FIXED` requires `SYMMETRIZE_DETS` with `NROTS > 0`: the impurity blocks of the covariant
+  rotation stay the identity (bath only), so `GF.SITE_SZ_RESOLVENT` and the other diagonal resolvents
+  pass their identity guard. It changes the variational state.
 - `PARITY_SOLVE` requires `GROW_WITH_ROT = FALSE`, `NINACTIVE = 0` and `NACTIVE = NORB`.
 - The µ search requires `NINACTIVE = 0`.
 - A nonzero `DELTA_CFS` is supported only for `NBANDS` = 2 or 3. For any other value it is reset to 0.

@@ -210,6 +210,7 @@ int main(int argc, char** argv) {
   OPT_KEYWORD("ASCI.SYMMETRIZE_DETS", params.asci_settings.symmetrize_dets,
               bool);
   OPT_KEYWORD("ASCI.SYM_TOL", params.asci_settings.sym_tol, double);
+  OPT_KEYWORD("ASCI.ROT_IMP_FIXED", params.asci_settings.rot_imp_fixed, bool);
   OPT_KEYWORD("ASCI.HF_BY_ENERGY", params.asci_settings.hf_by_energy, bool);
   if(params.asci_settings.symmetrize_dets) {
     size_t nperm = 0;
@@ -660,12 +661,22 @@ int main(int argc, char** argv) {
   // leaves the purely inelastic response (see macis::RunResolventDiagonal).
   // The delta results are written to "<label>_delta_resolvent.dat" so they
   // do not clobber the plain ones.
+  // Optionally compute the site-resolved Sz resolvents: Sz(site i) for every
+  // site ("SzSite<i>") and Sz(i) + Sz(j) for every pair i < j
+  // ("SzSite<i>p<j>"), nsites (nsites + 1) / 2 Lanczos runs in the ground-state
+  // basis. R_ij = (R_{i+j} - R_ii - R_jj) / 2 gives the full site matrix, and
+  // from it the local and every cluster-momentum response. Needs the
+  // unrotated impurity basis (evaluate_resolvent_diagonal's guard): NROTS = 0,
+  // CAS, or ASCI.ROT_IMP_FIXED = TRUE.
+  bool site_sz_resolvent = false;
+  OPT_KEYWORD("GF.SITE_SZ_RESOLVENT", site_sz_resolvent, bool);
+
   bool delta_resolvent = false;
   OPT_KEYWORD("GF.DELTA_RESOLVENT", delta_resolvent, bool);
   const std::string delta_suffix = delta_resolvent ? "_delta" : "";
 
   if(testGF || sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
-     charge_orb_matrix_resolvent || stag_sz_resolvent) {
+     charge_orb_matrix_resolvent || stag_sz_resolvent || site_sz_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -750,7 +761,8 @@ int main(int argc, char** argv) {
     double E_res = E0;
     if(gf_settings.orb_expand_sector &&
        (sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
-        charge_orb_matrix_resolvent || stag_sz_resolvent))
+        charge_orb_matrix_resolvent || stag_sz_resolvent ||
+        site_sz_resolvent))
       E_res = macis::enrich_resolvent_ground_state<nwfn_bits>(
           E0, params, ham_gen, gf_settings);
 
@@ -797,6 +809,20 @@ int main(int argc, char** argv) {
           E_res, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
           "StagSz" + delta_suffix, delta_resolvent);
     }
+
+    if(site_sz_resolvent)
+      for(size_t i = 0; i < nsites; ++i)
+        for(size_t j = i; j < nsites; ++j) {
+          const auto w = macis::make_site_spin_weights(
+              params.nbands, nsites,
+              i == j ? std::vector<size_t>{i} : std::vector<size_t>{i, j});
+          const std::string label =
+              "SzSite" + std::to_string(i) +
+              (i == j ? std::string() : "p" + std::to_string(j));
+          macis::evaluate_resolvent_diagonal<nwfn_bits>(
+              E_res, params, ham_gen, gf_settings, w, macis::DiagChannel::Spin,
+              label + delta_suffix, delta_resolvent);
+        }
   }
   
 #ifdef MACIS_ENABLE_MPI

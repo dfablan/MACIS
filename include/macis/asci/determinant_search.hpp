@@ -75,6 +75,11 @@ struct ASCISettings {
   // Orbital-permutation symmetry enforcement (band permutations): close the
   // selected determinant set under sym_group at every ASCI selection step.
   bool symmetrize_dets = false;
+  // With SYMMETRIZE_DETS and NROTS > 0: keep the impurity block of the
+  // macro-iteration rotation at the identity and rotate only the bath, so
+  // site/orbital-resolved diagonal operators (resolvents) stay diagonal in
+  // the determinant basis. Changes the variational state: check its energy.
+  bool rot_imp_fixed = false;
   // Integral-invariance validation tolerance for the supplied permutations
   double sym_tol = 1e-8;
   // Full permutation group (identity included), expanded from the input

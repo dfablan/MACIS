@@ -86,19 +86,24 @@ inline std::vector<std::vector<size_t>> natural_orbital_blocks(
  *      in rotate_hamiltonian_ordm_imp_bath: occupations descending), and its
  *      vectors are copied onto the other blocks of the orbit by any g that
  *      maps it there. By step 3 the choice of g does not matter.
+ *   5. Orbitals [0, nfixed) are kept fixed (ASCI.ROT_IMP_FIXED): every block
+ *      inside that range gets U = 1 and the occupations diag(rbar), and the
+ *      range must be a union of blocks mapped onto each other by the group.
+ *      The identity is trivially covariant, so (★) still holds.
  *
  *  @param[in]  ordm     norb x norb 1-RDM, column major
  *  @param[in]  blocks   natural_orbital_blocks(...): a partition of [0, norb)
  *  @param[in]  group    the full permutation group (identity optional)
  *  @param[out] U        norb x norb rotation
  *  @param[out] occs_out norb natural-orbital occupations, or nullptr
+ *  @param[in]  nfixed   orbitals [0, nfixed) are not rotated (default 0)
  *  @returns max |ordm - rbar|, how far the state's 1-RDM is from symmetric
  */
 inline double covariant_natural_orbitals(
     const double* ordm, size_t norb,
     const std::vector<std::vector<size_t>>& blocks,
     const std::vector<std::vector<uint32_t>>& group, double* U,
-    double* occs_out) {
+    double* occs_out, size_t nfixed = 0) {
   for(const auto& g : group) {
     bool ok = g.size() == norb;
     std::vector<bool> seen(norb, false);
@@ -127,6 +132,16 @@ inline double covariant_natural_orbitals(
       throw std::runtime_error(
           "covariant_natural_orbitals: orbital " + std::to_string(p) +
           " is in no block");
+  auto is_fixed = [&](size_t b) {
+    return !blocks[b].empty() and blocks[b].front() < nfixed;
+  };
+  for(size_t b = 0; b < blocks.size(); ++b)
+    for(auto p : blocks[b])
+      if((p < nfixed) != is_fixed(b))
+        throw std::runtime_error(
+            "covariant_natural_orbitals: the fixed range [0, " +
+            std::to_string(nfixed) + ") splits the block of orbital " +
+            std::to_string(blocks[b].front()));
 
   // 1. Group average of the 1-RDM
   std::vector<double> rbar(norb * norb, 0.);
@@ -176,6 +191,11 @@ inline double covariant_natural_orbitals(
                 " inside it. Only groups that permute whole blocks (e.g. band "
                 "swaps) are supported with NROTS > 0; a permutation inside a "
                 "block would need a symmetry-adapted diagonalization");
+      if(is_fixed(b) != is_fixed(c))
+        throw std::runtime_error(
+            "covariant_natural_orbitals: a permutation maps a fixed block "
+            "(orbital " +
+            std::to_string(A.front()) + ") onto a rotated one");
       image[b][ig] = c;
     }
 
@@ -186,11 +206,19 @@ inline double covariant_natural_orbitals(
     if(done[a] or blocks[a].empty()) continue;
     const auto& A = blocks[a];
     const size_t m = A.size();
-    std::vector<double> nat(m * m), S(m);
-    for(size_t j = 0; j < m; ++j)
-      for(size_t i = 0; i < m; ++i) nat[i + j * m] = rbar[A[i] + A[j] * norb];
-    lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, m, m,
-                  nat.data(), m, S.data(), NULL, 1, NULL, 1);
+    std::vector<double> nat(m * m, 0.), S(m);
+    if(is_fixed(a))
+      for(size_t j = 0; j < m; ++j) {
+        nat[j + j * m] = 1.;
+        S[j] = rbar[A[j] + A[j] * norb];
+      }
+    else {
+      for(size_t j = 0; j < m; ++j)
+        for(size_t i = 0; i < m; ++i)
+          nat[i + j * m] = rbar[A[i] + A[j] * norb];
+      lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, m, m,
+                    nat.data(), m, S.data(), NULL, 1, NULL, 1);
+    }
 
     // The representative itself, then one copy per other block of the orbit
     auto place = [&](const std::vector<uint32_t>* g) {
