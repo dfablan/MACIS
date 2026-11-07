@@ -25,7 +25,8 @@ double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
                                  double davidson_res_tol,
                                  std::vector<double>& C_local, MPI_Comm comm,
                                  const size_t nstates = 1,
-                                 std::vector<double>* C_exc = nullptr) {
+                                 std::vector<double>* C_exc = nullptr,
+                                 const bool random_guess = false) {
   auto logger = spdlog::get("ci_solver");
   if(!logger) {
     logger = spdlog::stdout_color_mt("ci_solver");
@@ -49,8 +50,13 @@ double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
   if(max_c > (1. / C_local.size())) {
     logger->info("  * Will use passed vector as guess");
   } else {
-    logger->info("  * Will generate identity guess");
-    p_diagonal_guess(C_local.size(), H, C_local.data());
+    if(random_guess) {
+      logger->info("  * Will generate identity + random guess (spans all symmetry sectors)");
+      p_random_diagonal_guess(C_local.size(), H, C_local.data());
+    } else {
+      logger->info("  * Will generate identity guess");
+      p_diagonal_guess(C_local.size(), H, C_local.data());
+    }
   }
 
   // Setup Davidson Functor
@@ -100,7 +106,8 @@ template <typename SpMatType>
 double serial_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
                                double davidson_res_tol, std::vector<double>& C,
                                const size_t nstates = 1,
-                               std::vector<double>* C_exc = nullptr) {
+                               std::vector<double>* C_exc = nullptr,
+                               const bool random_guess = false) {
   auto logger = spdlog::get("ci_solver");
   if(!logger) {
     logger = spdlog::stdout_color_mt("ci_solver");
@@ -124,8 +131,13 @@ double serial_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
   if(max_c > (1. / C.size())) {
     logger->info("  * Will use passed vector as guess");
   } else {
-    logger->info("  * Will generate identity guess");
-    diagonal_guess(C.size(), H, C.data());
+    if(random_guess) {
+      logger->info("  * Will generate identity + random guess (spans all symmetry sectors)");
+      random_diagonal_guess(C.size(), H, C.data());
+    } else {
+      logger->info("  * Will generate identity guess");
+      diagonal_guess(C.size(), H, C.data());
+    }
   }
 
   // Setup Davidson Functor
@@ -173,7 +185,8 @@ double selected_ci_diag(
     HamiltonianGenerator<N>& ham_gen, double h_el_tol, size_t davidson_max_m,
     double davidson_res_tol, std::vector<double>& C_local,
     MACIS_MPI_CODE(MPI_Comm comm, ) const bool quiet = false,
-    const size_t nstates = 1, std::vector<double>* C_exc = nullptr) {
+    const size_t nstates = 1, std::vector<double>* C_exc = nullptr,
+    const bool random_guess = false) {
   auto logger = spdlog::get("ci_solver");
   if(!logger) {
     logger = spdlog::stdout_color_mt("ci_solver");
@@ -250,10 +263,11 @@ double selected_ci_diag(
   // Solve EVP
 #ifdef MACIS_ENABLE_MPI
   auto E = parallel_selected_ci_diag(H, davidson_max_m, davidson_res_tol,
-                                     C_local, comm, nstates, C_exc);
+                                     C_local, comm, nstates, C_exc,
+                                     random_guess);
 #else
   auto E = serial_selected_ci_diag(H, davidson_max_m, davidson_res_tol, C_local,
-                                   nstates, C_exc);
+                                   nstates, C_exc, random_guess);
 #endif
 
   return E;

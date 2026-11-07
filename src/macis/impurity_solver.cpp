@@ -527,7 +527,8 @@ double solve_ed_one(impurity_params<N>& p, SolveExtras<N>& x){
       E0 = macis::selected_ci_diag(
           dets.begin(), dets.end(), ham_gen, mcscf_settings.ci_matel_tol,
           mcscf_settings.ci_max_subspace, mcscf_settings.ci_res_tol,
-          C_dist MACIS_MPI_CODE(, MPI_COMM_WORLD), true);
+          C_dist MACIS_MPI_CODE(, MPI_COMM_WORLD), true, 1, nullptr,
+          /*random_guess=*/true);   // parity-sector ED: start in every band-count sector
       C_local = gather_ci_vector(std::move(C_dist), dets.size());
       ham_gen.form_rdms(
           dets.begin(), dets.end(), dets.begin(), dets.end(), C_local.data(),

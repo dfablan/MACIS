@@ -61,6 +61,37 @@ class SparseMatrixOperator {
   }
 };
 
+/**
+ *  Unit vector on the lowest diagonal element plus a random admixture over the whole space.
+ *
+ *  The plain diagonal_guess is one determinant, so it lies in a single sector of every symmetry
+ *  H conserves (band parity, band counts at J = 0, ...). Davidson never leaves the sector of its
+ *  start, and returns the lowest state of THAT sector -- an excited state whenever the ground state
+ *  lives elsewhere (two-band J = 0 impurity, 2026-11-07: 0.37 Ha above the ground state). The legacy
+ *  solver started from a random vector and never had the problem. The random part has components in
+ *  every sector; the unit part keeps the start close to the cheapest determinant. Fixed seed, so a
+ *  solve is reproducible.
+ */
+inline constexpr double random_guess_weight = 0.5;
+inline constexpr unsigned random_guess_seed = 20261107u;
+
+template <typename SpMatType>
+void random_diagonal_guess(size_t N, const SpMatType& A, double* X) {
+  auto D = extract_diagonal_elements(A);
+  auto min_idx = std::distance(D.begin(), std::min_element(D.begin(), D.end()));
+  std::mt19937 gen(random_guess_seed);
+  std::normal_distribution<double> dist(0., 1.);
+  double nrm = 0.;
+  for(size_t i = 0; i < N; ++i) { X[i] = dist(gen); nrm += X[i] * X[i]; }
+  nrm = std::sqrt(nrm);
+  for(size_t i = 0; i < N; ++i) X[i] *= random_guess_weight / nrm;
+  X[min_idx] += 1.;
+  nrm = 0.;
+  for(size_t i = 0; i < N; ++i) nrm += X[i] * X[i];
+  nrm = std::sqrt(nrm);
+  for(size_t i = 0; i < N; ++i) X[i] /= nrm;
+}
+
 template <typename SpMatType>
 void diagonal_guess(size_t N, const SpMatType& A, double* X) {
   // Extract diagonal and setup guess
@@ -108,6 +139,28 @@ void p_diagonal_guess(size_t N_local, const SpMatType& A, double* X) {
   if(world_rank == owner_rank) {
     X[min_idx - A.local_row_start()] = 1.;
   }
+}
+
+template <typename SpMatType>
+void p_random_diagonal_guess(size_t N_local, const SpMatType& A, double* X) {
+  // Same as random_diagonal_guess, distributed: each rank draws its own rows (rank-dependent seed),
+  // the owner of the global lowest diagonal element adds the unit part, the norm is reduced.
+  auto comm = A.comm();
+  int world_rank;
+  MPI_Comm_rank(comm, &world_rank);
+  p_diagonal_guess(N_local, A, X);                 // unit vector on the global minimum
+  std::mt19937 gen(random_guess_seed + 7919u * unsigned(world_rank));
+  std::normal_distribution<double> dist(0., 1.);
+  std::vector<double> R(N_local);
+  double loc = 0., tot = 0.;
+  for(size_t i = 0; i < N_local; ++i) { R[i] = dist(gen); loc += R[i] * R[i]; }
+  MPI_Allreduce(&loc, &tot, 1, MPI_DOUBLE, MPI_SUM, comm);
+  const double scale = random_guess_weight / std::sqrt(tot);
+  loc = 0.;
+  for(size_t i = 0; i < N_local; ++i) { X[i] += scale * R[i]; loc += X[i] * X[i]; }
+  MPI_Allreduce(&loc, &tot, 1, MPI_DOUBLE, MPI_SUM, comm);
+  const double inv = 1. / std::sqrt(tot);
+  for(size_t i = 0; i < N_local; ++i) X[i] *= inv;
 }
 #endif
 
