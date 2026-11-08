@@ -896,9 +896,16 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
  *        "<label>_orbital_resolvent.dat" and "<label>_gram.dat" when
  *        gf_settings.writeGF_singlef is set.
  *
- *        Like evaluate_resolvent_diagonal, requires the impurity block of
- *        orb_rot to be the identity: the bilinears are defined on the
- *        original impurity orbitals.
+ *        The output is always on the original impurity orbitals. With a
+ *        rotated basis (ASCI.NROTS > 0) the seeds are the bilinears of the
+ *        rotated impurity orbitals; the full matrix is then rotated back with
+ *        the impurity block U of orb_rot (back_rotate_orbital_resolvent),
+ *        which is exact because the bilinears of either basis span the same
+ *        space. This requires orb_rot to be block-diagonal in imp/bath (as
+ *        rotate_hamiltonian_ordm_imp_bath and covariant_natural_orbitals
+ *        guarantee), so that U is orthogonal on its own; it throws otherwise.
+ *        U is written to "<label>_imp_rot.dat"; the Gram matrix and capture
+ *        fractions refer to the rotated seeds.
  *
  * @param[in] macis::DiagChannel channel: Spin (S_{mu nu}) or Charge
  *            (N_{mu nu}).
@@ -914,17 +921,39 @@ auto evaluate_resolvent_orbital_matrix(
     macis::SDBuildHamiltonianGenerator<N> &ham_gen,
     macis::GFSettings &gf_settings, macis::DiagChannel channel,
     const std::string &label, bool subtract_mean = false) {
+  // Impurity block U of orb_rot, U(j, a) = orb_rot[j + a * n_active]; the
+  // imp/bath blocks must vanish for U to be orthogonal on its own.
+  Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+  bool rotated = false;
   if(p.n_imp > 0) {
-    Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Zero(p.n_imp, p.n_imp);
-    for(int j = 0; j < p.n_imp; ++j)
-      for(int k = 0; k < p.n_imp; ++k)
-        rotBlock(j, k) = p.orb_rot[j + k * p.n_active];
-    const Eigen::MatrixXd dev =
-        rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
-    if(dev.cwiseAbs().maxCoeff() > 1.e-10)
+    double imp_bath = 0.;
+    for(size_t j = 0; j < p.n_active; ++j)
+      for(size_t k = 0; k < p.n_active; ++k) {
+        const double v = p.orb_rot[j + k * p.n_active];
+        if(j < p.n_imp && k < p.n_imp)
+          rotBlock(j, k) = v;
+        else if((j < p.n_imp) != (k < p.n_imp))
+          imp_bath = std::max(imp_bath, std::abs(v));
+      }
+    if(imp_bath > 1.e-10)
+      throw std::runtime_error(
+          "In evaluate_resolvent_orbital_matrix: orb_rot mixes impurity and "
+          "bath orbitals (max |imp-bath element| = " +
+          std::to_string(imp_bath) +
+          "), so the impurity bilinears cannot be rotated back with the "
+          "impurity block alone. Set CI.EXPANSION = CAS or ASCI.NROTS = 0.");
+    const double udev = (rotBlock * rotBlock.transpose() -
+                         Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
+                            .cwiseAbs()
+                            .maxCoeff();
+    if(udev > 1.e-8)
       throw std::runtime_error(
           "In evaluate_resolvent_orbital_matrix: the impurity block of orb_rot "
-          "is not the identity. Set CI.EXPANSION = CAS or ASCI.NROTS = 0.");
+          "is not orthogonal (max deviation of U U^T from the identity " +
+          std::to_string(udev) + ")");
+    rotated = (rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
+                  .cwiseAbs()
+                  .maxCoeff() > 1.e-10;
   }
 
   Eigen::VectorXd psi0 =
@@ -977,9 +1006,36 @@ auto evaluate_resolvent_orbital_matrix(
                    "and were dropped, its elements miss weight";
     std::cerr << std::endl;
   }
-  if(gf_settings.writeGF_singlef)
+  if(rotated) {
+    macis::back_rotate_orbital_resolvent(result.resolvent, rotBlock);
+    std::cout << "ORBITAL RESOLVENT (" << label
+              << "): seeds on the rotated impurity orbitals (max |U - 1| = "
+              << (rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
+                     .cwiseAbs()
+                     .maxCoeff()
+              << "), matrix rotated back to the original impurity orbitals; "
+                 "the Gram matrix and capture fractions refer to the rotated "
+                 "seeds"
+              << std::endl;
+  }
+  if(gf_settings.writeGF_singlef) {
     detail::write_orbital_resolvent_matrix(label, p.n_imp, channel, ws, result,
                                            gf_settings.orb_min_capture);
+    bool write_file = true;
+    MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+    if(write_file) {
+      std::ofstream rot_file(label + "_imp_rot.dat");
+      rot_file.precision(std::numeric_limits<double>::max_digits10);
+      rot_file << "# U(j, a): original impurity orbital j (row) in rotated "
+                  "orbital a (column); the resolvent file is on the original "
+                  "orbitals, the Gram and capture data on the rotated ones\n";
+      for(size_t j = 0; j < p.n_imp; ++j) {
+        for(size_t a = 0; a < p.n_imp; ++a)
+          rot_file << std::scientific << rotBlock(j, a) << " ";
+        rot_file << "\n";
+      }
+    }
+  }
   return result;
 }
 

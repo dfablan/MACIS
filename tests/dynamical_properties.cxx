@@ -2132,3 +2132,77 @@ TEST_CASE(
   REQUIRE(e.E0 == m.E0);
   REQUIRE((e.psi0 - m.psi_sector / m.psi_sector.norm()).norm() < 1e-14);
 }
+
+TEST_CASE(
+    "Dynamical properties - orbital matrix resolvent in an imp/bath rotated "
+    "basis rotates back exactly") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+  // Exact (FCI) ground state of the 4-orbital model in its original basis and
+  // in a basis rotated separately inside the impurity (0, 1) and bath (2, 3)
+  // blocks, like the imp/bath natural-orbital rotations of NROTS > 0. The
+  // rotated-basis resolvent, rotated back with the impurity block, must equal
+  // the original one in both channels.
+  const size_t n_imp = 2, n = 4;
+  std::vector<double> T, V;
+  orbital_matrix_integrals(T, V);
+  Eigen::MatrixXd W = Eigen::MatrixXd::Zero(n, n);  // W(old p, new a)
+  const double th = 0.7, ph = -0.4;
+  W(0, 0) = std::cos(th), W(0, 1) = -std::sin(th);
+  W(1, 0) = std::sin(th), W(1, 1) = std::cos(th);
+  W(2, 2) = std::cos(ph), W(2, 3) = -std::sin(ph);
+  W(3, 2) = std::sin(ph), W(3, 3) = std::cos(ph);
+  std::vector<double> Tr(n * n, 0.0), Vr(n * n * n * n, 0.0);
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b)
+      for(size_t p = 0; p < n; ++p)
+        for(size_t q = 0; q < n; ++q)
+          Tr[a * n + b] += W(p, a) * W(q, b) * T[p * n + q];
+  for(size_t a = 0; a < n; ++a)
+    for(size_t b = 0; b < n; ++b)
+      for(size_t c = 0; c < n; ++c)
+        for(size_t d = 0; d < n; ++d)
+          for(size_t p = 0; p < n; ++p)
+            for(size_t q = 0; q < n; ++q)
+              for(size_t r = 0; r < n; ++r)
+                for(size_t s = 0; s < n; ++s)
+                  Vr[((a * n + b) * n + c) * n + d] +=
+                      W(p, a) * W(q, b) * W(r, c) * W(s, d) *
+                      V[((p * n + q) * n + r) * n + s];
+
+  using generator_type = macis::DoubleLoopHamiltonianGenerator<N>;
+  generator_type gen(macis::matrix_span<double>(T.data(), n, n),
+                     macis::rank4_span<double>(V.data(), n, n, n, n));
+  generator_type gen_r(macis::matrix_span<double>(Tr.data(), n, n),
+                       macis::rank4_span<double>(Vr.data(), n, n, n, n));
+  auto dets = half_filled_fci_dets();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(
+      dense_hamiltonian(dets, gen));
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es_r(
+      dense_hamiltonian(dets, gen_r));
+  const double E0 = es.eigenvalues()(0), E0_r = es_r.eigenvalues()(0);
+  REQUIRE(E0_r == Approx(E0).epsilon(1e-12));
+  REQUIRE(es.eigenvalues()(1) - E0 > 1e-6);  // non-degenerate ground state
+
+  const std::vector<std::complex<double>> ws = {{0.0, 0.3}, {0.5, 0.2},
+                                                {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+  const Eigen::MatrixXd U = W.topLeftCorner(n_imp, n_imp);
+  for(const auto ch : {macis::DiagChannel::Spin, macis::DiagChannel::Charge}) {
+    const auto ref = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        es.eigenvectors().col(0), gen, dets, n_imp, ch, E0, ws, settings);
+    auto rot = macis::RunResolventOrbitalMatrix<N, int32_t>(
+        es_r.eigenvectors().col(0), gen_r, dets, n_imp, ch, E0_r, ws,
+        settings);
+    // Not trivially equal before the back-rotation
+    double before = 0.0;
+    for(size_t iw = 0; iw < ws.size(); ++iw)
+      for(size_t k = 0; k < ref.resolvent[iw].size(); ++k)
+        before = std::max(before,
+                          std::abs(ref.resolvent[iw][k] - rot.resolvent[iw][k]));
+    REQUIRE(before > 1e-3);
+    macis::back_rotate_orbital_resolvent(rot.resolvent, U);
+    for(size_t iw = 0; iw < ws.size(); ++iw)
+      require_resolvents_close(ref.resolvent[iw], rot.resolvent[iw]);
+  }
+}

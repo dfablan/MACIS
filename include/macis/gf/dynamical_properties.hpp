@@ -546,6 +546,45 @@ struct OrbitalResolventResult {
 };
 
 /**
+ * @brief Rotates an orbital bilinear matrix resolvent (see
+ *        RunResolventOrbitalMatrix) from a rotated impurity basis back to the
+ *        original impurity orbitals, in place:
+ *
+ *          R(w) <- K R(w) K^T,   K_{(j l),(a b)} = U(j, a) U(l, b),
+ *
+ *        pairs indexed j * n + l. U(j, a) is the coefficient of original
+ *        orbital j in rotated orbital a, i.e. the impurity block of orb_rot,
+ *        U(j, a) = orb_rot[j + a * n_active] (the convention of evaluate_GF).
+ *        Then O_{jl} = sum_ab U(j, a) U(l, b) O'_{ab} for both channels, and
+ *        R is bilinear in real seeds, so the map is exact.
+ *
+ * @param[in,out] R: R[iw][k * n^2 + l], n = U.rows().
+ * @param[in] U: Real orthogonal n x n impurity rotation.
+ */
+inline void back_rotate_orbital_resolvent(
+    std::vector<std::vector<std::complex<double>>> &R, const Eigen::MatrixXd &U) {
+  const Eigen::Index n = U.rows(), np = n * n;
+  if(U.cols() != n)
+    throw std::runtime_error("back_rotate_orbital_resolvent: U is not square");
+  Eigen::MatrixXcd K(np, np);
+  for(Eigen::Index j = 0; j < n; ++j)
+    for(Eigen::Index l = 0; l < n; ++l)
+      for(Eigen::Index a = 0; a < n; ++a)
+        for(Eigen::Index b = 0; b < n; ++b)
+          K(j * n + l, a * n + b) = U(j, a) * U(l, b);
+  using RowMajorXcd = Eigen::Matrix<std::complex<double>, Eigen::Dynamic,
+                                    Eigen::Dynamic, Eigen::RowMajor>;
+  for(auto &Rw : R) {
+    if(Rw.size() != size_t(np * np))
+      throw std::runtime_error(
+          "back_rotate_orbital_resolvent: resolvent size does not match U");
+    Eigen::Map<RowMajorXcd> M(Rw.data(), np, np);
+    const RowMajorXcd rotated = K * M * K.transpose();
+    M = rotated;
+  }
+}
+
+/**
  * @brief Full n_imp^2 x n_imp^2 matrix resolvent of the orbital bilinears,
  *
  *          R_{mu nu; gamma delta}(w) =

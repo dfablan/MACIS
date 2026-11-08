@@ -277,7 +277,12 @@ Option interactions enforced in code. Search the error string to find each check
   inside an (imp|bath) × band block throws.
 - `ROT_IMP_FIXED` requires `SYMMETRIZE_DETS` with `NROTS > 0`: the impurity blocks of the covariant
   rotation stay the identity (bath only), so `GF.SITE_SZ_RESOLVENT` and the other diagonal resolvents
-  pass their identity guard. It changes the variational state.
+  pass their identity guard. It changes the variational state (2x2 J0.333/U15: +39.6 mHa, static
+  chi -11%), so site-resolved spin dynamics use the next route instead.
+- `GF.SPIN_ORB_MATRIX_RESOLVENT` / `CHARGE_ORB_MATRIX_RESOLVENT` accept `NROTS > 0` when `orb_rot` is
+  imp/bath block-diagonal (both rotation paths are): seeds on the rotated impurity orbitals, matrix
+  rotated back exactly with the impurity block (`back_rotate_orbital_resolvent`), U in
+  `<label>_imp_rot.dat`. The diagonal resolvents still require the identity.
 - `PARITY_SOLVE` requires `GROW_WITH_ROT = FALSE`, `NINACTIVE = 0` and `NACTIVE = NORB`.
 - The µ search requires `NINACTIVE = 0`.
 - A nonzero `DELTA_CFS` is supported only for `NBANDS` = 2 or 3. For any other value it is reset to 0.
