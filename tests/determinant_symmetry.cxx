@@ -320,8 +320,9 @@ TEST_CASE("ASCI Symmetric Search") {
     std::cout << std::setprecision(10)
               << "ASCI Symmetric Search: E_fci = " << E_fci
               << ", E_sym - E_fci = " << E_sym - E_fci << " ("
-              << dets_sym.size() << " dets), E_unsym - E_fci = "
-              << E_unsym - E_fci << " (" << dets_unsym.size()
+              << dets_sym.size()
+              << " dets), E_unsym - E_fci = " << E_unsym - E_fci << " ("
+              << dets_unsym.size()
               << " dets), |E_sym - E_unsym| = " << std::abs(E_sym - E_unsym)
               << " (bound 0.1)" << std::endl;
     INFO("E_fci = " << E_fci << ", E_sym - E_fci = " << E_sym - E_fci << " ("

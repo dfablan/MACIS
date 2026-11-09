@@ -128,8 +128,8 @@ TEST_CASE("Impurity RDM - block-sparse matches dense") {
   orb_rot[2 * n_active + 2] = 1.0;
   orb_rot[3 * n_active + 3] = 1.0;
 
-  auto rho_dense = macis::compute_impurity_rdm_from_state<N>(
-      n_imp, n_active, dets, C, orb_rot);
+  auto rho_dense = macis::compute_impurity_rdm_from_state<N>(n_imp, n_active,
+                                                             dets, C, orb_rot);
   auto rdm_blocks = macis::compute_impurity_rdm_blocks_from_state<N>(
       n_imp, n_active, dets, C, orb_rot);
   auto rho_sparse = rdm_blocks.to_dense();
@@ -149,8 +149,7 @@ TEST_CASE("Impurity RDM - block-sparse matches dense") {
       for(size_t r = 0; r < blk.dim; ++r) {
         const size_t i = blk.basis_indices[r];
         const uint64_t s = (uint64_t)(dim - 1 - i);
-        const int n_up =
-            (int)std::bitset<64>((s >> n_imp) & mask).count();
+        const int n_up = (int)std::bitset<64>((s >> n_imp) & mask).count();
         const int n_dn = (int)std::bitset<64>(s & mask).count();
         REQUIRE(n_up == blk.n_up);
         REQUIRE(n_dn == blk.n_dn);
@@ -179,7 +178,8 @@ TEST_CASE("Impurity RDM - block-sparse matches dense") {
   SECTION("block and text writers produce output") {
     rdm_blocks.write_blocks_bin("imp_rdm_test_blocks.bin", 0.0);
     rdm_blocks.write_dense_txt("imp_rdm_test.txt");
-    std::ifstream b("imp_rdm_test_blocks.bin", std::ios::binary | std::ios::ate);
+    std::ifstream b("imp_rdm_test_blocks.bin",
+                    std::ios::binary | std::ios::ate);
     std::ifstream t("imp_rdm_test.txt");
     REQUIRE(b.good());
     REQUIRE(b.tellg() > 0);
@@ -243,8 +243,8 @@ TEST_CASE("Impurity RDM - block-sparse matches dense across sectors") {
   orb_rot[3 * n_active + 2] = -0.96;
   orb_rot[3 * n_active + 3] = 0.28;
 
-  auto rho_dense = macis::compute_impurity_rdm_from_state<N>(
-      n_imp, n_active, dets, C, orb_rot);
+  auto rho_dense = macis::compute_impurity_rdm_from_state<N>(n_imp, n_active,
+                                                             dets, C, orb_rot);
   auto rdm_blocks = macis::compute_impurity_rdm_blocks_from_state<N>(
       n_imp, n_active, dets, C, orb_rot);
   auto rho_sparse = rdm_blocks.to_dense();

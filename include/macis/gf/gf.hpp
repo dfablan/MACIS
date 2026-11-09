@@ -69,9 +69,8 @@ struct GFSettings {
               // in psi0's sector are evaluated on the truncated ASCI basis
               // alone, while orb_expand_basis grows a basis only for the seeds
               // that leave it.
-  size_t orb_sector_trunc_size =
-      0;  // Cap on the determinants grown by orb_expand_sector (0: use
-          // trunc_size).
+  size_t orb_sector_trunc_size = 0;  // Cap on the determinants grown by
+                                     // orb_expand_sector (0: use trunc_size).
   size_t orb_sector_max_sub = 50;     // Davidson subspace of the re-solve.
   double orb_sector_res_tol = 1.E-8;  // Davidson residual of the re-solve.
   // Character of every active spatial orbital under a set of Z2 symmetries

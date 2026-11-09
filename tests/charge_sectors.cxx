@@ -77,7 +77,8 @@ params_t make_model(CIExpansion ci_exp, size_t na, size_t nb) {
   // doping
   p.dstep = 2e-2;
   p.abs_tol = 1e-7;
-  p.n_tol = 0.0;  // bracket test only: these tests pin mu to the bracket tolerance
+  p.n_tol =
+      0.0;  // bracket test only: these tests pin mu to the bracket tolerance
   p.maxiter = 100;
   p.print_doping = false;
   p.init_shift = 2.0;
@@ -222,7 +223,7 @@ TEST_CASE("Mu search stops on the filling tolerance") {
   auto [mu0, n0, calls0, last0] = solve(0.0);
   auto [mu1, n1, calls1, last1] = solve(1e-5);
   CHECK(std::abs(n1 - target) < 1e-5);
-  CHECK(last1 == mu1);   // occs belong to the returned mu
+  CHECK(last1 == mu1);  // occs belong to the returned mu
   CHECK(last0 == mu0);
   CHECK(mu1 == Approx(mu0).margin(1e-3));
   CHECK(calls1 < calls0);

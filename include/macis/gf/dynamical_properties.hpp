@@ -322,8 +322,8 @@ std::vector<std::bitset<nbits>> grow_basis_by_singles(
   if(!mask.empty() && mask.size() < norbs)
     throw std::runtime_error(
         "grow_basis_by_singles: orb_sym_mask has " +
-        std::to_string(mask.size()) + " entries, fewer than norbs = " +
-        std::to_string(norbs));
+        std::to_string(mask.size()) +
+        " entries, fewer than norbs = " + std::to_string(norbs));
   auto conserves_character = [&](const std::bitset<nbits> &parent,
                                  const std::bitset<nbits> &single) {
     if(mask.empty()) return true;
@@ -581,7 +581,8 @@ struct OrbitalResolventResult {
  * @param[in] U: Real orthogonal n x n impurity rotation.
  */
 inline void back_rotate_orbital_resolvent(
-    std::vector<std::vector<std::complex<double>>> &R, const Eigen::MatrixXd &U) {
+    std::vector<std::vector<std::complex<double>>> &R,
+    const Eigen::MatrixXd &U) {
   const Eigen::Index n = U.rows(), np = n * n;
   if(U.cols() != n)
     throw std::runtime_error("back_rotate_orbital_resolvent: U is not square");
@@ -826,8 +827,7 @@ OrbitalResolventResult RunResolventBilinearSeeds(
     auto image = bilinear_combination_image(wfn0, base_dets, det_index,
                                             coeffs[pair], channel);
     result.capture(pair) = image.capture;
-    if(!settings.orb_expand_basis ||
-       image.capture >= settings.orb_min_capture)
+    if(!settings.orb_expand_basis || image.capture >= settings.orb_min_capture)
       continue;
     result.expanded[pair] = true;
     merge_leaked_images(leaked, image);
@@ -891,8 +891,7 @@ OrbitalResolventResult RunResolventBilinearSeeds(
                                                  coeffs[pair], channel);
     if(dets.size() == base_dets.size()) continue;
     result.capture_expanded(pair) =
-        bilinear_combination_image(psi0, dets, det_index, coeffs[pair],
-                                   channel)
+        bilinear_combination_image(psi0, dets, det_index, coeffs[pair], channel)
             .capture;
   }
 
@@ -1121,8 +1120,7 @@ SectorEnrichment<nbits> enrich_ground_state_sector(
     // writes the current Ritz vector into C at every iteration, so a run that
     // stops short is restarted from that vector, with H built once.
     std::vector<double> C(n, 0.0);
-    for(size_t k = 0; k < base_dets.size(); ++k)
-      C[k] = wfn0[k] / wfn0.norm();
+    for(size_t k = 0; k < base_dets.size(); ++k) C[k] = wfn0[k] / wfn0.norm();
     auto H = make_dist_csr_hamiltonian<index_t>(
         MPI_COMM_WORLD, out.dets.begin(), out.dets.end(), Hgen, h_thresh);
     constexpr int max_restarts = 200;
@@ -1143,8 +1141,8 @@ SectorEnrichment<nbits> enrich_ground_state_sector(
     out.psi0 = Eigen::Map<Eigen::VectorXd>(C.data(), C.size());
     out.psi0 /= out.psi0.norm();
   }
-  out.overlap = std::abs(out.psi0.head(base_dets.size()).dot(wfn0)) /
-                wfn0.norm();
+  out.overlap =
+      std::abs(out.psi0.head(base_dets.size()).dot(wfn0)) / wfn0.norm();
   return out;
 }
 
@@ -1337,8 +1335,8 @@ inline std::vector<double> make_site_spin_weights(
   for(auto s : sites) {
     if(s >= nsites)
       throw std::runtime_error("make_site_spin_weights: site " +
-                               std::to_string(s) + " >= nsites = " +
-                               std::to_string(nsites));
+                               std::to_string(s) +
+                               " >= nsites = " + std::to_string(nsites));
     for(size_t b = 0; b < nbands; ++b) w[s + nsites * b] = 1.0;
   }
   return w;

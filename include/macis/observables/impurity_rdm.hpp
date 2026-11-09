@@ -612,11 +612,10 @@ inline std::vector<double> compute_overlap_matrix_block(
         }
       }
 
-      overlap_mat[bi * dim + bj] =
-          determinant_local_implementation(rot_mat_restricted_up,
-                                           n_occ_bra_up) *
-          determinant_local_implementation(rot_mat_restricted_down,
-                                           n_occ_bra_down);
+      overlap_mat[bi * dim + bj] = determinant_local_implementation(
+                                       rot_mat_restricted_up, n_occ_bra_up) *
+                                   determinant_local_implementation(
+                                       rot_mat_restricted_down, n_occ_bra_down);
     }
   }
 
@@ -699,14 +698,14 @@ void build_reduced_density_matrix_blocks(
           const size_t bidx = canonical_indices[idx];
           if(bidx < basis_size) {
             members.push_back(
-                {bidx, C[idx],
+                {bidx,
+                 C[idx],
                  {det.n_imp_up, det.n_imp_dn, det.n_bath_up, det.n_bath_dn}});
           }
         }
-        std::sort(members.begin(), members.end(),
-                  [](const Member& a, const Member& b) {
-                    return a.bidx < b.bidx;
-                  });
+        std::sort(
+            members.begin(), members.end(),
+            [](const Member& a, const Member& b) { return a.bidx < b.bidx; });
 
         std::vector<size_t> loc;
         std::vector<double> coeff;
@@ -741,9 +740,9 @@ void build_reduced_density_matrix_blocks(
         double* mat = rho_local[b].data();
         for(size_t p : keep) {
           for(size_t q : keep) {
-            const int sgn = compute_fermionic_sign(
-                occs[p][0], occs[p][1], occs[q][0], occs[q][1], occs[p][2],
-                occs[p][3]);
+            const int sgn =
+                compute_fermionic_sign(occs[p][0], occs[p][1], occs[q][0],
+                                       occs[q][1], occs[p][2], occs[p][3]);
             mat[rdm.local_of[loc[p]] * blk.dim + rdm.local_of[loc[q]]] +=
                 coeff[p] * coeff[q] * double(sgn);
           }
@@ -751,8 +750,7 @@ void build_reduced_density_matrix_blocks(
       } catch(...) {
 #pragma omp critical
         {
-          if(!thread_exception)
-            thread_exception = std::current_exception();
+          if(!thread_exception) thread_exception = std::current_exception();
         }
         abort_flag.store(true, std::memory_order_relaxed);
       }
@@ -784,15 +782,15 @@ inline void rotate_imp_rdm_blocks(ImpRdmBlocks& rdm,
     for(double v : blk.matrix) max_abs = std::max(max_abs, std::abs(v));
     if(max_abs == 0.0) continue;
 
-    std::vector<double> overlap = compute_overlap_matrix_block(
-        rot_mat, n_imp_orbitals, n_active_orbitals, basis_states,
-        blk.basis_indices);
+    std::vector<double> overlap =
+        compute_overlap_matrix_block(rot_mat, n_imp_orbitals, n_active_orbitals,
+                                     basis_states, blk.basis_indices);
 
     const int n = static_cast<int>(blk.dim);
     tmp.assign(blk.dim * blk.dim, 0.0);
-    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans, n,
-               n, n, 1.0, blk.matrix.data(), n, overlap.data(), n, 0.0,
-               tmp.data(), n);
+    blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::Trans, n, n,
+               n, 1.0, blk.matrix.data(), n, overlap.data(), n, 0.0, tmp.data(),
+               n);
     blas::gemm(blas::Layout::ColMajor, blas::Op::NoTrans, blas::Op::NoTrans, n,
                n, n, 1.0, overlap.data(), n, tmp.data(), n, 0.0,
                blk.matrix.data(), n);

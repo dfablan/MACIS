@@ -381,8 +381,8 @@ auto evaluate_GF(double EASCI, macis::impurity_params<N> &p,
   for(const auto oc : occs) std::cout << oc << ", ";
   std::cout << std::endl;
 
-  std::cout << std::scientific << std::setprecision(12)
-            << "EASCI = " << EASCI << std::endl;
+  std::cout << std::scientific << std::setprecision(12) << "EASCI = " << EASCI
+            << std::endl;
 
   // Frequency grid
   std::vector<std::complex<double>> ws(gf_settings.nws,
@@ -724,8 +724,7 @@ inline void write_orbital_resolvent_matrix(
 // for U to be orthogonal on its own; throws otherwise. rotated: U != 1.
 template <size_t N>
 Eigen::MatrixXd impurity_rotation_block(const macis::impurity_params<N> &p,
-                                        const std::string &who,
-                                        bool &rotated) {
+                                        const std::string &who, bool &rotated) {
   Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
   rotated = false;
   if(p.n_imp == 0) return rotBlock;
@@ -782,9 +781,9 @@ inline void write_seed_resolvent_matrix(
   for(size_t iw = 0; iw < ws.size(); ++iw)
     for(size_t k = 0; k < ns; ++k)
       for(size_t l = 0; l < ns; ++l)
-        rf << std::scientific << real(ws[iw]) << " " << imag(ws[iw]) << " "
-           << k << " " << l << " " << real(result.resolvent[iw][k * ns + l])
-           << " " << imag(result.resolvent[iw][k * ns + l]) << "\n";
+        rf << std::scientific << real(ws[iw]) << " " << imag(ws[iw]) << " " << k
+           << " " << l << " " << real(result.resolvent[iw][k * ns + l]) << " "
+           << imag(result.resolvent[iw][k * ns + l]) << "\n";
 
   std::ofstream gf(label + "_seed_gram.dat");
   gf.precision(dbl::max_digits10);
@@ -859,8 +858,8 @@ auto evaluate_resolvent_sz(double EASCI, macis::impurity_params<N> &p,
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
 
-  std::cout << std::scientific << std::setprecision(12)
-            << "EASCI = " << EASCI << std::endl;
+  std::cout << std::scientific << std::setprecision(12) << "EASCI = " << EASCI
+            << std::endl;
 
   std::vector<std::complex<double>> ws =
       detail::build_bosonic_resolvent_grid(gf_settings);
@@ -964,8 +963,8 @@ auto evaluate_resolvent_diagonal(double EASCI, macis::impurity_params<N> &p,
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
 
-  std::cout << std::scientific << std::setprecision(12)
-            << "EASCI = " << EASCI << std::endl;
+  std::cout << std::scientific << std::setprecision(12) << "EASCI = " << EASCI
+            << std::endl;
 
   std::vector<std::complex<double>> ws =
       detail::build_bosonic_resolvent_grid(gf_settings);
@@ -1181,9 +1180,8 @@ auto evaluate_resolvent_spin_weights(
   for(const auto &Rw : result.resolvent)
     for(size_t k = 0; k < weights.size(); ++k)
       for(size_t l = 0; l < weights.size(); ++l)
-        (k == l ? diag : cross) =
-            std::max(k == l ? diag : cross,
-                     std::abs(Rw[k * weights.size() + l]));
+        (k == l ? diag : cross) = std::max(
+            k == l ? diag : cross, std::abs(Rw[k * weights.size() + l]));
   std::cout << "SPIN WEIGHT RESOLVENT (" << label
             << "): max |R_kl| off-diagonal / diagonal = " << cross << " / "
             << diag << std::endl;

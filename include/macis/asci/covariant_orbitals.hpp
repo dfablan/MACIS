@@ -182,8 +182,7 @@ inline double symmetry_adapted_block_orbitals(
   std::vector<double> C(m * m, 0.), w(m);
   for(size_t g = 0; g < ops.size(); ++g)
     for(size_t k = 0; k < m * m; ++k) C[k] += std::ldexp(R[g][k], -int(g));
-  lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, m, C.data(), m,
-               w.data());
+  lapack::syev(lapack::Job::Vec, lapack::Uplo::Lower, m, C.data(), m, w.data());
 
   // Character class of each joint eigenvector
   std::map<uint32_t, std::vector<size_t>> classes;
@@ -304,9 +303,9 @@ inline double orbital_character_masks(
  *  occupation subspace, the sign of each vector and the order of the vectors
  *  are all arbitrary, and differ between partner blocks.
  *
- *   1. ordm is averaged over the group, rbar[p,q] = 1/|G| sum_g ordm[g(p),g(q)].
- *      That only picks the basis; the state is untouched. For a symmetric state
- *      rbar = ordm up to the solver's tolerance.
+ *   1. ordm is averaged over the group, rbar[p,q] = 1/|G| sum_g
+ * ordm[g(p),g(q)]. That only picks the basis; the state is untouched. For a
+ * symmetric state rbar = ordm up to the solver's tolerance.
  *   2. Every g must map every block onto a block (throws otherwise: the
  *      blocks and the group disagree).
  *   3. Every g that maps a block onto itself must fix each of its orbitals
@@ -371,9 +370,8 @@ inline double covariant_natural_orbitals(
     }
   for(size_t p = 0; p < norb; ++p)
     if(block_of[p] < 0)
-      throw std::runtime_error(
-          "covariant_natural_orbitals: orbital " + std::to_string(p) +
-          " is in no block");
+      throw std::runtime_error("covariant_natural_orbitals: orbital " +
+                               std::to_string(p) + " is in no block");
   auto is_fixed = [&](size_t b) {
     return !blocks[b].empty() and blocks[b].front() < nfixed;
   };
@@ -428,8 +426,8 @@ inline double covariant_natural_orbitals(
             throw std::runtime_error(
                 "covariant_natural_orbitals: a permutation of the symmetry "
                 "group maps the natural-orbital block of orbital " +
-                std::to_string(A.front()) +
-                " onto itself but moves orbital " + std::to_string(p) +
+                std::to_string(A.front()) + " onto itself but moves orbital " +
+                std::to_string(p) +
                 " inside it. Only groups that permute whole blocks (e.g. band "
                 "swaps) are supported with NROTS > 0; a permutation inside a "
                 "block would need a symmetry-adapted diagonalization");
@@ -460,8 +458,7 @@ inline double covariant_natural_orbitals(
       if(adapt_leak) *adapt_leak = std::max(*adapt_leak, leak);
     } else {
       for(size_t j = 0; j < m; ++j)
-        for(size_t i = 0; i < m; ++i)
-          nat[i + j * m] = rbar[A[i] + A[j] * norb];
+        for(size_t i = 0; i < m; ++i) nat[i + j * m] = rbar[A[i] + A[j] * norb];
       lapack::gesvd(lapack::Job::OverwriteVec, lapack::Job::NoVec, m, m,
                     nat.data(), m, S.data(), NULL, 1, NULL, 1);
     }
@@ -498,10 +495,9 @@ inline double max_covariance_violation(
   double m = 0.;
   for(const auto& g : group) {
     if(g.size() != norb)
-      throw std::runtime_error(
-          "max_covariance_violation: a permutation has " +
-          std::to_string(g.size()) + " entries, expected " +
-          std::to_string(norb));
+      throw std::runtime_error("max_covariance_violation: a permutation has " +
+                               std::to_string(g.size()) +
+                               " entries, expected " + std::to_string(norb));
     for(size_t q = 0; q < norb; ++q)
       for(size_t p = 0; p < norb; ++p)
         m = std::max(m, std::abs(U[g[p] + g[q] * norb] - U[p + q * norb]));

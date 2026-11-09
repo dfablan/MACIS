@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <filesystem>
-#include <set>
 #include <macis/asci/covariant_orbitals.hpp>
 #include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
@@ -10,6 +9,7 @@
 #include <macis/parity_sectors.hpp>
 #include <macis/util/fock_matrices.hpp>
 #include <macis/wavefunction_io.hpp>
+#include <set>
 #include <sstream>
 
 #include "ut_common.hpp"
@@ -203,23 +203,25 @@ TEST_CASE("Parity labels") {
     report << std::scientific << std::setprecision(12);
     const auto flags = report.flags();
     const auto precision = report.precision();
-    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr,
-                              p.V, 1e-10, report);
+    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr, p.V,
+                               1e-10, report);
     CHECK(report.flags() == flags);
     CHECK(report.precision() == precision);
     report << "Occs: " << 0.2499153714469 << ", "
            << "EASCI = " << -65.732007760058;
     CHECK(report.str().find("Occs: 2.499153714469e-01,") != std::string::npos);
-    CHECK(report.str().find("EASCI = -6.573200776006e+01") != std::string::npos);
+    CHECK(report.str().find("EASCI = -6.573200776006e+01") !=
+          std::string::npos);
 
     std::ostringstream fixed_report;
     fixed_report << std::fixed << std::setprecision(8);
     const auto fixed_flags = fixed_report.flags();
-    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr,
-                              p.V, 1e-10, fixed_report);
+    macis::build_parity_labels(p.norb, p.n_imp, p.nbands, p.T, nullptr, p.V,
+                               1e-10, fixed_report);
     CHECK(fixed_report.flags() == fixed_flags);
     CHECK(fixed_report.precision() == 8);
-    CHECK(fixed_report.str().find("max_discarded = 0.0e+00") != std::string::npos);
+    CHECK(fixed_report.str().find("max_discarded = 0.0e+00") !=
+          std::string::npos);
   }
 
   SECTION("band-diagonal bath: two groups, nothing discarded") {
@@ -862,9 +864,8 @@ TEST_CASE("Covariant natural orbitals") {
   R(3, 5) = R(5, 3) = 1e-9;
 
   std::vector<double> U(n * n), occ(n);
-  const double asym =
-      macis::covariant_natural_orbitals(rho.data(), n, blocks, G, U.data(),
-                                        occ.data());
+  const double asym = macis::covariant_natural_orbitals(
+      rho.data(), n, blocks, G, U.data(), occ.data());
   CHECK(asym == Approx(0.5e-9).margin(1e-15));
   // (★) and covariant occupations, bit for bit
   CHECK(macis::max_covariance_violation(U.data(), n, G) == 0.0);
@@ -904,18 +905,16 @@ TEST_CASE("Covariant natural orbitals") {
 
   SECTION("a permutation that splits a block throws") {
     const std::vector<std::vector<uint32_t>> bad = {{0, 1, 3, 2, 4, 5}};
-    CHECK_THROWS_WITH(
-        macis::covariant_natural_orbitals(rho.data(), n, blocks, bad, U.data(),
-                                          occ.data()),
-        Catch::Contains("splits"));
+    CHECK_THROWS_WITH(macis::covariant_natural_orbitals(
+                          rho.data(), n, blocks, bad, U.data(), occ.data()),
+                      Catch::Contains("splits"));
   }
 
   SECTION("a permutation inside a block throws") {
     const std::vector<std::vector<uint32_t>> bad = {{0, 1, 4, 3, 2, 5}};
-    CHECK_THROWS_WITH(
-        macis::covariant_natural_orbitals(rho.data(), n, blocks, bad, U.data(),
-                                          occ.data()),
-        Catch::Contains("inside a block"));
+    CHECK_THROWS_WITH(macis::covariant_natural_orbitals(
+                          rho.data(), n, blocks, bad, U.data(), occ.data()),
+                      Catch::Contains("inside a block"));
   }
 }
 
@@ -956,8 +955,8 @@ TEST_CASE("SYMMETRIZE_DETS with NROTS > 0, degenerate bands") {
       // at even N; only the identity at odd N, where band swap exchanges the
       // winner's sector with its partner
       if(nb == 3)
-        CHECK(macis::max_covariance_violation(p.orb_rot.data(), p.n_active,
-                                              G) < 1e-12);
+        CHECK(macis::max_covariance_violation(p.orb_rot.data(), p.n_active, G) <
+              1e-12);
 
       auto q = make_parity_model(o);
       with_swap(q);
@@ -1008,7 +1007,8 @@ TEST_CASE("SYMMETRIZE_DETS with NROTS > 0, degenerate bands") {
   }
 }
 
-TEST_CASE("Parity sectors: BAND_COUNTS fixes the band count of seed and restarts") {
+TEST_CASE(
+    "Parity sectors: BAND_COUNTS fixes the band count of seed and restarts") {
   ScratchDir scratch("band_counts");
   // J_P = 0: band counts conserved. Degenerate bands, (3,3): the energy fill
   // takes the tied impurity pair 0, 1 and then bath level 2 (band 0) before
@@ -1027,7 +1027,8 @@ TEST_CASE("Parity sectors: BAND_COUNTS fixes the band count of seed and restarts
   };
 
   // Every sector fits in the determinant budget, so each solve is exact
-  // Reference: the (e,e) sector from the energy fill (the global winner is (o,o))
+  // Reference: the (e,e) sector from the energy fill (the global winner is
+  // (o,o))
   auto a = make_parity_model(o);
   a.parity_only = {0, 0};
   const double E_a = macis::SolveImpurityASCI_rot<NB>(a);
@@ -1046,8 +1047,7 @@ TEST_CASE("Parity sectors: BAND_COUNTS fixes the band count of seed and restarts
   }
 
   SECTION("inconsistent inputs are refused") {
-    for(std::vector<int> bad :
-        {std::vector<int>{3, 3}, {4, 4}, {6}, {8, -2}}) {
+    for(std::vector<int> bad : {std::vector<int>{3, 3}, {4, 4}, {6}, {8, -2}}) {
       auto p = make_parity_model(o);
       p.band_counts = bad;
       CHECK_THROWS(macis::SolveImpurityASCI_rot<NB>(p));

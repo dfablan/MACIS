@@ -206,23 +206,25 @@ static std::vector<double> atom3_spectrum(const std::string& fname) {
 
 // Closed-form spectrum: {n, 2S, L or -1, degeneracy} for the three-orbital
 // shell (orbital multiplets of t2g-like p orbitals).
-static std::vector<double> atom3_reference(
-    double U, double J, bool pair_hopping) {
-  struct Multiplet { int n, twoS, L, deg; };
+static std::vector<double> atom3_reference(double U, double J,
+                                           bool pair_hopping) {
+  struct Multiplet {
+    int n, twoS, L, deg;
+  };
   const std::vector<Multiplet> ms = {
-      {0, 0, 0, 1},  {1, 1, 1, 6},  {2, 2, 1, 9},  {2, 0, 2, 5}, {2, 0, 0, 1},
-      {3, 3, 0, 4},  {3, 1, 2, 10}, {3, 1, 1, 6},  {4, 2, 1, 9}, {4, 0, 2, 5},
-      {4, 0, 0, 1},  {5, 1, 1, 6},  {6, 0, 0, 1}};
+      {0, 0, 0, 1}, {1, 1, 1, 6},  {2, 2, 1, 9}, {2, 0, 2, 5}, {2, 0, 0, 1},
+      {3, 3, 0, 4}, {3, 1, 2, 10}, {3, 1, 1, 6}, {4, 2, 1, 9}, {4, 0, 2, 5},
+      {4, 0, 0, 1}, {5, 1, 1, 6},  {6, 0, 0, 1}};
   std::vector<double> E;
   for(auto m : ms) {
     const double n = m.n, S = 0.5 * m.twoS, L = m.L;
     // Kanamori: (U-3J) n(n-1)/2 - 2J S^2 - J/2 L^2 + 5J/2 n
     // Dworin-Narath: (U-3J/2) n(n-1)/2 - J S^2 + 3J/4 n (no L dependence)
     const double e =
-        pair_hopping ? (U - 3 * J) * n * (n - 1) / 2 - 2 * J * S * (S + 1) -
-                           0.5 * J * L * (L + 1) + 2.5 * J * n
-                     : (U - 1.5 * J) * n * (n - 1) / 2 - J * S * (S + 1) +
-                           0.75 * J * n;
+        pair_hopping
+            ? (U - 3 * J) * n * (n - 1) / 2 - 2 * J * S * (S + 1) -
+                  0.5 * J * L * (L + 1) + 2.5 * J * n
+            : (U - 1.5 * J) * n * (n - 1) / 2 - J * S * (S + 1) + 0.75 * J * n;
     E.insert(E.end(), m.deg, e);
   }
   std::sort(E.begin(), E.end());
@@ -259,14 +261,16 @@ TEST_CASE("FCIDUMP two-body symmetry") {
     auto W = atom3_spectrum(kanamori3_fcidump);
     auto E = atom3_reference(U, J, true);
     REQUIRE(W.size() == E.size());
-    for(size_t i = 0; i < W.size(); ++i) REQUIRE(W[i] == Approx(E[i]).margin(1e-10));
+    for(size_t i = 0; i < W.size(); ++i)
+      REQUIRE(W[i] == Approx(E[i]).margin(1e-10));
   }
 
   SECTION("Dworin-Narath spectrum") {
     auto W = atom3_spectrum(dworin_narath3_fcidump);
     auto E = atom3_reference(U, J, false);
     REQUIRE(W.size() == E.size());
-    for(size_t i = 0; i < W.size(); ++i) REQUIRE(W[i] == Approx(E[i]).margin(1e-10));
+    for(size_t i = 0; i < W.size(); ++i)
+      REQUIRE(W[i] == Approx(E[i]).margin(1e-10));
   }
 
   SECTION("Writer round trip keeps the explicit zeros") {
@@ -277,6 +281,7 @@ TEST_CASE("FCIDUMP two-body symmetry") {
     macis::write_fcidump(out, norb, T.data(), norb, V.data(), norb, 0.0);
     spdlog::drop("fcidump");
     macis::read_fcidump_2body(out, V2.data(), norb);
-    for(size_t i = 0; i < norb4; ++i) REQUIRE(V2[i] == Approx(V[i]).margin(1e-14));
+    for(size_t i = 0; i < norb4; ++i)
+      REQUIRE(V2[i] == Approx(V[i]).margin(1e-14));
   }
 }

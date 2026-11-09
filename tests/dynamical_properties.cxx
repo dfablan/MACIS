@@ -2085,11 +2085,12 @@ TEST_CASE(
         for(size_t l : diag) {
           const auto x = exact.resolvent[iw][k * M + l];
           const auto y = enriched.resolvent[iw][k * M + l];
-          REQUIRE(std::real(y) == Approx(std::real(x)).epsilon(1e-6).margin(1e-8));
-          REQUIRE(std::imag(y) == Approx(std::imag(x)).epsilon(1e-6).margin(1e-8));
-          truncation_visible |=
-              std::abs(truncated.resolvent[iw][k * M + l] - x) >
-              1e-4 * std::abs(x);
+          REQUIRE(std::real(y) ==
+                  Approx(std::real(x)).epsilon(1e-6).margin(1e-8));
+          REQUIRE(std::imag(y) ==
+                  Approx(std::imag(x)).epsilon(1e-6).margin(1e-8));
+          truncation_visible |= std::abs(truncated.resolvent[iw][k * M + l] -
+                                         x) > 1e-4 * std::abs(x);
         }
     REQUIRE(truncation_visible);  // the check must not pass trivially
   };
@@ -2184,8 +2185,8 @@ TEST_CASE(
   REQUIRE(E0_r == Approx(E0).epsilon(1e-12));
   REQUIRE(es.eigenvalues()(1) - E0 > 1e-6);  // non-degenerate ground state
 
-  const std::vector<std::complex<double>> ws = {{0.0, 0.3}, {0.5, 0.2},
-                                                {2.0, 0.2}};
+  const std::vector<std::complex<double>> ws = {
+      {0.0, 0.3}, {0.5, 0.2}, {2.0, 0.2}};
   macis::GFSettings settings;
   settings.nLanIts = 100;
   const Eigen::MatrixXd U = W.topLeftCorner(n_imp, n_imp);
@@ -2193,14 +2194,13 @@ TEST_CASE(
     const auto ref = macis::RunResolventOrbitalMatrix<N, int32_t>(
         es.eigenvectors().col(0), gen, dets, n_imp, ch, E0, ws, settings);
     auto rot = macis::RunResolventOrbitalMatrix<N, int32_t>(
-        es_r.eigenvectors().col(0), gen_r, dets, n_imp, ch, E0_r, ws,
-        settings);
+        es_r.eigenvectors().col(0), gen_r, dets, n_imp, ch, E0_r, ws, settings);
     // Not trivially equal before the back-rotation
     double before = 0.0;
     for(size_t iw = 0; iw < ws.size(); ++iw)
       for(size_t k = 0; k < ref.resolvent[iw].size(); ++k)
-        before = std::max(before,
-                          std::abs(ref.resolvent[iw][k] - rot.resolvent[iw][k]));
+        before = std::max(
+            before, std::abs(ref.resolvent[iw][k] - rot.resolvent[iw][k]));
     REQUIRE(before > 1e-3);
     macis::back_rotate_orbital_resolvent(rot.resolvent, U);
     for(size_t iw = 0; iw < ws.size(); ++iw)
@@ -2308,16 +2308,16 @@ TEST_CASE("Dynamical properties - spin weight coefficients") {
   macis::GFSettings settings;
   settings.nLanIts = 100;
 
-  SECTION("unrotated: same operator and normalization as RunResolventWeighted") {
+  SECTION(
+      "unrotated: same operator and normalization as RunResolventWeighted") {
     const std::vector<double> w = {1.0, -0.6};
     const auto C = macis::spin_weight_bilinear_coefficients(
         w, Eigen::MatrixXd::Identity(2, 2));
     const auto comb = macis::RunResolventBilinearSeeds<N, int32_t>(
-        psi0, ham_gen, m.dets, {C}, macis::DiagChannel::Spin, E0, ws,
-        settings);
+        psi0, ham_gen, m.dets, {C}, macis::DiagChannel::Spin, E0, ws, settings);
     const auto ref = macis::RunResolventWeighted<N, int32_t>(
-        psi0, ham_gen, m.dets, w, macis::DiagChannel::Spin, m.n_imp,
-        m.n_active, E0, ws, settings);
+        psi0, ham_gen, m.dets, w, macis::DiagChannel::Spin, m.n_imp, m.n_active,
+        E0, ws, settings);
     for(size_t iw = 0; iw < ws.size(); ++iw) {
       REQUIRE(std::real(comb.resolvent[iw][0]) ==
               Approx(std::real(ref[iw])).epsilon(1e-8).margin(1e-10));
@@ -2390,7 +2390,7 @@ TEST_CASE("ROT_ADAPT - symmetry-adapted natural orbitals of a 2x2 plaquette") {
   // Y (odd under g2), M (odd under both).
   const size_t n = 4;
   Eigen::MatrixXd K(4, 4);
-  K << 1, 1, 1, 1,  //
+  K << 1, 1, 1, 1,   //
       1, -1, 1, -1,  //
       1, 1, -1, -1,  //
       1, -1, -1, 1;

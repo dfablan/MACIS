@@ -54,11 +54,11 @@ double compute_casci_rdms(
 
   // Compute Lowest Energy Eigenvalue (ED)
   auto dets = generate_hilbert_space<nbits>(norb.get(), nalpha, nbeta);
-  double E0 =
-      selected_ci_diag(dets.begin(), dets.end(), ham_gen, settings.ci_matel_tol,
-                       settings.ci_max_subspace, settings.ci_res_tol, C,
-                       MACIS_MPI_CODE(comm, ) true, settings.ci_nstates,
-                       nullptr, /*random_guess=*/true);   // full-space ED: start in every sector
+  double E0 = selected_ci_diag(
+      dets.begin(), dets.end(), ham_gen, settings.ci_matel_tol,
+      settings.ci_max_subspace, settings.ci_res_tol, C,
+      MACIS_MPI_CODE(comm, ) true, settings.ci_nstates, nullptr,
+      /*random_guess=*/true);  // full-space ED: start in every sector
 
   // Compute RDMs
   if(ORDMd == NULL)

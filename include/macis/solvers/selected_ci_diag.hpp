@@ -51,7 +51,9 @@ double parallel_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
     logger->info("  * Will use passed vector as guess");
   } else {
     if(random_guess) {
-      logger->info("  * Will generate identity + random guess (spans all symmetry sectors)");
+      logger->info(
+          "  * Will generate identity + random guess (spans all symmetry "
+          "sectors)");
       p_random_diagonal_guess(C_local.size(), H, C_local.data());
     } else {
       logger->info("  * Will generate identity guess");
@@ -132,7 +134,9 @@ double serial_selected_ci_diag(const SpMatType& H, size_t davidson_max_m,
     logger->info("  * Will use passed vector as guess");
   } else {
     if(random_guess) {
-      logger->info("  * Will generate identity + random guess (spans all symmetry sectors)");
+      logger->info(
+          "  * Will generate identity + random guess (spans all symmetry "
+          "sectors)");
       random_diagonal_guess(C.size(), H, C.data());
     } else {
       logger->info("  * Will generate identity guess");
@@ -262,9 +266,9 @@ double selected_ci_diag(
 
   // Solve EVP
 #ifdef MACIS_ENABLE_MPI
-  auto E = parallel_selected_ci_diag(H, davidson_max_m, davidson_res_tol,
-                                     C_local, comm, nstates, C_exc,
-                                     random_guess);
+  auto E =
+      parallel_selected_ci_diag(H, davidson_max_m, davidson_res_tol, C_local,
+                                comm, nstates, C_exc, random_guess);
 #else
   auto E = serial_selected_ci_diag(H, davidson_max_m, davidson_res_tol, C_local,
                                    nstates, C_exc, random_guess);

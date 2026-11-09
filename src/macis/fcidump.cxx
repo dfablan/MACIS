@@ -380,8 +380,7 @@ void write_fcidump(std::string fname, size_t norb, const double* T, size_t LDT,
       for(size_t k = 0; k < norb; ++k)
         for(size_t l = 0; l < norb; ++l) {
           if(v(i, j, k, l) != 0.0 or v(i, j, l, k) != 0.0)
-            logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1,
-                         v(i, j, k, l));
+            logger->info(fmt_string, i + 1, j + 1, k + 1, l + 1, v(i, j, k, l));
         }
 
   // Write one body
