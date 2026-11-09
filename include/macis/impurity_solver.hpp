@@ -719,6 +719,99 @@ inline void write_orbital_resolvent_matrix(
                 << result.gram(k, l) << "\n";
 }
 
+// Impurity block U of orb_rot, U(j, a) = orb_rot[j + a * n_active] (original
+// impurity orbital j in rotated orbital a). The imp/bath blocks must vanish
+// for U to be orthogonal on its own; throws otherwise. rotated: U != 1.
+template <size_t N>
+Eigen::MatrixXd impurity_rotation_block(const macis::impurity_params<N> &p,
+                                        const std::string &who,
+                                        bool &rotated) {
+  Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
+  rotated = false;
+  if(p.n_imp == 0) return rotBlock;
+  double imp_bath = 0.;
+  for(size_t j = 0; j < p.n_active; ++j)
+    for(size_t k = 0; k < p.n_active; ++k) {
+      const double v = p.orb_rot[j + k * p.n_active];
+      if(j < p.n_imp && k < p.n_imp)
+        rotBlock(j, k) = v;
+      else if((j < p.n_imp) != (k < p.n_imp))
+        imp_bath = std::max(imp_bath, std::abs(v));
+    }
+  if(imp_bath > 1.e-10)
+    throw std::runtime_error(
+        "In " + who +
+        ": orb_rot mixes impurity and bath orbitals (max |imp-bath element| "
+        "= " +
+        std::to_string(imp_bath) +
+        "), so the impurity bilinears cannot be rotated back with the "
+        "impurity block alone. Set CI.EXPANSION = CAS or ASCI.NROTS = 0.");
+  const double udev = (rotBlock * rotBlock.transpose() -
+                       Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
+                          .cwiseAbs()
+                          .maxCoeff();
+  if(udev > 1.e-8)
+    throw std::runtime_error(
+        "In " + who +
+        ": the impurity block of orb_rot is not orthogonal (max deviation of "
+        "U U^T from the identity " +
+        std::to_string(udev) + ")");
+  rotated = (rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
+                .cwiseAbs()
+                .maxCoeff() > 1.e-10;
+  return rotBlock;
+}
+
+// Writes a seed-operator matrix resolvent (evaluate_resolvent_spin_weights):
+// "<label>_seed_resolvent.dat" (Re(w) Im(w) k l Re(R) Im(R)) and
+// "<label>_seed_gram.dat" (weights, capture, expansion, Gram).
+inline void write_seed_resolvent_matrix(
+    const std::string &label, const std::vector<std::vector<double>> &weights,
+    const std::vector<std::complex<double>> &ws,
+    const macis::OrbitalResolventResult &result, double min_capture) {
+  bool write_file = true;
+  MACIS_MPI_CODE(write_file = (macis::comm_rank(MPI_COMM_WORLD) == 0);)
+  if(!write_file) return;
+  using dbl = std::numeric_limits<double>;
+  const size_t ns = weights.size();
+  std::ofstream rf(label + "_seed_resolvent.dat");
+  rf.precision(dbl::max_digits10);
+  rf << "# O_k = sum_j w_k(j) Sz_j, Sz_j = (n_j,up - n_j,dn)/2 on the original "
+        "impurity orbitals (same normalization as Sz_resolvent.dat)\n";
+  rf << "# Re(w) Im(w) k l Re(R_kl) Im(R_kl)\n";
+  for(size_t iw = 0; iw < ws.size(); ++iw)
+    for(size_t k = 0; k < ns; ++k)
+      for(size_t l = 0; l < ns; ++l)
+        rf << std::scientific << real(ws[iw]) << " " << imag(ws[iw]) << " "
+           << k << " " << l << " " << real(result.resolvent[iw][k * ns + l])
+           << " " << imag(result.resolvent[iw][k * ns + l]) << "\n";
+
+  std::ofstream gf(label + "_seed_gram.dat");
+  gf.precision(dbl::max_digits10);
+  for(size_t k = 0; k < ns; ++k) {
+    gf << "# weights " << k << ":";
+    for(double x : weights[k]) gf << " " << x;
+    gf << "\n";
+  }
+  gf << "# retained_rank " << result.rank << "\n";
+  gf << "# basis_size base " << result.base_size << " expanded "
+     << result.expanded_size << "\n";
+  gf << "# expansion leaked " << result.expansion_seeds << " grown "
+     << result.expansion_grown << " dropped " << result.expansion_dropped
+     << " capped " << int(result.growth_capped) << "\n";
+  gf << "# lanczos_blocks " << result.lanczos_blocks << "\n";
+  gf << "# seed capture_base capture_expanded expanded unresolved\n";
+  for(size_t k = 0; k < ns; ++k)
+    gf << k << " " << std::scientific << result.capture(k) << " "
+       << result.capture_expanded(k) << " " << int(result.expanded[k]) << " "
+       << int(result.capture_expanded(k) < min_capture) << "\n";
+  gf << "# seed_k seed_l gram\n";
+  for(size_t k = 0; k < ns; ++k)
+    for(size_t l = 0; l < ns; ++l)
+      gf << k << " " << l << " " << std::scientific << result.gram(k, l)
+         << "\n";
+}
+
 }  // namespace detail
 
 /**
@@ -921,40 +1014,9 @@ auto evaluate_resolvent_orbital_matrix(
     macis::SDBuildHamiltonianGenerator<N> &ham_gen,
     macis::GFSettings &gf_settings, macis::DiagChannel channel,
     const std::string &label, bool subtract_mean = false) {
-  // Impurity block U of orb_rot, U(j, a) = orb_rot[j + a * n_active]; the
-  // imp/bath blocks must vanish for U to be orthogonal on its own.
-  Eigen::MatrixXd rotBlock = Eigen::MatrixXd::Identity(p.n_imp, p.n_imp);
   bool rotated = false;
-  if(p.n_imp > 0) {
-    double imp_bath = 0.;
-    for(size_t j = 0; j < p.n_active; ++j)
-      for(size_t k = 0; k < p.n_active; ++k) {
-        const double v = p.orb_rot[j + k * p.n_active];
-        if(j < p.n_imp && k < p.n_imp)
-          rotBlock(j, k) = v;
-        else if((j < p.n_imp) != (k < p.n_imp))
-          imp_bath = std::max(imp_bath, std::abs(v));
-      }
-    if(imp_bath > 1.e-10)
-      throw std::runtime_error(
-          "In evaluate_resolvent_orbital_matrix: orb_rot mixes impurity and "
-          "bath orbitals (max |imp-bath element| = " +
-          std::to_string(imp_bath) +
-          "), so the impurity bilinears cannot be rotated back with the "
-          "impurity block alone. Set CI.EXPANSION = CAS or ASCI.NROTS = 0.");
-    const double udev = (rotBlock * rotBlock.transpose() -
-                         Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
-                            .cwiseAbs()
-                            .maxCoeff();
-    if(udev > 1.e-8)
-      throw std::runtime_error(
-          "In evaluate_resolvent_orbital_matrix: the impurity block of orb_rot "
-          "is not orthogonal (max deviation of U U^T from the identity " +
-          std::to_string(udev) + ")");
-    rotated = (rotBlock - Eigen::MatrixXd::Identity(p.n_imp, p.n_imp))
-                  .cwiseAbs()
-                  .maxCoeff() > 1.e-10;
-  }
+  const Eigen::MatrixXd rotBlock = detail::impurity_rotation_block(
+      p, "evaluate_resolvent_orbital_matrix", rotated);
 
   Eigen::VectorXd psi0 =
       Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
@@ -1036,6 +1098,98 @@ auto evaluate_resolvent_orbital_matrix(
       }
     }
   }
+  return result;
+}
+
+/**
+ * @brief Matrix resolvent of weighted impurity spin operators on the rotated
+ *        production path (GF.SPIN_WEIGHT_RESOLVENT):
+ *
+ *          R_kl(w) = <psi0| O_k 1/(w - (H - E0)) O_l |psi0>,
+ *          O_k = sum_j w_k(j) S^z_j   (original impurity orbitals j),
+ *
+ *        Sz_resolvent.dat's normalization (a uniform weight reproduces it).
+ *        In a rotated basis O_k is not diagonal in the determinants; it is
+ *        applied as the bilinear combination C_k = (1/2) U^T diag(w_k) U
+ *        (spin_weight_bilinear_coefficients), so no back-rotation is needed.
+ *
+ *        Intended use (option 3): momentum seeds w_q(j) = cos(q . r_j) on a
+ *        cluster whose natural orbitals are symmetry adapted (ASCI.ROT_ADAPT).
+ *        Then O_q|psi0> for q != 0 lies entirely outside psi0's character
+ *        sector, so ORB_EXPAND_BASIS grows a basis for it and nothing is
+ *        dropped as coupled to psi0, and the k != l elements vanish by
+ *        symmetry (a check). Site matrices follow by Fourier transform.
+ *        Without ROT_ADAPT the call is still exact on its basis, but seeds
+ *        whose images stay in psi0's sector are evaluated on the ASCI basis
+ *        only (capture warnings below).
+ */
+template <size_t N>
+auto evaluate_resolvent_spin_weights(
+    double EASCI, macis::impurity_params<N> &p,
+    macis::SDBuildHamiltonianGenerator<N> &ham_gen,
+    macis::GFSettings &gf_settings,
+    const std::vector<std::vector<double>> &weights, const std::string &label,
+    bool subtract_mean = false) {
+  bool rotated = false;
+  const Eigen::MatrixXd U = detail::impurity_rotation_block(
+      p, "evaluate_resolvent_spin_weights", rotated);
+  std::vector<Eigen::MatrixXd> coeffs;
+  for(const auto &w : weights)
+    coeffs.push_back(macis::spin_weight_bilinear_coefficients(w, U));
+
+  Eigen::VectorXd psi0 =
+      Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(p.C.data(), p.C.size());
+  const auto ws = detail::build_bosonic_resolvent_grid(gf_settings);
+  const double E0 = EASCI - (p.E_core + p.E_inactive);
+  if(gf_settings.orb_expand_basis && gf_settings.norbs == 0)
+    std::cout << "GF.ORB_EXPAND_BASIS: GF.NORBS not set, using n_active = "
+              << p.n_active << std::endl;
+  if(!gf_settings.orb_sym_mask.empty())
+    std::cout << "SPIN WEIGHT RESOLVENT (" << label
+              << "): basis growth keeps the orbital characters "
+                 "(GF.ORB_SYM_FILTER)"
+              << std::endl;
+
+  auto result = macis::RunResolventBilinearSeeds<N>(
+      psi0, ham_gen, p.dets, coeffs, macis::DiagChannel::Spin, E0, ws,
+      gf_settings, subtract_mean, p.n_active);
+
+  std::cout << "SPIN WEIGHT RESOLVENT (" << label << "): " << weights.size()
+            << " seeds, basis " << result.base_size << " -> "
+            << result.expanded_size << " determinants ("
+            << result.expansion_seeds << " leaked, " << result.expansion_grown
+            << " grown, " << result.expansion_dropped
+            << " dropped as coupled to the ground-state sector) in "
+            << result.lanczos_blocks << " Lanczos runs" << std::endl;
+  if(result.growth_capped)
+    std::cerr << "WARNING: spin weight basis growth stopped at GF.TRUNC_SIZE = "
+              << gf_settings.trunc_size << std::endl;
+  for(Eigen::Index k = 0; k < result.capture.size(); ++k) {
+    if(result.capture_expanded(k) >= gf_settings.orb_min_capture) continue;
+    std::cerr << "WARNING: spin weight seed " << k << " capture "
+              << result.capture(k) << " (expanded "
+              << result.capture_expanded(k) << ") is below GF.ORB_MIN_CAPTURE"
+              << " = " << gf_settings.orb_min_capture
+              << (result.expanded[k]
+                      ? ": its missing images couple to the ground-state "
+                        "sector and were dropped"
+                      : ": not expanded (GF.ORB_EXPAND_BASIS off)")
+              << std::endl;
+  }
+  // Symmetry check: seeds in different sectors have no cross response
+  double cross = 0., diag = 0.;
+  for(const auto &Rw : result.resolvent)
+    for(size_t k = 0; k < weights.size(); ++k)
+      for(size_t l = 0; l < weights.size(); ++l)
+        (k == l ? diag : cross) =
+            std::max(k == l ? diag : cross,
+                     std::abs(Rw[k * weights.size() + l]));
+  std::cout << "SPIN WEIGHT RESOLVENT (" << label
+            << "): max |R_kl| off-diagonal / diagonal = " << cross << " / "
+            << diag << std::endl;
+  if(gf_settings.writeGF_singlef)
+    detail::write_seed_resolvent_matrix(label, weights, ws, result,
+                                        gf_settings.orb_min_capture);
   return result;
 }
 

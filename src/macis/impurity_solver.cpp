@@ -290,6 +290,146 @@ void prepare_det_symmetry(impurity_params<N>& p) {
             << stg.sym_group->size() << std::endl;
 }
 
+/// integral_symmetry_deviation for a signed permutation (ASCI.ROT_ADAPT):
+/// |s_p s_q X[g(p),g(q)] - X[p,q]| for T, Td, and four signs for V
+template <size_t N>
+IntegralSymmetryDeviation signed_integral_symmetry_deviation(
+    const impurity_params<N>& p, const macis::SignedPerm& gs) {
+  const size_t n = p.n_active;
+  const size_t n2 = n * n;
+  const size_t n3 = n2 * n;
+  const auto& g = gs.perm;
+  const auto& s = gs.sign;
+  IntegralSymmetryDeviation d;
+  auto dev_1body = [&](const std::vector<double>& T) {
+    double m = 0.0;
+    for(size_t q = 0; q < n; ++q)
+      for(size_t r = 0; r < n; ++r)
+        m = std::max(m, std::abs(s[r] * s[q] * T[g[r] + g[q] * n] -
+                                 T[r + q * n]));
+    return m;
+  };
+  d.T = dev_1body(p.T_active);
+  if(p.spin_dep) d.Td = dev_1body(p.Td_active);
+  const auto& V = p.V_active;
+  for(size_t l = 0; l < n; ++l)
+    for(size_t k = 0; k < n; ++k)
+      for(size_t q = 0; q < n; ++q)
+        for(size_t r = 0; r < n; ++r)
+          d.V = std::max(
+              d.V, std::abs(s[r] * s[q] * s[k] * s[l] *
+                                V[g[r] + g[q] * n + g[k] * n2 + g[l] * n3] -
+                            V[r + q * n + k * n2 + l * n3]));
+  return d;
+}
+
+/**
+ *  @brief Validate ASCI.ROT_ADAPT at solver entry (call after
+ *  prepare_det_symmetry, which expands sym_group).
+ *
+ *  Every generator must be a signed permutation of the active orbitals, an
+ *  involution (Z2: real orbitals cannot carry complex characters, so
+ *  translations of order > 2 are refused), an exact symmetry of T_active
+ *  (Td_active) and V_active within SYM_TOL, commute with every other
+ *  generator, and be mapped to +- itself by every element of sym_group (so
+ *  the covariant transport of adapted orbitals stays adapted). The check is on the
+ *  integrals, so a bath that breaks the symmetry fails here.
+ *
+ *  ROT_IMP_FIXED keeps the impurity orbitals on the sites, which are not
+ *  eigenvectors of a translation, and GROW_WITH_ROT rotates inside the
+ *  selection: both are refused. Idempotent.
+ */
+template <size_t N>
+void prepare_rot_adapt(impurity_params<N>& p) {
+  auto& stg = p.asci_settings;
+  if(!stg.rot_adapt or stg.rot_adapt->empty()) return;
+  const size_t n = p.n_active;
+  const auto& gens = *stg.rot_adapt;
+  if(stg.rot_imp_fixed)
+    throw std::runtime_error(
+        "ASCI.ROT_ADAPT with ASCI.ROT_IMP_FIXED: the fixed impurity orbitals "
+        "are sites, not eigenvectors of the generators");
+  if(stg.grow_with_rot)
+    throw std::runtime_error(
+        "ASCI.ROT_ADAPT requires ASCI.GROW_WITH_ROT = FALSE");
+  if(gens.size() > 30)
+    throw std::runtime_error("ASCI.ROT_ADAPT: at most 30 generators");
+
+  std::vector<std::vector<double>> mats;
+  for(size_t ig = 0; ig < gens.size(); ++ig) {
+    const auto& g = gens[ig];
+    const std::string gname = "ASCI.ROT_ADAPT generator " +
+                              std::to_string(ig + 1);
+    if(!macis::is_valid_permutation(g.perm, n) or g.sign.size() != n)
+      throw std::runtime_error(gname + " is not a signed permutation of the " +
+                               std::to_string(n) + " active orbitals");
+    for(size_t q = 0; q < n; ++q) {
+      if(g.sign[q] != 1 and g.sign[q] != -1)
+        throw std::runtime_error(gname + ": signs must be +1 or -1");
+      if(g.perm[g.perm[q]] != q or g.sign[q] * g.sign[g.perm[q]] != 1)
+        throw std::runtime_error(
+            gname + " is not an involution (g^2 != 1 at orbital " +
+            std::to_string(q) +
+            "): only Z2 generators are supported with real orbitals");
+    }
+    const auto dev = signed_integral_symmetry_deviation(p, g);
+    auto check = [&](double max_dev, const char* name) {
+      if(max_dev > stg.sym_tol) {
+        std::ostringstream oss;
+        oss << gname << " is not a symmetry of " << name << ": max deviation "
+            << std::scientific << max_dev << " exceeds SYM_TOL = "
+            << stg.sym_tol;
+        throw std::runtime_error(oss.str());
+      }
+    };
+    check(dev.T, "T_active");
+    if(p.spin_dep) check(dev.Td, "Td_active");
+    check(dev.V, "V_active");
+    mats.push_back(macis::signed_perm_matrix(g, n));
+  }
+
+  // Pairwise commutation, and commutation with the permutation group
+  for(size_t a = 0; a < mats.size(); ++a)
+    for(size_t b = a + 1; b < mats.size(); ++b)
+      for(size_t j = 0; j < n; ++j)
+        for(size_t i = 0; i < n; ++i) {
+          double ab = 0., ba = 0.;
+          for(size_t k = 0; k < n; ++k) {
+            ab += mats[a][i + k * n] * mats[b][k + j * n];
+            ba += mats[b][i + k * n] * mats[a][k + j * n];
+          }
+          if(std::abs(ab - ba) > 1e-12)
+            throw std::runtime_error(
+                "ASCI.ROT_ADAPT: generators " + std::to_string(a + 1) +
+                " and " + std::to_string(b + 1) + " do not commute");
+        }
+  // The covariant rotation copies the adapted orbitals of a block onto its
+  // partners with h in sym_group, so h must map every generator to +- itself
+  // (translations commute with a band swap; a band parity P1 goes to
+  // P2 = -P1 as an orbital matrix). Then the copies are eigenvectors too.
+  if(stg.sym_group)
+    for(const auto& h : *stg.sym_group)
+      for(size_t a = 0; a < mats.size(); ++a) {
+        bool plus = true, minus = true;
+        for(size_t q = 0; q < n; ++q)
+          for(size_t r = 0; r < n; ++r) {
+            const double hm = mats[a][h[r] + h[q] * n], m = mats[a][r + q * n];
+            plus = plus and hm == m;
+            minus = minus and hm == -m;
+          }
+        if(!plus and !minus)
+          throw std::runtime_error(
+              "ASCI.ROT_ADAPT: the SYMMETRIZE_DETS group maps generator " +
+              std::to_string(a + 1) +
+              " to neither itself nor its negative: adapted orbitals would "
+              "not stay adapted on the partner blocks");
+      }
+
+  std::cout << "* ROT_ADAPT: " << gens.size()
+            << " Z2 generator(s) validated as symmetries of the integrals"
+            << std::endl;
+}
+
 /**
  *  @brief Close a guess wavefunction under the orbital-permutation group.
  *
@@ -837,6 +977,8 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
 
     // Validate and expand the orbital-permutation symmetry group, if enabled.
     prepare_det_symmetry(p);
+    // Validate the Z2 generators of ASCI.ROT_ADAPT, if any.
+    prepare_rot_adapt(p);
 
     // SYMMETRIZE_DETS with NROTS > 0: every rotation below takes
     // group-covariant natural orbitals (PLAN_symmetric_asci_search.md §12),
@@ -853,6 +995,18 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
       throw std::runtime_error(
           "ASCI.ROT_IMP_FIXED is implemented only for the group-covariant "
           "rotation (ASCI.SYMMETRIZE_DETS = TRUE with ASCI.NROTS > 0)");
+    // ASCI.ROT_ADAPT with NROTS > 0: natural orbitals are joint eigenvectors
+    // of the Z2 generators (cluster momentum). Taken through the covariant
+    // path (with an empty group when SYMMETRIZE_DETS is off). The generator
+    // matrices are on the original orbitals; each macro iteration expresses
+    // them in its current basis, orb_rot^T M orb_rot.
+    const bool adapt_rot = asci_settings.rot_adapt and
+                           !asci_settings.rot_adapt->empty() and
+                           asci_settings.nrots > 0;
+    std::vector<std::vector<double>> adapt_mats;
+    if(adapt_rot)
+      for(const auto& g : *asci_settings.rot_adapt)
+        adapt_mats.push_back(macis::signed_perm_matrix(g, n_active));
     std::vector<int> sym_band_of;
     if(covariant_rot and !asci_settings.parity_target)
       sym_band_of = macis::band_partition(
@@ -989,23 +1143,38 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                         << macis::max_off_group(active_ordm.data(),
                                                 *parity_target->labels)
                         << std::endl;
-            if(covariant_rot) {
+            if(covariant_rot or adapt_rot) {
               //Group-covariant natural orbitals: one block per block orbit is
               //diagonalized and copied onto its partners, so U[g(p),g(q)] =
               //U[p,q] exactly and the partners' occupations are bitwise
               //equal. The 1-RDM is group-averaged first (basis choice only).
-              const auto& group = *asci_settings.sym_group;
+              //With ROT_ADAPT the representative block is diagonalized per
+              //character class of the Z2 generators.
+              static const std::vector<std::vector<uint32_t>> no_group;
+              const auto& group =
+                  covariant_rot ? *asci_settings.sym_group : no_group;
               const auto blocks = macis::natural_orbital_blocks(
                   n_active, n_imp,
                   parity_target ? &parity_target->labels->group_of
-                                : &sym_band_of);
+                                : (covariant_rot ? &sym_band_of : nullptr));
               const double dev_before =
                   max_integral_symmetry_deviation(p, group);
+              std::vector<std::vector<double>> adapt_cur;
+              for(const auto& M : adapt_mats)
+                adapt_cur.push_back(
+                    macis::to_rotated_basis(M, orb_rot.data(), n_active));
+              double adapt_leak = 0.;
               const double rho_asym = macis::covariant_natural_orbitals(
                   active_ordm.data(), n_active, blocks, group, tmp_rot.data(),
-                  orb_occs.data(), asci_settings.rot_imp_fixed ? n_imp : 0);
+                  orb_occs.data(), asci_settings.rot_imp_fixed ? n_imp : 0,
+                  adapt_rot ? &adapt_cur : nullptr, &adapt_leak);
               ham_gen.rotate_hamiltonian_rotmat_imp_bath(tmp_rot.data(),
                                                          p.spin_dep);
+              if(adapt_rot)
+                std::cout << "* ROT_ADAPT: symmetry-adapted natural orbitals; "
+                             "max |rho| between character classes = "
+                          << adapt_leak << std::endl;
+              if(covariant_rot) {
               //Re-validate: the generator's spans alias T_active, Td_active
               //and V_active, so these are the rotated integrals. A covariant
               //U keeps the Frobenius norm of every deviation, so the largest
@@ -1032,6 +1201,7 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
                     << ") after macro iteration " << iorb + 1
                     << ": the natural-orbital rotation is not covariant";
                 throw std::logic_error(oss.str());
+              }
               }
             } else
               ham_gen.rotate_hamiltonian_ordm_imp_bath( active_ordm.data(), n_imp, tmp_rot.data() , p.spin_dep, orb_occs.data(),
@@ -1081,6 +1251,28 @@ double solve_asci_rot_one(impurity_params<N>& p, SolveExtras<N>& x){
       }
 
     // std::cout << "dets.sizet() = " << std::distance(dets.begin(), dets.end()) << " (" << dets.size() << ")" << std::endl;
+
+    // ROT_ADAPT: every rotated orbital must be a joint eigenvector of the
+    // generators, otherwise the determinants carry no definite character and
+    // the character filter of the resolvent growth would be wrong
+    if(adapt_rot) {
+      std::vector<uint64_t> mask;
+      const double dev = macis::orbital_character_masks(
+          orb_rot.data(), n_active, adapt_mats, mask);
+      std::cout << "* ROT_ADAPT: orbital characters (bit g set = odd under "
+                   "generator g+1), max deviation from +-1 diagonal = "
+                << dev << std::endl
+                << "  ";
+      for(auto m : mask) std::cout << " " << m;
+      std::cout << std::endl;
+      if(dev > 1e-8) {
+        std::ostringstream oss;
+        oss << "ASCI.ROT_ADAPT: the accumulated rotation is not symmetry "
+               "adapted (max deviation "
+            << std::scientific << dev << ")";
+        throw std::logic_error(oss.str());
+      }
+    }
 
     // A product of covariant rotations is covariant; the gemm accumulation
     // only adds round-off

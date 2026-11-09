@@ -12,6 +12,7 @@
 #include <macis/doping/charge_sectors.hpp>
 #include <macis/doping/fix_mu.hpp>
 #include <map>
+#include <sstream>
 #include <sparsexx/io/write_dist_mm.hpp>
 
 #include "../tests/ini_input.hpp"
@@ -227,6 +228,33 @@ int main(int argc, char** argv) {
     // Generators only; validated and expanded to the full group at solver
     // entry (prepare_det_symmetry)
     params.asci_settings.sym_group = gens;
+  }
+  // ASCI.ROT_ADAPT_NGEN = G, ASCI.ROT_ADAPT_PERM_g / ASCI.ROT_ADAPT_SIGN_g
+  // (g = 1..G): Z2 signed permutations of the active orbitals (0-based
+  // targets, signs +-1), phi_p -> sign[p] phi_perm[p]. With NROTS > 0 the
+  // natural orbitals are taken as their joint eigenvectors (cluster
+  // momentum). Validated at solver entry (prepare_rot_adapt).
+  {
+    size_t ngen = 0;
+    OPT_KEYWORD("ASCI.ROT_ADAPT_NGEN", ngen, size_t);
+    if(ngen > 0) {
+      auto gens = std::make_shared<std::vector<macis::SignedPerm>>();
+      for(size_t i = 1; i <= ngen; ++i) {
+        const std::string kp = "ASCI.ROT_ADAPT_PERM_" + std::to_string(i);
+        const std::string ks = "ASCI.ROT_ADAPT_SIGN_" + std::to_string(i);
+        if(!input.containsData(kp)) throw std::runtime_error("Missing " + kp);
+        if(!input.containsData(ks)) throw std::runtime_error("Missing " + ks);
+        const auto v = input.getData<std::vector<int>>(kp);
+        macis::SignedPerm g;
+        for(int x : v) {
+          if(x < 0) throw std::runtime_error(kp + ": negative orbital index");
+          g.perm.push_back(uint32_t(x));
+        }
+        g.sign = input.getData<std::vector<int>>(ks);
+        gens->push_back(std::move(g));
+      }
+      params.asci_settings.rot_adapt = gens;
+    }
   }
   params.asci_settings.just_singles = params.just_singles;
   OPT_KEYWORD("ASCI.WFN_FILE", params.asci_wfn_fname, std::string);
@@ -674,12 +702,43 @@ int main(int argc, char** argv) {
   bool site_sz_resolvent = false;
   OPT_KEYWORD("GF.SITE_SZ_RESOLVENT", site_sz_resolvent, bool);
 
+  // Optionally compute the matrix resolvent of weighted impurity spin
+  // operators O_k = sum_j w_k(j) Sz_j on the rotated basis
+  // (evaluate_resolvent_spin_weights): GF.SPIN_WEIGHT_N = K and
+  // GF.SPIN_WEIGHT_k = n_imp numbers (k = 1..K). For a cluster, use momentum
+  // weights cos(q . r_j) together with ASCI.ROT_ADAPT, so that every q != 0
+  // seed leaves the ground-state sector. Output "SzWeighted_seed_*.dat".
+  bool spin_weight_resolvent = false;
+  OPT_KEYWORD("GF.SPIN_WEIGHT_RESOLVENT", spin_weight_resolvent, bool);
+  std::vector<std::vector<double>> spin_weights;
+  if(spin_weight_resolvent) {
+    size_t nw = 0;
+    OPT_KEYWORD("GF.SPIN_WEIGHT_N", nw, size_t);
+    if(nw == 0)
+      throw std::runtime_error(
+          "GF.SPIN_WEIGHT_RESOLVENT requires GF.SPIN_WEIGHT_N >= 1");
+    for(size_t k = 1; k <= nw; ++k) {
+      const std::string key = "GF.SPIN_WEIGHT_" + std::to_string(k);
+      if(!input.containsData(key)) throw std::runtime_error("Missing " + key);
+      std::istringstream iss(input.getData<std::string>(key));
+      std::vector<double> w;
+      double x;
+      while(iss >> x) w.push_back(x);
+      if(w.size() != params.n_imp)
+        throw std::runtime_error(key + " has " + std::to_string(w.size()) +
+                                 " entries, expected n_imp = " +
+                                 std::to_string(params.n_imp));
+      spin_weights.push_back(std::move(w));
+    }
+  }
+
   bool delta_resolvent = false;
   OPT_KEYWORD("GF.DELTA_RESOLVENT", delta_resolvent, bool);
   const std::string delta_suffix = delta_resolvent ? "_delta" : "";
 
   if(testGF || sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
-     charge_orb_matrix_resolvent || stag_sz_resolvent || site_sz_resolvent) {
+     charge_orb_matrix_resolvent || stag_sz_resolvent || site_sz_resolvent ||
+     spin_weight_resolvent) {
     params.T_active.assign(params.T_active.size(), 0.0);
     params.V_active.assign(params.V_active.size(), 0.0);
     params.F_inactive.assign(params.F_inactive.size(), 0.0);
@@ -730,6 +789,26 @@ int main(int argc, char** argv) {
                 size_t);
     OPT_KEYWORD("GF.ORB_SECTOR_RES_TOL", gf_settings.orb_sector_res_tol,
                 double);
+    // GF.ORB_SYM_FILTER (default TRUE, effective only with ASCI.ROT_ADAPT
+    // and NROTS > 0): the resolvent basis growth keeps only singles that
+    // conserve the orbital characters of the generators (orb_sym_mask).
+    bool orb_sym_filter = true;
+    OPT_KEYWORD("GF.ORB_SYM_FILTER", orb_sym_filter, bool);
+    if(orb_sym_filter && params.asci_settings.rot_adapt &&
+       !params.asci_settings.rot_adapt->empty() &&
+       params.asci_settings.nrots > 0) {
+      std::vector<std::vector<double>> mats;
+      for(const auto& g : *params.asci_settings.rot_adapt)
+        mats.push_back(macis::signed_perm_matrix(g, params.n_active));
+      const double dev = macis::orbital_character_masks(
+          params.orb_rot.data(), params.n_active, mats,
+          gf_settings.orb_sym_mask);
+      if(dev > 1e-8)
+        throw std::runtime_error(
+            "GF.ORB_SYM_FILTER: the rotated orbitals are not symmetry adapted "
+            "(deviation " +
+            std::to_string(dev) + ")");
+    }
     OPT_KEYWORD("GF.WRITE", gf_settings.writeGF_singlef, bool);
     OPT_KEYWORD("GF.PRINT", gf_settings.print, bool);
     OPT_KEYWORD("GF.SAVEGFMATS", gf_settings.saveGFmats, bool);
@@ -765,7 +844,7 @@ int main(int argc, char** argv) {
     if(gf_settings.orb_expand_sector &&
        (sz_resolvent || tz_resolvent || spin_orb_matrix_resolvent ||
         charge_orb_matrix_resolvent || stag_sz_resolvent ||
-        site_sz_resolvent))
+        site_sz_resolvent || spin_weight_resolvent))
       E_res = macis::enrich_resolvent_ground_state<nwfn_bits>(
           E0, params, ham_gen, gf_settings);
 
@@ -812,6 +891,11 @@ int main(int argc, char** argv) {
           E_res, params, ham_gen, gf_settings, w_stag, macis::DiagChannel::Spin,
           "StagSz" + delta_suffix, delta_resolvent);
     }
+
+    if(spin_weight_resolvent)
+      macis::evaluate_resolvent_spin_weights<nwfn_bits>(
+          E_res, params, ham_gen, gf_settings, spin_weights,
+          "SzWeighted" + delta_suffix, delta_resolvent);
 
     if(site_sz_resolvent)
       for(size_t i = 0; i < nsites; ++i)

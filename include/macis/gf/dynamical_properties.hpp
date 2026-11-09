@@ -315,13 +315,32 @@ std::vector<std::bitset<nbits>> grow_basis_by_singles(
       frontier.push_back(seeds[k]);
   }
 
+  // settings.orb_sym_mask: keep only character-conserving singles. A single
+  // differs from its parent in exactly two bits (same spin), p and q; the
+  // character changes by mask[p] ^ mask[q].
+  const auto &mask = settings.orb_sym_mask;
+  if(!mask.empty() && mask.size() < norbs)
+    throw std::runtime_error(
+        "grow_basis_by_singles: orb_sym_mask has " +
+        std::to_string(mask.size()) + " entries, fewer than norbs = " +
+        std::to_string(norbs));
+  auto conserves_character = [&](const std::bitset<nbits> &parent,
+                                 const std::bitset<nbits> &single) {
+    if(mask.empty()) return true;
+    const auto diff = parent ^ single;
+    const size_t a = diff._Find_first();
+    const size_t b = diff._Find_next(a);
+    return mask[a % (nbits / 2)] == mask[b % (nbits / 2)];
+  };
+
   std::vector<std::bitset<nbits>> singles;
   for(int layer = 1; layer <= settings.tot_SD && within_cap(); ++layer) {
     const size_t start = found.size();
     for(const auto &det : frontier) {
       if(!within_cap()) break;
       generate_singles_spin_as(norbs, det, singles, as_orbs);
-      for(const auto &s : singles) add(s);
+      for(const auto &s : singles)
+        if(conserves_character(det, s)) add(s);
     }
     frontier.assign(found.begin() + start, found.end());
   }
@@ -585,6 +604,137 @@ inline void back_rotate_orbital_resolvent(
 }
 
 /**
+ * @brief Visits the images of one determinant under the bilinear
+ *        O_{mu nu} (apply_orbital_bilinear's convention): f(image, factor),
+ *        with factor = s_sigma * fermionic sign, once per spin that acts.
+ */
+template <size_t nbits, typename F>
+inline void for_each_bilinear_image(const std::bitset<nbits> &det, size_t mu,
+                                    size_t nu, double dn_sign, F &&f) {
+  for(size_t spin = 0; spin < 2; ++spin) {
+    const size_t offset = spin ? nbits / 2 : 0;
+    const size_t p = mu + offset;
+    const size_t q = nu + offset;
+    if(!det.test(q) || (mu != nu && det.test(p))) continue;
+    std::bitset<nbits> image(det);
+    double sign = 1.0;
+    if(mu != nu) {
+      image.flip(q);
+      image.flip(p);
+      sign = single_excitation_sign(det, p, q);
+    }
+    f(image, (spin ? dn_sign : 1.0) * sign);
+  }
+}
+
+/**
+ * @brief Image of a linear combination of orbital bilinears,
+ *        O = sum_{mu nu} C(mu, nu) O_{mu nu}, relative to a determinant basis
+ *        (as orbital_bilinear_image does for one bilinear). Only the nonzero
+ *        entries of C act. Amplitudes of the terms of one operator ARE summed:
+ *        their interference is physical (unlike merge_leaked_images, which
+ *        merges different operators). A C with a single unit entry gives
+ *        orbital_bilinear_image bit for bit.
+ */
+template <size_t nbits>
+OrbitalBilinearImage<nbits> bilinear_combination_image(
+    const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &det_index,
+    const Eigen::MatrixXd &C, DiagChannel ch) {
+  assert(wfn0.size() == Eigen::Index(dets.size()));
+  const double dn_sign = (ch == DiagChannel::Spin) ? -1.0 : 1.0;
+  std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> images;
+  for(Eigen::Index k = 0; k < wfn0.size(); ++k)
+    for(Eigen::Index mu = 0; mu < C.rows(); ++mu)
+      for(Eigen::Index nu = 0; nu < C.cols(); ++nu) {
+        const double c = C(mu, nu);
+        if(c == 0.0) continue;
+        for_each_bilinear_image<nbits>(
+            dets[k], mu, nu, dn_sign,
+            [&](const std::bitset<nbits> &image, double factor) {
+              images[image] += c * (factor * wfn0[k]);
+            });
+      }
+  OrbitalBilinearImage<nbits> out;
+  double captured_norm = 0.0;
+  double total_norm = 0.0;
+  for(const auto &[image, coefficient] : images) {
+    const double norm = coefficient * coefficient;
+    total_norm += norm;
+    if(det_index.find(image) != det_index.end()) {
+      captured_norm += norm;
+    } else {
+      out.leaked.push_back(image);
+      out.leaked_amplitude.push_back(coefficient);
+    }
+  }
+  out.capture = total_norm > 0.0 ? captured_norm / total_norm : 1.0;
+  return out;
+}
+
+/**
+ * @brief Projection of O|wfn0> onto `dets`, O = sum C(mu, nu) O_{mu nu} (see
+ *        bilinear_combination_image). A unit C gives apply_orbital_bilinear
+ *        bit for bit.
+ */
+template <size_t nbits>
+Eigen::VectorXd apply_bilinear_combination(
+    const Eigen::VectorXd &wfn0, const std::vector<std::bitset<nbits>> &dets,
+    const std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>>
+        &det_index,
+    const Eigen::MatrixXd &C, DiagChannel ch) {
+  assert(wfn0.size() == Eigen::Index(dets.size()));
+  const double dn_sign = (ch == DiagChannel::Spin) ? -1.0 : 1.0;
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(wfn0.size());
+  for(Eigen::Index k = 0; k < wfn0.size(); ++k)
+    for(Eigen::Index mu = 0; mu < C.rows(); ++mu)
+      for(Eigen::Index nu = 0; nu < C.cols(); ++nu) {
+        const double c = C(mu, nu);
+        if(c == 0.0) continue;
+        for_each_bilinear_image<nbits>(
+            dets[k], mu, nu, dn_sign,
+            [&](const std::bitset<nbits> &image, double factor) {
+              const auto it = det_index.find(image);
+              if(it != det_index.end())
+                out[it->second] += c * (factor * wfn0[k]);
+            });
+      }
+  return out;
+}
+
+/**
+ * @brief Coefficients of a weighted impurity spin operator in a rotated
+ *        impurity basis:
+ *
+ *          O = sum_j w_j S^z_j  (original orbitals j, S^z = (n_up - n_dn)/2)
+ *            = sum_{a b} C(a, b) S_{a b}  (rotated orbitals, S_ab of
+ *                                          apply_orbital_bilinear),
+ *          C = (1/2) U^T diag(w) U,
+ *
+ *        with U(j, a) the coefficient of original orbital j in rotated
+ *        orbital a (the impurity block of orb_rot). Entries below 1e-14 *
+ *        max|C| are set to exact zeros, so symmetry zeros of C stay zeros.
+ *        With U = 1, O is the operator of RunResolventWeighted(.., Spin).
+ */
+inline Eigen::MatrixXd spin_weight_bilinear_coefficients(
+    const std::vector<double> &w, const Eigen::MatrixXd &U) {
+  if(Eigen::Index(w.size()) != U.rows())
+    throw std::runtime_error(
+        "spin_weight_bilinear_coefficients: weight vector has " +
+        std::to_string(w.size()) + " entries, the impurity block " +
+        std::to_string(U.rows()));
+  const Eigen::VectorXd wv =
+      Eigen::Map<const Eigen::VectorXd>(w.data(), Eigen::Index(w.size()));
+  Eigen::MatrixXd C = 0.5 * U.transpose() * wv.asDiagonal() * U;
+  const double cmax = C.cwiseAbs().maxCoeff();
+  for(Eigen::Index j = 0; j < C.cols(); ++j)
+    for(Eigen::Index i = 0; i < C.rows(); ++i)
+      if(std::abs(C(i, j)) <= 1e-14 * cmax) C(i, j) = 0.0;
+  return C;
+}
+
+/**
  * @brief Full n_imp^2 x n_imp^2 matrix resolvent of the orbital bilinears,
  *
  *          R_{mu nu; gamma delta}(w) =
@@ -635,15 +785,21 @@ inline void back_rotate_orbital_resolvent(
  *            (orbital_occupations, active_space_orbitals with asThres).
  */
 template <size_t nbits, typename index_t = int32_t>
-OrbitalResolventResult RunResolventOrbitalMatrix(
+OrbitalResolventResult RunResolventBilinearSeeds(
     const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
-    const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
-    DiagChannel channel, double E0, const std::vector<std::complex<double>> &ws,
-    const GFSettings &settings, bool subtract_mean = false,
-    size_t n_active = 0) {
+    const std::vector<std::bitset<nbits>> &base_dets,
+    const std::vector<Eigen::MatrixXd> &coeffs, DiagChannel channel, double E0,
+    const std::vector<std::complex<double>> &ws, const GFSettings &settings,
+    bool subtract_mean = false, size_t n_active = 0) {
   // Matrix elements below this are dropped from the Lanczos Hamiltonian; the
   // sector filter of the expansion uses the same threshold.
   constexpr double h_thresh = 1.E-6;
+  const size_t n_imp = coeffs.empty() ? 0 : size_t(coeffs.front().rows());
+  for(const auto &C : coeffs)
+    if(size_t(C.rows()) != n_imp || size_t(C.cols()) != n_imp)
+      throw std::runtime_error(
+          "RunResolventBilinearSeeds: every coefficient matrix must be "
+          "n_imp x n_imp");
   if(n_imp > nbits / 2)
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
@@ -652,7 +808,9 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
     throw std::runtime_error(
         "RunResolventOrbitalMatrix: orb_deflate_tol must be non-negative");
 
-  const size_t npairs = n_imp * n_imp;
+  // "pairs" below are the seed operators: the n_imp^2 bilinears for
+  // RunResolventOrbitalMatrix, any combinations otherwise.
+  const size_t npairs = coeffs.size();
   std::map<std::bitset<nbits>, size_t, bitset_less_comparator<nbits>> det_index;
   for(size_t k = 0; k < base_dets.size(); ++k)
     det_index.emplace(base_dets[k], k);
@@ -664,18 +822,16 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
   result.capture.resize(npairs);
   result.expanded.assign(npairs, false);
   std::map<std::bitset<nbits>, double, bitset_less_comparator<nbits>> leaked;
-  for(size_t mu = 0; mu < n_imp; ++mu)
-    for(size_t nu = 0; nu < n_imp; ++nu) {
-      const size_t pair = mu * n_imp + nu;
-      auto image =
-          orbital_bilinear_image(wfn0, base_dets, det_index, mu, nu, channel);
-      result.capture(pair) = image.capture;
-      if(!settings.orb_expand_basis ||
-         image.capture >= settings.orb_min_capture)
-        continue;
-      result.expanded[pair] = true;
-      merge_leaked_images(leaked, image);
-    }
+  for(size_t pair = 0; pair < npairs; ++pair) {
+    auto image = bilinear_combination_image(wfn0, base_dets, det_index,
+                                            coeffs[pair], channel);
+    result.capture(pair) = image.capture;
+    if(!settings.orb_expand_basis ||
+       image.capture >= settings.orb_min_capture)
+      continue;
+    result.expanded[pair] = true;
+    merge_leaked_images(leaked, image);
+  }
 
   // The basis the resolvent is computed in: base_dets, followed by the grown
   // determinants if any pair was marked.
@@ -730,15 +886,15 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
 
   Eigen::MatrixXd seeds(dets.size(), npairs);
   result.capture_expanded = result.capture;
-  for(size_t mu = 0; mu < n_imp; ++mu)
-    for(size_t nu = 0; nu < n_imp; ++nu) {
-      const size_t pair = mu * n_imp + nu;
-      seeds.col(pair) =
-          apply_orbital_bilinear(psi0, dets, det_index, mu, nu, channel);
-      if(dets.size() == base_dets.size()) continue;
-      result.capture_expanded(pair) = orbital_bilinear_captured_fraction(
-          psi0, dets, det_index, mu, nu, channel);
-    }
+  for(size_t pair = 0; pair < npairs; ++pair) {
+    seeds.col(pair) = apply_bilinear_combination(psi0, dets, det_index,
+                                                 coeffs[pair], channel);
+    if(dets.size() == base_dets.size()) continue;
+    result.capture_expanded(pair) =
+        bilinear_combination_image(psi0, dets, det_index, coeffs[pair],
+                                   channel)
+            .capture;
+  }
 
   // H is block diagonal over the blocks, so the resolvent is the sum of the
   // resolvents of the seeds' restrictions to each block, each run on its own
@@ -787,6 +943,34 @@ OrbitalResolventResult RunResolventOrbitalMatrix(
         "RunResolventOrbitalMatrix: Gram eigensolve failed");
   result.gram_eigenvalues = eig.eigenvalues();
   return result;
+}
+
+/**
+ * @brief The full orbital-bilinear matrix resolvent (documented above):
+ *        RunResolventBilinearSeeds with the n_imp^2 unit seeds, pair
+ *        mu * n_imp + nu = O_{mu nu}.
+ */
+template <size_t nbits, typename index_t = int32_t>
+OrbitalResolventResult RunResolventOrbitalMatrix(
+    const Eigen::VectorXd &wfn0, HamiltonianGenerator<nbits> &Hgen,
+    const std::vector<std::bitset<nbits>> &base_dets, size_t n_imp,
+    DiagChannel channel, double E0, const std::vector<std::complex<double>> &ws,
+    const GFSettings &settings, bool subtract_mean = false,
+    size_t n_active = 0) {
+  if(n_imp > nbits / 2)
+    throw std::runtime_error(
+        "RunResolventOrbitalMatrix: n_imp exceeds the spatial-orbital "
+        "capacity");
+  std::vector<Eigen::MatrixXd> coeffs;
+  coeffs.reserve(n_imp * n_imp);
+  for(size_t mu = 0; mu < n_imp; ++mu)
+    for(size_t nu = 0; nu < n_imp; ++nu) {
+      coeffs.push_back(Eigen::MatrixXd::Zero(n_imp, n_imp));
+      coeffs.back()(mu, nu) = 1.0;
+    }
+  return RunResolventBilinearSeeds<nbits, index_t>(
+      wfn0, Hgen, base_dets, coeffs, channel, E0, ws, settings, subtract_mean,
+      n_active);
 }
 
 template <size_t nbits>

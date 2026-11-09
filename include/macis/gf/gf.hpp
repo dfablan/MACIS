@@ -74,6 +74,13 @@ struct GFSettings {
           // trunc_size).
   size_t orb_sector_max_sub = 50;     // Davidson subspace of the re-solve.
   double orb_sector_res_tol = 1.E-8;  // Davidson residual of the re-solve.
+  // Character of every active spatial orbital under a set of Z2 symmetries
+  // of H (bit g set: odd under generator g), from ASCI.ROT_ADAPT. When
+  // non-empty, grow_basis_by_singles keeps only the singles that conserve
+  // the character (p -> q with orb_sym_mask[p] == orb_sym_mask[q]): the
+  // others land in a sector H never connects to their parent, so they only
+  // cost CSR rows. Empty (default): no filter.
+  std::vector<uint64_t> orb_sym_mask;
   bool writeGF = false;
   bool writeGF_singlef = false;
   bool print = false;

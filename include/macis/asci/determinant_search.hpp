@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <macis/asci/covariant_orbitals.hpp>
 #include <macis/asci/determinant_contributions.hpp>
 #include <macis/asci/determinant_sort.hpp>
 #include <macis/asci/determinant_symmetry.hpp>
@@ -87,6 +88,17 @@ struct ASCISettings {
   // shared_ptr because ASCISettings is passed by value through
   // asci_grow -> asci_iter -> asci_search.
   std::shared_ptr<const std::vector<std::vector<uint32_t>>> sym_group;
+
+  // ASCI.ROT_ADAPT: commuting Z2 signed orbital permutations (cluster
+  // translations on sites + momentum-resolved bath, band signs), on the
+  // original orbitals. With NROTS > 0 the natural orbitals of every macro
+  // iteration are taken as their joint eigenvectors
+  // (symmetry_adapted_block_orbitals), so each determinant has a definite
+  // character under each generator and H conserves it. Validated as exact
+  // symmetries of the integrals at solver entry (prepare_rot_adapt). Unlike
+  // sym_group they do not relabel orbitals in the rotated basis (there they
+  // act as signs), so they never enter the determinant symmetrization.
+  std::shared_ptr<const std::vector<SignedPerm>> rot_adapt;
 
   // Band-parity sector constraint, set only by the parity-sector wrapper
   // (ASCI.PARITY_SOLVE): asci_search drops every candidate whose band-parity

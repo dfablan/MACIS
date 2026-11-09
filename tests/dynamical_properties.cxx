@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <macis/asci/covariant_orbitals.hpp>
 #include <macis/csr_hamiltonian.hpp>
 #include <macis/gf/dynamical_properties.hpp>
 #include <macis/hamiltonian_generator/double_loop.hpp>
@@ -2204,5 +2205,247 @@ TEST_CASE(
     macis::back_rotate_orbital_resolvent(rot.resolvent, U);
     for(size_t iw = 0; iw < ws.size(); ++iw)
       require_resolvents_close(ref.resolvent[iw], rot.resolvent[iw]);
+  }
+}
+
+namespace {
+
+// The 4-orbital, 2-impurity FCI model of "orbital matrix resolvent vs
+// Lehmann": complete (2,2) sector, exact ground state.
+struct SmallFCIModel {
+  static constexpr size_t n_imp = 2;
+  static constexpr size_t n_active = 4;
+  std::vector<double> T, V;
+  std::vector<macis::wfn_t<N>> dets;
+  Eigen::VectorXd psi0;
+  double E0 = 0.0;
+  SmallFCIModel()
+      : T(n_active * n_active, 0.0),
+        V(n_active * n_active * n_active * n_active, 0.0) {
+    for(size_t p = 0; p < n_active; ++p) {
+      T[p * n_active + p] = -1.0 - 0.1 * double(p);
+      for(size_t q = 0; q < n_active; ++q)
+        if(p != q) T[p * n_active + q] = -0.25;
+      V[((p * n_active + p) * n_active + p) * n_active + p] = 1.0;
+    }
+    for(int a0 = 0; a0 < 4; ++a0)
+      for(int a1 = a0 + 1; a1 < 4; ++a1)
+        for(int b0 = 0; b0 < 4; ++b0)
+          for(int b1 = b0 + 1; b1 < 4; ++b1)
+            dets.push_back(make_det({a0, a1}, {b0, b1}));
+  }
+  macis::DoubleLoopHamiltonianGenerator<N> generator() {
+    return macis::DoubleLoopHamiltonianGenerator<N>(
+        macis::matrix_span<double>(T.data(), n_active, n_active),
+        macis::rank4_span<double>(V.data(), n_active, n_active, n_active,
+                                  n_active));
+  }
+};
+
+}  // namespace
+
+TEST_CASE("Dynamical properties - bilinear combination seeds are linear") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+  SmallFCIModel m;
+  auto ham_gen = m.generator();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(m.dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+  const size_t n = m.n_imp, np = n * n;
+
+  std::vector<Eigen::MatrixXd> C(2, Eigen::MatrixXd::Zero(n, n));
+  C[0] << 0.3, -0.7, 0.2, 1.1;
+  C[1] << -0.5, 0.0, 0.9, 0.4;
+  const auto comb = macis::RunResolventBilinearSeeds<N, int32_t>(
+      psi0, ham_gen, m.dets, C, macis::DiagChannel::Spin, E0, ws, settings);
+  const auto pairs = macis::RunResolventOrbitalMatrix<N, int32_t>(
+      psi0, ham_gen, m.dets, n, macis::DiagChannel::Spin, E0, ws, settings);
+  REQUIRE(comb.capture.size() == 2);
+  for(size_t iw = 0; iw < ws.size(); ++iw)
+    for(size_t k = 0; k < 2; ++k)
+      for(size_t l = 0; l < 2; ++l) {
+        std::complex<double> ref(0.0, 0.0);
+        for(size_t a = 0; a < np; ++a)
+          for(size_t b = 0; b < np; ++b)
+            ref += C[k](a / n, a % n) * C[l](b / n, b % n) *
+                   pairs.resolvent[iw][a * np + b];
+        const auto v = comb.resolvent[iw][k * 2 + l];
+        REQUIRE(std::real(v) ==
+                Approx(std::real(ref)).epsilon(1e-6).margin(1e-8));
+        REQUIRE(std::imag(v) ==
+                Approx(std::imag(ref)).epsilon(1e-6).margin(1e-8));
+      }
+
+  SECTION("a unit coefficient reproduces the bilinear bit for bit") {
+    std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> index;
+    for(size_t k = 0; k < m.dets.size(); ++k) index.emplace(m.dets[k], k);
+    for(size_t mu = 0; mu < n; ++mu)
+      for(size_t nu = 0; nu < n; ++nu) {
+        Eigen::MatrixXd E = Eigen::MatrixXd::Zero(n, n);
+        E(mu, nu) = 1.0;
+        const Eigen::VectorXd a = macis::apply_orbital_bilinear<N>(
+            psi0, m.dets, index, mu, nu, macis::DiagChannel::Spin);
+        const Eigen::VectorXd b = macis::apply_bilinear_combination<N>(
+            psi0, m.dets, index, E, macis::DiagChannel::Spin);
+        REQUIRE((a - b).cwiseAbs().maxCoeff() == 0.0);
+      }
+  }
+}
+
+TEST_CASE("Dynamical properties - spin weight coefficients") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+  SmallFCIModel m;
+  auto ham_gen = m.generator();
+  const Eigen::MatrixXd Hd = dense_hamiltonian(m.dets, ham_gen);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(Hd);
+  const double E0 = es.eigenvalues()(0);
+  const Eigen::VectorXd psi0 = es.eigenvectors().col(0);
+  const std::vector<std::complex<double>> ws = {{0.5, 0.2}, {2.0, 0.2}};
+  macis::GFSettings settings;
+  settings.nLanIts = 100;
+
+  SECTION("unrotated: same operator and normalization as RunResolventWeighted") {
+    const std::vector<double> w = {1.0, -0.6};
+    const auto C = macis::spin_weight_bilinear_coefficients(
+        w, Eigen::MatrixXd::Identity(2, 2));
+    const auto comb = macis::RunResolventBilinearSeeds<N, int32_t>(
+        psi0, ham_gen, m.dets, {C}, macis::DiagChannel::Spin, E0, ws,
+        settings);
+    const auto ref = macis::RunResolventWeighted<N, int32_t>(
+        psi0, ham_gen, m.dets, w, macis::DiagChannel::Spin, m.n_imp,
+        m.n_active, E0, ws, settings);
+    for(size_t iw = 0; iw < ws.size(); ++iw) {
+      REQUIRE(std::real(comb.resolvent[iw][0]) ==
+              Approx(std::real(ref[iw])).epsilon(1e-8).margin(1e-10));
+      REQUIRE(std::imag(comb.resolvent[iw][0]) ==
+              Approx(std::imag(ref[iw])).epsilon(1e-8).margin(1e-10));
+    }
+  }
+
+  SECTION("a uniform weight is rotation invariant, C = 1/2") {
+    const double c = std::cos(0.63), s = std::sin(0.63);
+    Eigen::MatrixXd U(2, 2);
+    U << c, -s, s, c;
+    const auto C = macis::spin_weight_bilinear_coefficients({1.0, 1.0}, U);
+    REQUIRE((C - 0.5 * Eigen::MatrixXd::Identity(2, 2)).cwiseAbs().maxCoeff() <
+            1e-15);
+  }
+}
+
+TEST_CASE("Dynamical properties - basis growth keeps orbital characters") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+  const auto seed = make_det({0, 1}, {0, 2});
+  std::map<macis::wfn_t<N>, size_t, macis::bitset_less_comparator<N>> exclude;
+  const std::vector<uint32_t> as_orbs = {0, 1, 2, 3};
+  macis::GFSettings settings;
+  settings.tot_SD = 2;
+  settings.GFseedThres = 0.0;
+  auto character = [](const macis::wfn_t<N>& d,
+                      const std::vector<uint64_t>& mask) {
+    uint64_t c = 0;
+    for(size_t i = 0; i < 4; ++i) {
+      if(d.test(i)) c ^= mask[i];
+      if(d.test(i + N / 2)) c ^= mask[i];
+    }
+    return c;
+  };
+
+  const auto all = macis::grow_basis_by_singles<N>({seed}, {1.0}, exclude,
+                                                   as_orbs, 4, settings);
+  settings.orb_sym_mask = {0, 0, 0, 0};
+  const auto trivial = macis::grow_basis_by_singles<N>({seed}, {1.0}, exclude,
+                                                       as_orbs, 4, settings);
+  REQUIRE(trivial == all);
+
+  // Two Z2 generators: orbital 1 odd under g1, orbital 2 under g2, orbital 3
+  // under both
+  settings.orb_sym_mask = {0, 1, 2, 3};
+  const auto kept = macis::grow_basis_by_singles<N>({seed}, {1.0}, exclude,
+                                                    as_orbs, 4, settings);
+  REQUIRE(kept.size() < all.size());
+  const auto c0 = character(seed, settings.orb_sym_mask);
+  for(const auto& d : kept) REQUIRE(character(d, settings.orb_sym_mask) == c0);
+  // Every character-conserving determinant of the unfiltered growth that is
+  // reachable through conserving singles is kept: here the conserving moves
+  // are only within equal-mask orbitals, i.e. none, so only the seed stays.
+  REQUIRE(kept.size() == 1);
+
+  settings.orb_sym_mask = {0, 0, 1, 1};
+  const auto kept2 = macis::grow_basis_by_singles<N>({seed}, {1.0}, exclude,
+                                                     as_orbs, 4, settings);
+  for(const auto& d : kept2)
+    REQUIRE(character(d, settings.orb_sym_mask) ==
+            character(seed, settings.orb_sym_mask));
+  REQUIRE(kept2.size() > 1);
+}
+
+TEST_CASE("ROT_ADAPT - symmetry-adapted natural orbitals of a 2x2 plaquette") {
+  ROOT_ONLY(MPI_COMM_WORLD);
+  // Sites 0..3, bonds 0-1, 0-2, 1-3, 2-3. Translations: g1 = (0 1)(2 3),
+  // g2 = (0 2)(1 3). Momentum orbitals (columns): Gamma, X (odd under g1),
+  // Y (odd under g2), M (odd under both).
+  const size_t n = 4;
+  Eigen::MatrixXd K(4, 4);
+  K << 1, 1, 1, 1,  //
+      1, -1, 1, -1,  //
+      1, 1, -1, -1,  //
+      1, -1, -1, 1;
+  K *= 0.5;
+  const Eigen::Vector4d occ(0.6, 0.164877, 0.164877, 0.054);
+  // Current basis: Gamma, two X/Y mixtures at 36 deg, M, as in J0.333/U15
+  const double t = 36.0 * M_PI / 180.0;
+  Eigen::MatrixXd mix = Eigen::MatrixXd::Identity(4, 4);
+  mix(1, 1) = std::cos(t);
+  mix(2, 1) = std::sin(t);
+  mix(1, 2) = -std::sin(t);
+  mix(2, 2) = std::cos(t);
+  const Eigen::MatrixXd R = K * mix;  // columns: current orbitals (site basis)
+  const Eigen::MatrixXd rho_site = K * occ.asDiagonal() * K.transpose();
+  const Eigen::MatrixXd rho_cur = R.transpose() * rho_site * R;
+
+  std::vector<macis::SignedPerm> gens(2);
+  gens[0].perm = {1, 0, 3, 2};
+  gens[1].perm = {2, 3, 0, 1};
+  gens[0].sign = gens[1].sign = {1, 1, 1, 1};
+  std::vector<std::vector<double>> mats, cur;
+  for(const auto& g : gens) {
+    mats.push_back(macis::signed_perm_matrix(g, n));
+    cur.push_back(macis::to_rotated_basis(mats.back(), R.data(), n));
+  }
+
+  std::vector<uint64_t> mask;
+  REQUIRE(macis::orbital_character_masks(R.data(), n, mats, mask) > 0.5);
+
+  const std::vector<std::vector<size_t>> blocks = {{0, 1, 2, 3}};
+  std::vector<double> U(n * n), occs(n);
+  double leak = -1.;
+  macis::covariant_natural_orbitals(rho_cur.data(), n, blocks, {}, U.data(),
+                                    occs.data(), 0, &cur, &leak);
+  REQUIRE(leak < 1e-14);
+  for(size_t i = 0; i < n; ++i) REQUIRE(occs[i] == Approx(occ(i)));
+  const Eigen::MatrixXd total =
+      R * Eigen::Map<const Eigen::MatrixXd>(U.data(), n, n);
+  REQUIRE(macis::orbital_character_masks(total.data(), n, mats, mask) < 1e-12);
+  REQUIRE(mask[0] == 0);
+  REQUIRE(mask[3] == 3);
+  REQUIRE((mask[1] ^ mask[2]) == 3);  // one X, one Y
+  // Without the generators the degenerate pair stays mixed
+  macis::covariant_natural_orbitals(rho_cur.data(), n, blocks, {}, U.data(),
+                                    occs.data(), 0);
+  const Eigen::MatrixXd plain =
+      R * Eigen::Map<const Eigen::MatrixXd>(U.data(), n, n);
+  REQUIRE(macis::orbital_character_masks(plain.data(), n, mats, mask) > 1e-3);
+
+  SECTION("a generator that is not an involution is refused") {
+    macis::SignedPerm cyc;
+    cyc.perm = {1, 3, 0, 2};  // 4-cycle around the plaquette
+    cyc.sign = {1, 1, 1, 1};
+    std::vector<std::vector<double>> bad = {macis::signed_perm_matrix(cyc, n)};
+    REQUIRE_THROWS(macis::covariant_natural_orbitals(
+        rho_site.data(), n, blocks, {}, U.data(), occs.data(), 0, &bad));
   }
 }
